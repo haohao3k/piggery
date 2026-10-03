@@ -15,7 +15,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it |
 | `setup --refresh` | Refresh already-installed integration assets even at the same integration version, and safely unpack built-in templates; preserve custom template overrides and report their names; no new harness integration is enabled; mutually exclusive with `--outdated` and harness arguments |
 | `setup remove <harness>` | Take out exactly what `setup` added; `--ext PATH` (setup pi) uses a checkout's extension |
-| `skills` | Print the guide for agents |
+| `skills [three-review]` | Print the agent guide, or the shared three-arm context-preparation and review playbook; does not start a daemon, team or model |
 | `team up <template\|path.yaml> [--cwd D] [--name N]` | Start a team from a template in `~/.piggery/templates`, or a manifest file |
 | `team down <team>` | Close a team: workers stopped, nothing acked |
 | `template new <name> [--from <built-in>]` | Copy a built-in (default `p2p`) to `~/.piggery/templates/<name>` |

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/sting8k/piggery/internal/driver/local"
 )
 
 // fakeHooksList stands in for Codex's hooks/list: every handler of home/hooks.json, keyed by
@@ -154,7 +156,7 @@ func TestCodexHookDriftIsOutdated(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, _ := os.ReadFile(filepath.Join(home, "config.toml"))
-	os.WriteFile(filepath.Join(home, "config.toml"), []byte(strings.Replace(string(cfg), codexMarker(1)+"\n", "", 1)), 0o600)
+	os.WriteFile(filepath.Join(home, "config.toml"), []byte(strings.Replace(string(cfg), codexMarker(local.IntegrationVersion("codex"))+"\n", "", 1)), 0o600)
 	if i, _ := integrationOf(dir, "codex"); i.Have != 0 || !i.outdated() || i.Drift != "" {
 		t.Fatalf("a block without the marker: %+v", i)
 	}
@@ -184,7 +186,7 @@ func TestSetupOutdatedUpdatesWhatIsInstalled(t *testing.T) {
 	}
 	cfgPath := filepath.Join(codexHome(), "config.toml")
 	cfg, _ := os.ReadFile(cfgPath)
-	os.WriteFile(cfgPath, []byte(strings.Replace(string(cfg), codexMarker(1)+"\n", "", 1)), 0o600)
+	os.WriteFile(cfgPath, []byte(strings.Replace(string(cfg), codexMarker(local.IntegrationVersion("codex"))+"\n", "", 1)), 0o600)
 	if err := writeClaudePlugin(filepath.Join(dir, "claude"), "/x/piggery"); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +197,7 @@ func TestSetupOutdatedUpdatesWhatIsInstalled(t *testing.T) {
 		return out.String(), err
 	}
 	out, err := run()
-	if err != nil || !strings.Contains(out, "codex: updated (v0 < v1)") || strings.Contains(out, "claude") {
+	if err != nil || !strings.Contains(out, fmt.Sprintf("codex: updated (v0 < v%d)", local.IntegrationVersion("codex"))) || strings.Contains(out, "claude") {
 		t.Fatalf("first run: %q, %v", out, err)
 	}
 	if i, _ := integrationOf(dir, "codex"); i.outdated() {

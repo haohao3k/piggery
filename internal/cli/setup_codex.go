@@ -22,6 +22,7 @@ import (
 
 // `piggery setup codex` installs the Codex adapter once for every Codex session and worker
 // (piggery writes the Codex home itself):
+//   - a managed skills/piggery-three-review/SKILL.md entry with a content-hash receipt;
 //   - piggery's hooks (`piggery hook codex <Event>`) in <CODEX_HOME>/hooks.json, after the
 //     Human's own groups there (a file of its own keeps piggery's positions, which are part of
 //     Codex's trust key, stable);
@@ -169,6 +170,12 @@ func codexMCPDisabled(cfg []byte) bool {
 var codexDisabledSetting = regexp.MustCompile(`^\s*(enabled|"enabled"|'enabled')\s*=\s*false\s*(#.*)?$`)
 
 func installCodex(home, self string) (string, error) {
+	skill, err := inspectCodexSkill(home)
+	if err != nil {
+		return "", err
+	}
+	skillChanged := !bytes.Equal(skill.content, []byte(threeReviewSkill(self, "piggery-three-review"))) ||
+		skill.receipt == nil || skill.receipt.TemplateSHA256 != skillHash([]byte(threeReviewSkillMD)) || skill.receipt.Executable != self
 	hooksPath := filepath.Join(home, "hooks.json")
 	oldHooks, err := readOptional(hooksPath)
 	if err != nil {
@@ -199,6 +206,12 @@ func installCodex(home, self string) (string, error) {
 	}
 	newCfg := withCodexBlock(oldCfg, codexBlock(home, self, trusted))
 	if !changedHooks && bytes.Equal(oldCfg, newCfg) && allTrusted(metas, keys) {
+		if skillChanged {
+			if err := writeCodexSkill(home, self, skill); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("updated Piggery's three-review skill in %s", codexSkillPath(home)), nil
+		}
 		return fmt.Sprintf("piggery is already set up in %s (hooks trusted)", home), nil
 	}
 	if !bytes.Equal(oldCfg, newCfg) {
@@ -212,8 +225,14 @@ func installCodex(home, self string) (string, error) {
 	if bad := untrustedPiggeryHooks(metas, keys); len(bad) > 0 {
 		return "", fmt.Errorf("Codex does not trust piggery's hooks after setup: %s", strings.Join(bad, ", "))
 	}
+	if skillChanged {
+		if err := writeCodexSkill(home, self, skill); err != nil {
+			return "", err
+		}
+	}
 	return fmt.Sprintf("wrote piggery's hooks to %s and its MCP server and hook trust to %s (%d hooks trusted)\n"+
-		"Codex sessions started from now on join piggery; restart any that are open.", hooksPath, cfgPath, len(keys)), nil
+		"installed $piggery-three-review in %s\n"+
+		"Codex sessions started from now on join piggery; restart any that are open.", hooksPath, cfgPath, len(keys), codexSkillPath(home)), nil
 }
 
 // codexHookGroups walks hooks.json (order and the Human's groups kept): fn gets each event's
@@ -296,10 +315,17 @@ func isPiggeryCodexGroup(raw json.RawMessage) bool {
 	return true
 }
 
-// removeCodex takes piggery's hook groups out of hooks.json (the file goes when nothing else is
-// left) and its block out of config.toml.
+// removeCodex removes the unchanged managed skill, takes piggery's hook groups out of hooks.json
+// (the file goes when nothing else is left) and its block out of config.toml.
 func removeCodex(home string) (string, error) {
 	var did []string
+	skillNote, err := removeCodexSkill(home)
+	if err != nil {
+		return "", err
+	}
+	if skillNote != "" {
+		did = append(did, skillNote)
+	}
 	hooksPath := filepath.Join(home, "hooks.json")
 	old, err := readOptional(hooksPath)
 	if err != nil {
@@ -631,6 +657,15 @@ func codexStatus(home, self string) harnessState {
 	if len(keys) == 0 || len(st.Problems) > 0 {
 		return st
 	}
+	if skill, err := inspectCodexSkill(home); err != nil {
+		st.Problems = append(st.Problems, problem{err.Error(), ""})
+	} else if !bytes.Equal(skill.content, []byte(threeReviewSkill(self, "piggery-three-review"))) ||
+		skill.receipt == nil || skill.receipt.TemplateSHA256 != skillHash([]byte(threeReviewSkillMD)) || skill.receipt.Executable != self {
+		st.Problems = append(st.Problems, problem{"Piggery's three-review skill is missing or outdated", fix})
+	}
+	if len(st.Problems) > 0 {
+		return st
+	}
 	metas, err := codexHooksList(home)
 	if err != nil {
 		st.Problems = append(st.Problems, problem{"cannot check the hooks' trust: " + err.Error(), ""})
@@ -640,6 +675,6 @@ func codexStatus(home, self string) harnessState {
 		st.Problems = append(st.Problems, problem{"Codex will not run piggery's hooks (not trusted: " + strings.Join(bad, ", ") + ")", fix})
 		return st
 	}
-	st.Detail = fmt.Sprintf("MCP server, %d hooks trusted", len(keys))
+	st.Detail = fmt.Sprintf("MCP server, %d hooks trusted, $piggery-three-review", len(keys))
 	return st
 }

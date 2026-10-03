@@ -3,6 +3,78 @@ semantic reviewers test one candidate; a coverage reviewer uses open-code-review
 deterministic file selection and rules, then performs its own semantic review. You adjudicate
 the evidence. Agreement, passing tests and coverage percentages do not decide the verdict.
 
+## Expand a short request into a review brief
+
+The Human may invoke this workflow with no extra text, or ask to review recent lanes, changes
+and decisions. Prepare the context yourself before spawning reviewers; a separate planner is
+not required. An explicit three-review invocation requests the review and its workers. Merely
+discovering this skill during ordinary work is not a request to create a team.
+An optional leading `prepare`, or an equivalent explicit prepare-only request, means context
+preparation only: do not found a team or spawn reviewers.
+
+- Inspect the repository instructions, Git status/worktrees/refs and the relevant Piggery
+  team/assignment state through read-only tools. Establish which lanes belong to this request,
+  their owners, and what is committed, merged or still being written. A session name, an ACK or
+  a handback saying "done" is not proof of a candidate or acceptance. Do not read credentials,
+  raw environment dumps or unrelated session transcripts.
+- Resolve "recent" from the Human's stated boundary first, then an identifiable prior review
+  or acceptance baseline for these lanes, then their verified branch fork points. Record why
+  the boundary applies. Do not silently invent a date window, treat an upstream tracking ref
+  as the review base, or reduce "all lanes" to the current checkout. If no defensible boundary
+  is available, finish the scope inventory and ask the one question that would decide it.
+- Read relevant requirements, current decisions, acceptance criteria and lane handbacks.
+  Distinguish accepted decisions from proposals, superseded decisions and unresolved Human
+  choices. Pin source documents to the candidate where possible; retain an immutable copy
+  with a content hash and provenance for necessary external/current decision inputs.
+  Give every reviewer access to those exact bytes: a hash or a link to a changing page alone
+  is insufficient. Missing access is a blocker for the affected contract. Do not let a
+  changing document silently change the contract during review. Read relevant code context
+  beyond the diff; this is not a claim to have audited every file in the repository.
+- For integrated lanes, prefer their common integration candidate when it covers the request.
+  For divergent lanes, list separate exact base/head pairs and their dependencies; never
+  invent a merged tree. Review the finite set of listed candidates in separate sequential
+  rounds, with fresh reviewers and candidate-keyed receipts. Track reviewed, blocked and
+  excluded lanes explicitly. Do not multiply overlapping lane reviews when one integration
+  review answers the same question.
+- Publish a compact scope note before review: repository/lanes, exact targets and baseline
+  rationale, governing requirements/decisions with provenance, checks and exclusions, and
+  unresolved choices. Show it to the Human in the current session; do not pin it to a shared
+  development-team board. For a handoff, save this neutral brief and its context inputs outside
+  the candidate and give their paths so the next coordinator can use them without reconstructing
+  the conversation. Proceed on well-supported assumptions without routine confirmation.
+  Ask only when scope, authority or the governing contract cannot be resolved from evidence.
+  A request only to prepare/plan ends with this note and starts no workers.
+
+Include the authoritative requirements and decisions in the shared neutral brief. Keep old
+reviewer findings, preferred answers and suspected bugs out of the independent first pass;
+reconcile prior findings after all three handbacks. Both semantic reviewers inspect the same
+full scope, rather than dividing code and tests between them. When the Human explicitly asks
+to reproduce a named defect, retain that task and label it targeted verification rather than
+claiming an unprimed independent discovery pass.
+
+Report code compliance with decisions separately from evidence that challenges a decision's
+premise. Product-policy choices still belong to the authorized owner; do not add a council or
+turn reviewer agreement into a new decision. Missing runtime, authenticated legacy or
+production evidence stays missing even when source review is clean.
+
+## Enter without disturbing another team
+
+Use the native Piggery `who` and `agent templates` tools to check the current session and the
+requested review template (`triple-review` by default). Honor an explicitly named compatible
+custom template, including the permitted Claude coverage variant. A direct invocation in a
+solo session authorizes founding that review team once the scope is ready; use `agent` action
+`found` with that template from the intended repository root. Do not infer that this printed guide proves the installed
+template or an existing team's frozen manifest is current. Verify its roles/routes and the
+coordinator instructions actually delivered before spawning.
+
+If this session already belongs to a development or other unrelated team, do not found over
+it, leave it, change its gate, close it or stop its workers. Complete the scope note and give
+the Human a concise handoff to invoke this workflow in a separate solo session at the same
+repository. Creating that session is not an automatic side effect. An existing Triple Review
+coordinator can continue its same pass or start a requested new candidate after its previous
+workers are stopped; never silently replace an in-progress round. Missing tools or a stale or
+incompatible template is a concrete blocker, not permission to install, restart or downgrade.
+
 ## Prepare one candidate
 
 - Record the repository, intended behavior, constraints, exclusions and required evidence in
@@ -10,8 +82,11 @@ the evidence. Agreement, passing tests and coverage percentages do not decide th
 - Resolve the target to full commit SHAs: one commit versus its parent, or base/head with the
   merge-base recorded. Use a clean detached worktree at the candidate, or read immutable Git
   objects. Do not let context, tests or OCR rules come from a moving writer's checkout. If the
-  task only supplies uncommitted changes, request a reproducible snapshot or create one within
-  the task's existing authority; never silently commit the Human's work.
+  task only supplies uncommitted changes, list the affected lanes as pending a reproducible Git
+  candidate. The current OCR modes require commit identities; a patch file or a hash of a dirty
+  directory does not satisfy this. Use a snapshot commit only when creating that snapshot was
+  separately authorized, without modifying the writer's index or checkout. Otherwise ask the
+  owner to provide the candidate; never silently commit, stash or discard the Human's work.
 - Give every reviewer the same candidate identity and brief. For test commands that write,
   use separate disposable copies and record their identity. Keep review reports out of the
   candidate and out of shared files visible to the other reviewers during the first pass.
@@ -81,6 +156,9 @@ Give the Human one compact report: candidate and contract; exact routes and read
 receipts; sealed-pass status; findings and coverage accounting; contradiction checks; verdict
 (`ACCEPT`, `REVISE` or `BLOCKED`), correction ownership and residual risk. ACCEPT applies only
 to the reviewed scope and identity. It grants no merge, release or product acceptance authority.
+For a multi-lane request, include a disposition for every discovered in-scope lane and identify
+which candidate covers it. A blocked or unreviewed lane prevents a claim that the whole request
+passed. Do not edit candidates or start another round merely because new commits appeared.
 Escalate unresolved consequential choices to the Human; do not add a council automatically.
 
 For Piggery commands and template configuration, run `piggery skills`.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add short three-review entries for Claude Code, Codex and Pi, backed by the local CLI's shared
+  `skills three-review` playbook. The coordinator resolves recent lane scope and decision context
+  before review, preserves existing development teams, and accounts for blocked/unreviewed lanes.
+
 - Pin Triple Review to native Codex CLI / GPT-6-astra and Claude CLI / Opus 5.5 at high effort.
   OCR delegate coverage runs in a separate Codex CLI worker by default; Claude CLI / Opus 5.5
   is an explicit pre-founding choice. Missing routes block readiness instead of falling back.
