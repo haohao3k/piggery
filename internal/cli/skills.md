@@ -68,8 +68,11 @@ When the Human requests three-arm review (Triple Review), select the `triple-rev
 one coordinator, two independent semantic reviewers from different provider families, and one
 OCR coverage reviewer. The role prompts contain the workflow and OCR delegate commands; a
 separate OCR skill is not required. Use a frozen commit or exact base/head SHAs. Configure exact
-routes in the template before founding when requested; the semantic defaults are Codex and
-Claude at high effort, while coverage inherits. Verify actual models/providers and `ocr`
+routes in the template before founding: semantic defaults are native Codex CLI / `gpt-6-astra`
+and native Claude CLI / `claude-opus-5-5`, both at high effort. Coverage is a separate native
+Codex CLI / `gpt-6-astra` / high worker running `ocr delegate`; the permitted alternative is
+Claude CLI / `claude-opus-5-5` / high, chosen before founding, never automatic fallback.
+Do not route coverage through pi or an OCR LLM endpoint. Verify actual models/providers and `ocr`
 availability through the readiness pass. Do not substitute missing routes, skip OCR or turn an
 ordinary review request into three workers. Findings stay sealed until all three handbacks;
 the coordinator resolves contradictions by evidence, not votes. See

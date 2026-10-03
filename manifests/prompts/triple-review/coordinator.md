@@ -27,15 +27,21 @@ Each worker sends `ready` or `blocked`. Before releasing any review, verify all 
 candidate identities and exact harness/provider/model/effort routes, using runtime metadata
 (for example `piggery ps --json`) and the readiness receipts. The semantic workers must use
 different provider families at high reasoning effort or the supported equivalent. Different
-harness names alone do not prove different providers. The coverage route may use any supported
-provider; it must have working OCR. An unknown route, missing dependency or unstable candidate
+harness names alone do not prove different providers. Coverage must run OCR delegate inside a
+native Codex CLI session with `gpt-6-astra`, or a native Claude CLI session with
+`claude-opus-5-5`, at high effort. Confirm both the native harness executable and the actual model;
+a pi route or a separately configured OCR LLM endpoint does not satisfy this contract.
+An unknown route, missing dependency or unstable candidate
 is a concrete blocker. Do not replace a pinned route, change a worker's model, or run fewer
 lanes and call it Triple Review. Stop this round's workers if readiness cannot be completed.
 
-The built-in defaults use Codex and Claude for the semantic roles and inherit the coverage
-route. Exact models come from the role/profile/session configuration. Configure a copy of the
-template before founding when those defaults do not match the requested routes; a running
-team's manifest is frozen. Never infer the exact model from a harness default or alias.
+The built-in defaults pin `semantic_a` to Codex CLI / `gpt-6-astra`, `semantic_b` to Claude CLI /
+`claude-opus-5-5`, and `coverage` to a separate Codex CLI / `gpt-6-astra` worker, all at high
+effort. The permitted coverage alternative is Claude CLI / `claude-opus-5-5` / high, selected in
+a copy of the template before founding. This is a configuration choice, not automatic fallback;
+a running team's manifest is frozen. Never infer the actual model from an alias or treat the
+configured model as proof of the route that ran. The coverage worker calls OCR itself; it must
+not start another coding-agent CLI inside its session.
 
 Once every readiness check passes, send each worker `{tool:send}` kind `review`, op `assign`,
 with the same neutral brief. Do not add OCR's selected files or mechanisms to either semantic

@@ -59,11 +59,21 @@ Use `triple-review` when you want two independent semantic reviews plus a reprod
 of the reviewed files. The coordinator resolves findings by evidence; there is no majority vote.
 This is an optional review workflow, not a requirement for ordinary work.
 
-The template has four roles: `coordinator`, `semantic_a`, `semantic_b`, `coverage`. By default,
-the semantic workers use Codex and Claude at high effort; their exact models inherit from the
-configured profiles/session. Coverage inherits the founder's route. You can use other supported
-harnesses, including two pi workers configured for different providers. Different harnesses alone
-do not establish provider diversity.
+The template has four roles: `coordinator`, `semantic_a`, `semantic_b`, `coverage`. Reviewer
+routes are pinned; they do not inherit a model from the founder or worker profile:
+
+| Role | Native CLI | Model | Effort |
+|---|---|---|---|
+| `semantic_a` | Codex | `gpt-6-astra` | `high` |
+| `semantic_b` | Claude | `claude-opus-5-5` (Opus 5.5) | `high` |
+| `coverage` (default) | Codex | `gpt-6-astra` | `high` |
+| `coverage` (permitted alternative) | Claude | `claude-opus-5-5` | `high` |
+
+Coverage is exactly one separate CLI session. Piggery's native adapters launch `codex app-server`
+or Claude's streaming CLI and pass the chosen model/effort. The coverage agent runs OCR delegate
+directly inside that session; it does not launch another coding agent or use a pi provider route.
+The coordinator still verifies the actual executable/provider/model in readiness; a configured
+route alone is not proof of what ran.
 
 Before founding, prepare your routes and install
 [open-code-review](https://github.com/alibaba/open-code-review) in the coverage worker's environment
@@ -71,14 +81,22 @@ Before founding, prepare your routes and install
 and resolves rules; the coverage agent reasons about the code. The template embeds that procedure,
 so a separately installed OCR skill is not required. A missing OCR command blocks that review.
 
-To customize the routes:
+To choose Claude CLI for coverage before founding:
 
 ```sh
 piggery template new my-review --from triple-review
-# Edit ~/.piggery/templates/my-review/manifest.yaml:
-# set spawn.harness, spawn.model and spawn.thinking on each reviewer role.
-# Use exact model IDs supported by each harness; keep semantic providers different.
+# Edit only roles.coverage.spawn in ~/.piggery/templates/my-review/manifest.yaml:
 ```
+
+```yaml
+harness: claude
+model: claude-opus-5-5
+thinking: high
+```
+
+This selects the third worker's route; it does not add a fourth reviewer or configure automatic
+fallback. Missing models, native CLIs or OCR block readiness rather than silently substituting
+another route.
 
 Then ask your session: *"Found a triple-review team to review commit <full SHA>"* (or name your
 custom template and exact base/head SHAs). The coordinator uses a clean candidate checkout and
