@@ -26,7 +26,7 @@ flowchart LR
 Every agent gets the same mailbox, whatever its harness: a pi session can mail a Claude Code
 session, and a worker's answer wakes whoever is waiting for it. Each mail and each spawn passes
 the gate, which checks it against the team's layout: a small YAML file you pick or write. A few
-come built in as examples (`supervisor-executor`, `slp`, `council`, `p2p`); any other shape is
+come built in as examples (`supervisor-executor`, `slp`, `council`, `triple-review`, `p2p`); any other shape is
 another file.
 
 ## Harnesses
@@ -81,10 +81,14 @@ lists every command, config key, profile key and manifest key.
 | `supervisor-executor` | A supervisor splits the goal into checkable tasks; executors do them. |
 | `slp` | You steer a supervisor; each lane has a lead and peers, often in its own git worktree. |
 | `council` | A chair asks members for independent views on one hard decision. |
+| `triple-review` | Two independent semantic reviewers and an OCR coverage reviewer inspect one frozen candidate; a coordinator adjudicates the evidence. |
 | `p2p` | Peers that talk freely and spawn more peers. |
 
 Make your own: `piggery template new mine --from slp`, then edit
 `~/.piggery/templates/mine/manifest.yaml` (see the [guide](docs/guide.md#customize-piggery-piggery)).
+
+For three-arm review, see [the review setup](docs/guide.md#three-arm-review): it needs two different
+provider families and [open-code-review](https://github.com/alibaba/open-code-review) on the coverage worker's PATH.
 
 ## Build from source
 

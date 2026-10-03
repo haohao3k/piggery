@@ -1,0 +1,72 @@
+# Three-arm review: two independent semantic reviews and an OCR coverage review.
+# Mail goes through the coordinator only. Read-only source access is a prompt contract,
+# not a filesystem sandbox. Pin each role's model before founding when exact routes are known.
+template: triple-review
+summary: Review one frozen candidate with two independent provider families and an OCR coverage reviewer; a coordinator resolves findings by evidence.
+auto_join_role: coordinator
+roles:
+  coordinator:
+    description: Freezes the brief, verifies three routes, collects independent handbacks and adjudicates findings.
+    instructions_file: prompts/triple-review/coordinator.md
+    tools: [send, inbox, who, agent]
+    can_spawn: [semantic_a, semantic_b, coverage]
+    can_pin: false
+    can_set_cwd: true
+    spawn:
+      harness: inherit
+      model: inherit
+      thinking: inherit
+      allow_tools: []
+  semantic_a:
+    description: Independently checks the frozen candidate against its intended behavior and reports evidence.
+    instructions_file: prompts/triple-review/semantic.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:
+      harness: codex
+      model: inherit
+      thinking: high
+      allow_tools: []
+  semantic_b:
+    description: Independently checks the frozen candidate against its intended behavior and reports evidence.
+    instructions_file: prompts/triple-review/semantic.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:
+      harness: claude
+      model: inherit
+      thinking: high
+      allow_tools: []
+  coverage:
+    description: Uses OCR to select files and resolve rules, then reviews every selected entry and reports coverage and findings.
+    instructions_file: prompts/triple-review/coverage.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:
+      harness: inherit
+      model: inherit
+      thinking: inherit
+      allow_tools: []
+routing:
+  - {from: coordinator, to: semantic_a, allow: true, cc: []}
+  - {from: semantic_a, to: coordinator, allow: true, cc: []}
+  - {from: coordinator, to: semantic_b, allow: true, cc: []}
+  - {from: semantic_b, to: coordinator, allow: true, cc: []}
+  - {from: coordinator, to: coverage, allow: true, cc: []}
+  - {from: coverage, to: coordinator, allow: true, cc: []}
+  - {from: coordinator, to: notify, allow: true, cc: []}
+timers:
+  - {on: semantic_a, notify: reports_to, silent_for: 20m}
+  - {on: semantic_b, notify: reports_to, silent_for: 20m}
+  - {on: coverage, notify: reports_to, silent_for: 20m}
+limits:
+  depth: 2
+  concurrency: 3
+  messages_per_participant_per_minute: 30
+  max_respawn_per_hour: none

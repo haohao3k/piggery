@@ -36,7 +36,8 @@ shows one. Install and first steps are in the [README](../README.md).
 
 Built-in templates: `supervisor-executor` (a supervisor splits the goal; executors do the tasks),
 `slp` (a supervisor steers a lane: one lead, peers with separate scopes), `council` (a chair asks
-members for independent views on one decision), `p2p` (peers that talk freely and spawn peers).
+members for independent views on one decision), `triple-review` (two semantic reviews and OCR
+coverage of one frozen candidate), `p2p` (peers that talk freely and spawn peers).
 
 **Mixing harnesses.** A role can name a harness (`spawn: {harness: claude}` in the template); a
 role that names none uses the harness of the session that founded the team, and a founder with none
@@ -51,6 +52,45 @@ admitted by a member whose role may spawn that role: ask the member, "admit the 
 **Limits.** The template caps how many workers run at once and how fast mail may flow; a mail over
 the cap is held until you `release` it. A template is frozen into a team when it is brought up:
 editing it changes the next team only.
+
+### Three-arm review
+
+Use `triple-review` when you want two independent semantic reviews plus a reproducible account
+of the reviewed files. The coordinator resolves findings by evidence; there is no majority vote.
+This is an optional review workflow, not a requirement for ordinary work.
+
+The template has four roles: `coordinator`, `semantic_a`, `semantic_b`, `coverage`. By default,
+the semantic workers use Codex and Claude at high effort; their exact models inherit from the
+configured profiles/session. Coverage inherits the founder's route. You can use other supported
+harnesses, including two pi workers configured for different providers. Different harnesses alone
+do not establish provider diversity.
+
+Before founding, prepare your routes and install
+[open-code-review](https://github.com/alibaba/open-code-review) in the coverage worker's environment
+(`ocr --version` checks it). OCR delegate mode needs no separate LLM endpoint: it selects files
+and resolves rules; the coverage agent reasons about the code. The template embeds that procedure,
+so a separately installed OCR skill is not required. A missing OCR command blocks that review.
+
+To customize the routes:
+
+```sh
+piggery template new my-review --from triple-review
+# Edit ~/.piggery/templates/my-review/manifest.yaml:
+# set spawn.harness, spawn.model and spawn.thinking on each reviewer role.
+# Use exact model IDs supported by each harness; keep semantic providers different.
+```
+
+Then ask your session: *"Found a triple-review team to review commit <full SHA>"* (or name your
+custom template and exact base/head SHAs). The coordinator uses a clean candidate checkout and
+waits for readiness receipts confirming the candidate, routes and OCR before releasing all
+three reviews. The first reports stay independent. Only after all three arrive does it send
+material contradictions back to the affected reviewers. It reports findings, coverage, checks,
+uncertainty and a verdict scoped to that candidate. Corrections require a new review candidate.
+
+Piggery enforces coordinator-only reviewer mail, denies reviewer spawning and disables board
+pins. Read-only source access and keeping notes private are prompt instructions, not a filesystem
+sandbox; team membership remains visible. Reviewers must not inspect each other's logs or reports.
+No automatic merge, release, council or product acceptance follows from the verdict.
 
 ## Watch and step in
 

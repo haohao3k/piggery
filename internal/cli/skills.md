@@ -62,6 +62,19 @@ switches from its next turn and keeps its context; a stopped one gets it when re
 model as the worker's harness does (pi and omp: `provider/model`); a model or level the harness does
 not run is refused and nothing changes. Tell the Human what `ps` shows after.
 
+## Three-arm review
+
+When the Human requests three-arm review (Triple Review), select the `triple-review` template:
+one coordinator, two independent semantic reviewers from different provider families, and one
+OCR coverage reviewer. The role prompts contain the workflow and OCR delegate commands; a
+separate OCR skill is not required. Use a frozen commit or exact base/head SHAs. Configure exact
+routes in the template before founding when requested; the semantic defaults are Codex and
+Claude at high effort, while coverage inherits. Verify actual models/providers and `ocr`
+availability through the readiness pass. Do not substitute missing routes, skip OCR or turn an
+ordinary review request into three workers. Findings stay sealed until all three handbacks;
+the coordinator resolves contradictions by evidence, not votes. See
+[the guide](https://github.com/sting8k/piggery/blob/main/docs/guide.md#three-arm-review) for setup.
+
 ## Writing a template (when the Human asks)
 
 A template is `~/.piggery/templates/<name>/manifest.yaml` plus the prompt files it names,

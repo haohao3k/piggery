@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add the optional `triple-review` team template: two independent semantic reviews from different
+  provider families and one OCR delegate coverage review of a frozen candidate. The coordinator
+  verifies readiness, keeps the first pass sealed and adjudicates findings by evidence.
+
 ## v0.7.0 - 2026-10-03
 
 piggery now tells you, by itself, when a team's mail flow needs you, and `piggery check` tests your
