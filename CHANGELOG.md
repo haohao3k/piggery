@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Establish the `haohao3k/piggery` local fork workflow: fingerprinted build/apply/check, guarded
+  activation, same-version refresh of installed assets, and protection against release installers
+  replacing a local build. Source changes are not complete until the installed runtime readback
+  matches the candidate.
+
 - Add the optional `triple-review` team template: two independent semantic reviews from different
   provider families and one OCR delegate coverage review of a frozen candidate. The coordinator
   verifies readiness, keeps the first pass sealed and adjudicates findings by evidence.

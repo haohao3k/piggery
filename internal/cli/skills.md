@@ -73,7 +73,7 @@ Claude at high effort, while coverage inherits. Verify actual models/providers a
 availability through the readiness pass. Do not substitute missing routes, skip OCR or turn an
 ordinary review request into three workers. Findings stay sealed until all three handbacks;
 the coordinator resolves contradictions by evidence, not votes. See
-[the guide](https://github.com/sting8k/piggery/blob/main/docs/guide.md#three-arm-review) for setup.
+[the guide](https://github.com/haohao3k/piggery/blob/codex/local-development/docs/guide.md#three-arm-review) for setup.
 
 ## Writing a template (when the Human asks)
 
@@ -82,7 +82,7 @@ relative to that directory. To start from a built-in, copy its directory under a
 set `template:` to that name. You do not bring it up: the Human does, or asks a session to found it.
 
 **Manifest fields** (only these exist; each with its default is in
-[docs/reference.md](https://github.com/sting8k/piggery/blob/main/docs/reference.md#manifest)):
+[docs/reference.md](https://github.com/haohao3k/piggery/blob/codex/local-development/docs/reference.md#manifest)):
 `template` (required, the name), `summary`, `auto_join_role`, `roles.<role>` (`instructions` or
 `instructions_file`, `tools`, `can_spawn`, `can_pin`, `can_set_cwd`, `spawn`), `routing`, `limits`, `timers`.
 The tools are `send`, `inbox`, `who`, `agent` and no others. The first routing rule matching (sender's

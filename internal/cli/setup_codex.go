@@ -73,6 +73,7 @@ func codexHome() string {
 var codexHarness = harnessProfile{
 	setupTarget: setupTarget{name: "codex", cmd: "codex",
 		install: func(o setupOpts) (string, error) { return installCodex(codexHome(), o.self) },
+		refresh: func(o setupOpts) (string, error) { return refreshCodex(codexHome(), o.self) },
 		remove:  func(setupOpts) (string, error) { return removeCodex(codexHome()) },
 		status:  func(o setupOpts) harnessState { return codexStatus(codexHome(), o.self) },
 	},
@@ -81,6 +82,91 @@ var codexHarness = harnessProfile{
 	wake:    func(s *mcpServer, ref string) { s.queueNudge(ref) },
 	channel: codexChannel,
 }
+
+// refreshCodex runs the normal guarded Codex merge only while both sides of piggery's host
+// registration are still present. Removing all owned hooks or the config block unregisters it;
+// partial hook drift is refreshed so a new embedded event is picked up at the same version.
+func refreshCodex(home, self string) (string, error) {
+	cfg, err := readOptional(filepath.Join(home, "config.toml"))
+	if err != nil {
+		return "", err
+	}
+	if !bytes.Contains(cfg, []byte(codexBlockBegin)) {
+		return "codex: skipped (piggery's MCP registration is not active)", nil
+	}
+	if codexMCPDisabled(cfg) {
+		return "codex: skipped (piggery's MCP registration is disabled)", nil
+	}
+	hooks, err := readOptional(filepath.Join(home, "hooks.json"))
+	if err != nil {
+		return "", err
+	}
+	if codexPiggeryHookCount(hooks) == 0 {
+		return "codex: skipped (piggery's hooks and MCP registration are not both active)", nil
+	}
+	msg, err := installCodex(home, self)
+	if err != nil {
+		return "", err
+	}
+	if strings.Contains(msg, "already set up") {
+		return "codex: already current", nil
+	}
+	return "codex: refreshed\n" + msg, nil
+}
+
+// codexPiggeryHookCount counts current embedded hook event groups without requiring Codex's
+// app-server. A nonzero count identifies a host that still has piggery registered; installCodex
+// may then fill an event added by a local rebuild at the same integration version.
+func codexPiggeryHookCount(raw []byte) int {
+	if len(raw) == 0 {
+		return 0
+	}
+	var doc struct {
+		Hooks map[string][]json.RawMessage `json:"hooks"`
+	}
+	if json.Unmarshal(raw, &doc) != nil {
+		return 0
+	}
+	n := 0
+	for _, ev := range codexHookEvents {
+		for _, g := range doc.Hooks[ev.name] {
+			if isPiggeryCodexGroup(g) {
+				n++
+				break
+			}
+		}
+	}
+	return n
+}
+
+// codexMCPDisabled recognizes the explicit enabled=false setting in piggery's managed MCP
+// block. It is distinct from a missing hook event: a local rebuild may add an event at the same
+// integration version, while enabled=false is the user's deliberate host disablement.
+func codexMCPDisabled(cfg []byte) bool {
+	_, rest, ok := strings.Cut(string(cfg), codexBlockBegin+"\n")
+	if !ok {
+		return true
+	}
+	block, _, ok := strings.Cut(rest, codexBlockEnd)
+	if !ok {
+		return true
+	}
+	inMCP, found := false, false
+	for _, line := range strings.Split(block, "\n") {
+		if m := tomlHeader.FindStringSubmatch(line); m != nil {
+			name := strings.NewReplacer(`"`, "", "'", "", " ", "", "\t", "").Replace(m[1])
+			inMCP = name == "mcp_servers.piggery"
+			found = found || inMCP
+			continue
+		}
+		if inMCP && codexDisabledSetting.MatchString(line) {
+			return true
+		}
+	}
+	return !found
+}
+
+var codexDisabledSetting = regexp.MustCompile(`^\s*(enabled|"enabled"|'enabled')\s*=\s*false\s*(#.*)?$`)
 
 func installCodex(home, self string) (string, error) {
 	hooksPath := filepath.Join(home, "hooks.json")

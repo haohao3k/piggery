@@ -314,11 +314,11 @@ Remove a column to hide it; the name is always shown.
 - **A worker does not start.** Its harness profile is missing or wrong (`piggery setup` writes them),
   or the harness has no login for the daemon's `HOME`. `piggery tail <worker>` shows the harness's
   own error.
-- **Upgrade.** `piggery update` installs the latest release in place of the running binary (its
-  checksum is verified; `--check` only prints versions; a build from source needs `--force`), or run
-  the install script again. The daemon restarts at the next command; before a database upgrade it
-  copies the database to `~/.piggery/backups/` (the three newest are kept). `piggery restart`
-  restarts it now.
+- **Local fork updates.** After editing this checkout, run `scripts/local-dev.sh apply`, then
+  `scripts/local-dev.sh check`; see [the local workflow](local-development.md). Local builds refuse
+  release replacement through `piggery update`, even with `--force`. Release-mode builds use the
+  fork's release endpoint and checksum verification. Before a database upgrade, Piggery copies the
+  database to `~/.piggery/backups/` (the three newest are kept).
 - **After a crash or a restart.** State and mail are in SQLite, so nothing is lost. The next command
   starts the daemon again and open sessions reconnect by themselves. It marks every agent whose
   process or connection is gone as `gone`, never respawns workers and never acks mail: bring a worker

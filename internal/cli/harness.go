@@ -26,15 +26,20 @@ type harnessProfile struct {
 }
 
 // setupTarget is one place `piggery setup` adds piggery to: a harness, or a host that only shows
-// piggery (Paseo). install, remove and status: `piggery setup <name>`, `setup remove <name>`,
-// `setup` alone; cmd is the command it needs on PATH, and version (nil: local.HarnessVersion, which
-// reads x.y.z) how to read its version, for one whose versions have a suffix (dsh 0.2.0-rc.1).
+// piggery (Paseo). install, refresh, remove and status implement `piggery setup <name>`,
+// `setup --refresh`, `setup remove <name>` and `setup` alone; cmd is the command it needs on PATH,
+// and version (nil: local.HarnessVersion, which reads x.y.z) how to read its version, for one whose
+// versions have a suffix (dsh 0.2.0-rc.1).
 type setupTarget struct {
 	name, cmd string
 	install   func(o setupOpts) (string, error)
-	remove    func(o setupOpts) (string, error)
-	status    func(o setupOpts) harnessState
-	version   func(ctx context.Context, cmd string) (string, error)
+	// refresh rewrites assets for an active installation without changing host registration or
+	// enablement. It is deliberately separate from install: setup --refresh must not recreate a
+	// registration the user removed or re-enable a disabled host integration.
+	refresh func(o setupOpts) (string, error)
+	remove  func(o setupOpts) (string, error)
+	status  func(o setupOpts) harnessState
+	version func(ctx context.Context, cmd string) (string, error)
 }
 
 // setupOpts: dir is piggery's (~/.piggery), self this executable, ext --ext (a checkout's pi

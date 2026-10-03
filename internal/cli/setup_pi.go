@@ -57,10 +57,28 @@ func piggeryEntry(raw json.RawMessage, path string) (string, bool) {
 var piHarness = harnessProfile{
 	setupTarget: setupTarget{name: "pi", cmd: "pi",
 		install: func(o setupOpts) (string, error) { return installPi(o.dir, o.ext) },
+		refresh: func(o setupOpts) (string, error) { return refreshPi(o) },
 		remove:  func(o setupOpts) (string, error) { return removePi(o.dir) },
 		status:  func(o setupOpts) harnessState { return piStatus(o.dir, o.self) },
 	},
 	profilePath: local.ProfilePath,
+}
+
+// refreshPi updates the managed extension in place. The copy is pi's automatic extension, so its
+// presence is the host registration; no settings or worker profile edit is needed or allowed.
+func refreshPi(o setupOpts) (string, error) {
+	dst := local.PiExtDir(o.dir)
+	if _, managed := local.PiExtVersion(dst); !managed {
+		return "pi: skipped (the managed extension is not installed)", nil
+	}
+	wrote, err := local.InstallPiExt(dst)
+	if err != nil {
+		return "", err
+	}
+	if !wrote {
+		return "pi: already current", nil
+	}
+	return fmt.Sprintf("pi: refreshed piggery's extension (v%d) in %s", local.IntegrationVersion("pi"), dst), nil
 }
 
 func installPi(dir, ext string) (string, error) {

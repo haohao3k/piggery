@@ -150,7 +150,7 @@ func (e *env) root() *cobra.Command {
 		"piggery archive show ~/.piggery/archive/demo-1790000000.jsonl --table messages", authLocal, e.archiveShow))
 
 	root.AddCommand(
-		e.cmd("setup [--outdated] | setup <pi|claude|codex|omp|dsh|paseo> | setup remove <harness> [--ext PATH] [--force]", "Add piggery to a harness or take it out; alone: profiles, templates, and where each harness stands; --outdated: update every installed integration that is outdated", grpStart,
+		e.cmd("setup [--outdated|--refresh] | setup <pi|claude|codex|omp|dsh|paseo> | setup remove <harness> [--ext PATH] [--force]", "Add or remove a harness integration; --outdated updates older versions; --refresh refreshes installed local assets", grpStart,
 			"piggery setup", authLocal, e.setup),
 		e.cmd("skills", "Print the guide for agents (a SKILL.md)", grpStart,
 			"piggery skills", authLocal, func(args []string) error {
@@ -190,7 +190,7 @@ func (e *env) root() *cobra.Command {
 		archive,
 		e.cmd("doctor", "Findings about the daemon's state (exit 1 when any)", grpMaintain,
 			"piggery doctor", authAdmin, e.doctor),
-		e.cmd("update [--check] [--force]", "Install the latest release (a running daemon restarts on next use)", grpMaintain,
+		e.cmd("update [--check] [--force]", "Release builds: install the latest fork release; local builds: use scripts/local-dev.sh apply", grpMaintain,
 			"piggery update --check\npiggery update", authLocal, e.update),
 		e.cmd("stop", "", "", "", authLocal, func([]string) error {
 			return fmt.Errorf("%w: no admin stop: abort a turn, kill a worker, shutdown the daemon", errUsage)

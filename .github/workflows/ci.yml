@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/**']
   pull_request:
   workflow_dispatch:
 
@@ -34,6 +34,7 @@ jobs:
           node-version: 22
       - run: go vet ./...
       - run: go test -race ./...
+      - run: python3 scripts/test_local_dev.py
       - run: node --test extensions/pi/*.test.mjs
       - name: Paseo plugin
         working-directory: extensions/paseo

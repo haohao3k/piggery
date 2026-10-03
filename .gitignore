@@ -11,3 +11,12 @@
 /CLAUDE.md
 /scripts/
 /just-harness-cli
+
+# Versioned local-fork workflow. Keep unrelated private harness material ignored.
+!/AGENTS.md
+!/scripts/
+/scripts/*
+!/scripts/local-dev.sh
+!/scripts/local-dev.py
+!/scripts/test_local_dev.py
+!/docs/local-development.md

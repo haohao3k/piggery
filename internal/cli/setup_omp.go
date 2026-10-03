@@ -17,10 +17,28 @@ import (
 var ompHarness = harnessProfile{
 	setupTarget: setupTarget{name: "omp", cmd: "omp",
 		install: func(o setupOpts) (string, error) { return installOmp(o.dir) },
+		refresh: func(o setupOpts) (string, error) { return refreshOmp(o) },
 		remove:  func(o setupOpts) (string, error) { return removeOmp(o.dir) },
 		status:  func(o setupOpts) harnessState { return ompStatus(o.dir, o.self) },
 	},
 	profilePath: local.OmpProfilePath,
+}
+
+// refreshOmp only updates the managed extension that omp already loads from its agent directory.
+// There is no setup-owned registration command to rerun, so a missing managed copy is skipped.
+func refreshOmp(o setupOpts) (string, error) {
+	dst := local.OmpExtDir(o.dir)
+	if _, managed := local.OmpExtVersion(dst); !managed {
+		return "omp: skipped (the managed extension is not installed)", nil
+	}
+	wrote, err := local.InstallOmpExt(dst)
+	if err != nil {
+		return "", err
+	}
+	if !wrote {
+		return "omp: already current", nil
+	}
+	return fmt.Sprintf("omp: refreshed piggery's extension (v%d) in %s", local.IntegrationVersion("omp"), dst), nil
 }
 
 func installOmp(dir string) (string, error) {

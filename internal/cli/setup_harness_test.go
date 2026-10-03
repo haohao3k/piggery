@@ -83,9 +83,14 @@ func fakeClaude(log string, args []string) int {
 			return 1
 		}
 		dir := filepath.Join(home, ".claude", "plugins", "cache", market, name)
-		b, _ := os.ReadFile(filepath.Join(state.Marketplaces[i].Path, name, "hooks", "hooks.json"))
-		os.MkdirAll(filepath.Join(dir, "hooks"), 0o700)
-		os.WriteFile(filepath.Join(dir, "hooks", "hooks.json"), b, 0o600)
+		if os.Getenv("PIGGERY_FAKE_CLAUDE_NO_CACHE_REFRESH") == "" {
+			for _, rel := range []string{".claude-plugin/plugin.json", "hooks/hooks.json"} {
+				b, _ := os.ReadFile(filepath.Join(state.Marketplaces[i].Path, name, filepath.FromSlash(rel)))
+				p := filepath.Join(dir, filepath.FromSlash(rel))
+				os.MkdirAll(filepath.Dir(p), 0o700)
+				os.WriteFile(p, b, 0o600)
+			}
+		}
 		state.Plugins = append(state.Plugins, pl{args[2], true, dir})
 	case args[0] == "plugin" && args[1] == "uninstall":
 		state.Plugins = slices.DeleteFunc(state.Plugins, func(p pl) bool { return p.ID == args[2] })
