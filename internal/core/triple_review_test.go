@@ -6,11 +6,21 @@ import (
 	"github.com/sting8k/piggery/internal/core"
 	"github.com/sting8k/piggery/internal/store"
 	"github.com/sting8k/piggery/manifests"
+	"gopkg.in/yaml.v3"
 )
 
 // Exercise the shipped template through unpack, spawn and mail delivery: reviewers can
 // hand back to the coordinator but cannot leak findings to one another or the board.
 func TestTripleReviewIsolation(t *testing.T) {
+	for _, coverageHarness := range []string{"codex", "claude"} {
+		t.Run(coverageHarness, func(t *testing.T) {
+			testTripleReviewIsolation(t, coverageHarness)
+		})
+	}
+}
+
+func testTripleReviewIsolation(t *testing.T, coverageHarness string) {
+	t.Helper()
 	home := t.TempDir()
 	if err := manifests.Unpack(home); err != nil {
 		t.Fatal(err)
@@ -19,6 +29,20 @@ func TestTripleReviewIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if coverageHarness == "claude" {
+		// Exercise the documented pre-founding alternative using the same shipped template.
+		var doc map[string]any
+		if err := yaml.Unmarshal([]byte(manifest), &doc); err != nil {
+			t.Fatal(err)
+		}
+		spawn := doc["roles"].(map[string]any)["coverage"].(map[string]any)["spawn"].(map[string]any)
+		spawn["harness"], spawn["model"] = "claude", "claude-opus-5-5"
+		raw, err := yaml.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifest = string(raw)
+	}
 	db, err := store.OpenMemory()
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +50,8 @@ func TestTripleReviewIsolation(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	codex := &fakeRuntime{harness: "codex", profileModel: "test-openai", profileThinking: "low"}
 	claude := &fakeRuntime{harness: "claude", profileModel: "test-anthropic", profileThinking: "low"}
-	e := core.New(db, core.WithRuntime(codex), core.WithRuntime(claude), core.WithDefaultHarness("codex"))
+	// Deliberately different profile models/effort and default harness must not override pins.
+	e := core.New(db, core.WithRuntime(codex), core.WithRuntime(claude), core.WithDefaultHarness("claude"))
 	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: manifest, Cwd: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -46,14 +71,16 @@ func TestTripleReviewIsolation(t *testing.T) {
 			t.Fatalf("spawn %s: %v", role, err)
 		}
 		rt := codex
-		if role == "semantic_b" {
+		wantModel := "gpt-6-astra"
+		if role == "semantic_b" || role == "coverage" && coverageHarness == "claude" {
 			rt = claude
+			wantModel = "claude-opus-5-5"
 		}
 		spec := rt.starts[len(rt.starts)-1]
-		if spec.ParticipantID != res.ParticipantID || spec.Model != rt.profileModel {
+		if spec.ParticipantID != res.ParticipantID || spec.Model != wantModel {
 			t.Fatalf("%s route: %+v", role, spec)
 		}
-		if role != "coverage" && spec.Thinking != "high" {
+		if spec.Thinking != "high" {
 			t.Fatalf("%s effort = %q, want high", role, spec.Thinking)
 		}
 		c, err := e.Authenticate(ctx, spec.ParticipantID, spec.Token)

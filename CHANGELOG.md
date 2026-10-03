@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Pin Triple Review to native Codex CLI / GPT-6-astra and Claude CLI / Opus 5.5 at high effort.
+  OCR delegate coverage runs in a separate Codex CLI worker by default; Claude CLI / Opus 5.5
+  is an explicit pre-founding choice. Missing routes block readiness instead of falling back.
+
 - Establish the `haohao3k/piggery` local fork workflow: fingerprinted build/apply/check, guarded
   activation, same-version refresh of installed assets, and protection against release installers
   replacing a local build. Source changes are not complete until the installed runtime readback
