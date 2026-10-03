@@ -64,6 +64,14 @@ not run is refused and nothing changes. Tell the Human what `ps` shows after.
 
 ## Three-arm review
 
+For a short entry point, use `/piggery:three-review` in Claude, `$piggery-three-review` (or
+select it with `/skills`) in Codex, or `/three-review` in Pi. Optional trailing text narrows
+the scope; no extra text asks the coordinator to investigate recent lanes, changes and decisions.
+Run `piggery skills three-review` to read the shared preparation and review playbook. It only
+prints instructions. Preparation resolves the baseline, reads relevant docs and decisions, and
+pins candidates before any reviewer starts. In an unrelated development team, it prepares a
+handoff for a separate solo review session instead of replacing the team.
+
 When the Human requests three-arm review (Triple Review), select the `triple-review` template:
 one coordinator, two independent semantic reviewers from different provider families, and one
 OCR coverage reviewer. The role prompts contain the workflow and OCR delegate commands; a

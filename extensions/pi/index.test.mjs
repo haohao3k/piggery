@@ -63,12 +63,16 @@ test("the extension against a fake daemon", async (t) => {
 	t.after(() => srv.close());
 
 	const tools = {};
+	const commands = {};
+	const sent = [];
 	const handlers = {};
 	let active = [];
 	let level = "xhigh"; // pi's own level: piggery passes it on as is
 	const pi = new Proxy(
 		{
 			registerTool: (d) => (tools[d.name] = d),
+			registerCommand: (name, spec) => (commands[name] = spec),
+			sendUserMessage: (content, options) => sent.push({ content, options }),
 			on: (e, fn) => (handlers[e] = fn),
 			getActiveTools: () => active,
 			setActiveTools: (a) => (active = a),
@@ -93,6 +97,32 @@ test("the extension against a fake daemon", async (t) => {
 			assert.deepEqual(d.parameters.required ?? [], f.parameters.required ?? [], f.name);
 			assert.doesNotMatch(d.description, /\{tool:/, f.name);
 		}
+	});
+
+	await t.test("registers /three-review and delivers a literal scope without stealing the turn", async () => {
+		assert.ok(commands["three-review"]);
+		assert.match(commands["three-review"].description, /three-arm review/);
+		const scope = "Review `$(touch /tmp/piggery-three-review-should-not-run)` ${HOME} and {tool:who} exactly.";
+
+		await commands["three-review"].handler(scope, { ...ctx, isIdle: () => true });
+		assert.equal(sent.length, 1);
+		assert.equal(sent[0].options.deliverAs, undefined);
+		assert.equal(sent[0].options.expandPromptTemplates, false);
+		assert.equal(sent[0].content.split(scope).length - 1, 1);
+		assert.match(sent[0].content, /piggery skills three-review/);
+		assert.match(sent[0].content, /literal Human scope/);
+
+		sent.length = 0;
+		await commands["three-review"].handler("", { ...ctx, isIdle: () => true });
+		assert.equal(sent.length, 1);
+		assert.match(sent[0].content, /No additional scope/);
+		assert.deepEqual(sent[0].options, { expandPromptTemplates: false });
+
+		sent.length = 0;
+		await commands["three-review"].handler(scope, { ...ctx, isIdle: () => false });
+		assert.equal(sent.length, 1);
+		assert.deepEqual(sent[0].options, { deliverAs: "followUp", expandPromptTemplates: false });
+		assert.equal(sent[0].content.split(scope).length - 1, 1);
 	});
 
 	await t.test("identify and every model or thinking change report both, pi's level unmapped", async () => {

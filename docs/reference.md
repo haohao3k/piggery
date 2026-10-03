@@ -14,7 +14,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
 | `setup --refresh` | Refresh already-installed integration assets even at the same integration version, and safely unpack built-in templates; preserve custom template overrides and report their names; no new harness integration is enabled; mutually exclusive with `--outdated` and harness arguments |
 | `setup remove <harness>` | Take out exactly what `setup` added; `--ext PATH` (setup pi) uses a checkout's extension |
-| `skills` | Print the guide for agents |
+| `skills [three-review]` | Print the agent guide, or the shared three-arm context-preparation and review playbook; does not start a daemon, team or model |
 | `team up <template\|path.yaml> [--cwd D] [--name N]` | Start a team from a template in `~/.piggery/templates`, or a manifest file |
 | `team down <team>` | Close a team: workers stopped, nothing acked |
 | `template new <name> [--from <built-in>]` | Copy a built-in (default `p2p`) to `~/.piggery/templates/<name>` |

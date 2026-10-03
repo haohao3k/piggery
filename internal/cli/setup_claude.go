@@ -16,7 +16,7 @@ import (
 )
 
 // Claude: a local plugin marketplace "piggery" in
-// <dir>/claude with one plugin holding only hooks (`piggery hook claude <event>`), and piggery's
+// <dir>/claude with one plugin holding hooks (`piggery hook claude <event>`) and review skills, and piggery's
 // MCP server at user scope. The MCP server is not in the plugin: a plugin's MCP tools are renamed
 // mcp__plugin_<plugin>_<server>__*, and a session must see the tool names a worker sees
 // (mcp__piggery__*). A worker never loads either twice: its --mcp-config replaces the user server
@@ -120,7 +120,7 @@ func firstNonEmpty(s ...string) string {
 	return ""
 }
 
-// writeClaudePlugin writes the marketplace and its hooks-only plugin under root.
+// writeClaudePlugin writes the marketplace and its hooks/skills plugin under root.
 func writeClaudePlugin(root, self string) error {
 	hooks := map[string]any{}
 	for _, ev := range claudeSessionHooks {
@@ -149,6 +149,13 @@ func writeClaudePlugin(root, self string) error {
 		if _, err := writeJSON(f.path, f.v, true); err != nil {
 			return err
 		}
+	}
+	// Claude exposes a plugin skill as a namespaced slash command. Keep the command's
+	// invocation arguments literal: Claude substitutes $ARGUMENTS when the user runs
+	// `/piggery:three-review <scope>`.
+	skill := threeReviewSkill(self, "three-review") + "\n\n## Invocation arguments\n\n$ARGUMENTS\n"
+	if err := writeFileAtomic(filepath.Join(root, "piggery", "skills", "three-review", "SKILL.md"), []byte(skill)); err != nil {
+		return err
 	}
 	return nil
 }

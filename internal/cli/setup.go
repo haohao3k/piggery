@@ -214,10 +214,20 @@ func (e *env) updateOutdated(o setupOpts) error {
 		if !ok {
 			continue
 		}
-		msg, err := t.install(o)
+		install := t.install
+		// Skill drift is also an update trigger now. It must not turn automatic Codex
+		// maintenance into permission to re-enable a disabled or unregistered integration.
+		if i.Name == "codex" {
+			install = t.refresh
+		}
+		msg, err := install(o)
 		if err != nil {
 			fmt.Fprintf(e.stdout, "%s: NOT updated (%s): %v\n", i.Name, i.detail(), err)
 			failed = append(failed, i.Name)
+			continue
+		}
+		if strings.HasPrefix(msg, i.Name+": skipped") {
+			fmt.Fprintln(e.stdout, msg)
 			continue
 		}
 		fmt.Fprintf(e.stdout, "%s: updated (%s)\n%s\n", i.Name, i.detail(), msg)

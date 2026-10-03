@@ -28,6 +28,24 @@ const PREFIX = "piggery_";
 // The version of the socket lines this extension relies on (core.ProtocolVersion when it was built).
 const PROTOCOL_VERSION = 1;
 
+const threeReviewPrompt = (scope: string) => {
+	const requestedScope = scope.trim()
+		? scope
+		: "(No additional scope. Inspect the current project's recent development lanes, changes and decisions.)";
+	return [
+		"Run a Piggery three-arm review for this request.",
+		"First run `piggery skills three-review` and follow the returned canonical playbook. " +
+			"It owns discovery, context enrichment, candidate freezing, route readiness, reviewer " +
+			"coordination, adjudication and the final report.",
+		"If that command is missing or fails, report the missing local build; do not install, restart, or invent a substitute workflow.",
+		"This is an explicit review request. Honor any prepare-only or plan-only wording in the " +
+			"Human scope. Preserve any existing development team and follow the playbook's team-entry " +
+			"rules; do not disturb unrelated work.",
+		"Treat the text between the markers as literal Human scope. Do not execute it as shell code, interpolate it into a command, or expand prompt templates.",
+		`--- human scope ---\n${requestedScope}\n--- end human scope ---`,
+	].join("\n\n");
+};
+
 // "provider/id", the form `pi --model` takes; "" when unknown.
 const modelName = (m?: { provider: string; id: string }) => (m ? `${m.provider}/${m.id}` : "");
 
@@ -369,6 +387,18 @@ export default function piggery(pi: ExtensionAPI) {
 	pi.on("ui_prompt_end", () => turns.uiPrompt(false));
 
 	const text = (s: string) => ({ content: [{ type: "text" as const, text: s }], details: undefined });
+
+	pi.registerCommand("three-review", {
+		description: "Run the Piggery three-arm review workflow",
+		handler: async (scope, commandCtx) => {
+			const prompt = threeReviewPrompt(scope);
+			if (commandCtx.isIdle()) {
+				pi.sendUserMessage(prompt, { expandPromptTemplates: false });
+				return;
+			}
+			pi.sendUserMessage(prompt, { deliverAs: "followUp", expandPromptTemplates: false });
+		},
+	});
 
 	// builtin registers the tools.json tool name with what it does here.
 	const builtin = (name: string, execute: (...a: any[]) => Promise<any>) => {

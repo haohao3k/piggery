@@ -46,7 +46,7 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 				t.Fatal(err)
 			}
 			files := map[string][]byte{}
-			for _, f := range []string{".claude-plugin/marketplace.json", "piggery/hooks/hooks.json"} { // not plugin.json: its version is the integer
+			for _, f := range []string{".claude-plugin/marketplace.json", "piggery/hooks/hooks.json", "piggery/skills/three-review/SKILL.md"} { // not plugin.json: its version is the integer
 				b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
 				if err != nil {
 					t.Fatal(err)
@@ -61,7 +61,8 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 				t.Fatal(err)
 			}
 			block := strings.Replace(codexBlock("/h", "/x/piggery", nil), codexMarker(local.IntegrationVersion("codex"))+"\n", "", 1)
-			return map[string][]byte{"hooks.json": hooks, "config.toml": []byte(block)}
+			return map[string][]byte{"hooks.json": hooks, "config.toml": []byte(block),
+				"skills/piggery-three-review/SKILL.md": []byte(threeReviewSkill("/x/piggery", "piggery-three-review"))}
 		},
 		"paseo": func() map[string][]byte {
 			files := treeOf(t, func() (map[string][]byte, error) { return paseoFiles("/x/piggery") })
@@ -74,11 +75,11 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 		version int
 		digest  string
 	}{
-		{"pi", 2, "7f1d8989c10e"},
+		{"pi", 3, "5735cddb9a1c"},
 		{"omp", 2, "fa7693692aad"},
 		{"dsh", 3, "a02ba524f330"},
-		{"claude", 1, "ca51aeba0c80"},
-		{"codex", 1, "c914fad6023c"},
+		{"claude", 2, "5049a85d3eef"},
+		{"codex", 2, "ded7f8bb0e96"},
 		{"paseo", 3, "93664ce8a897"},
 	} {
 		if got := digestOf(trees[want.name]()); got != want.digest || local.IntegrationVersion(want.name) != want.version {
@@ -134,7 +135,7 @@ func TestClaudeLeftoverFilesAreNotAnInstall(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"piggery":{"command":"/x/piggery","args":["mcp"]}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if n := proto.Notice(DaemonOutdated(dir)); !strings.Contains(n, "claude (v0 < v1)") {
+	if n := proto.Notice(DaemonOutdated(dir)); !strings.Contains(n, "claude (v0 < v2)") {
 		t.Fatalf("Claude has piggery's MCP server and the plugin files are old: notice %q", n)
 	}
 }

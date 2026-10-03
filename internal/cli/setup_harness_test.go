@@ -84,7 +84,7 @@ func fakeClaude(log string, args []string) int {
 		}
 		dir := filepath.Join(home, ".claude", "plugins", "cache", market, name)
 		if os.Getenv("PIGGERY_FAKE_CLAUDE_NO_CACHE_REFRESH") == "" {
-			for _, rel := range []string{".claude-plugin/plugin.json", "hooks/hooks.json"} {
+			for _, rel := range []string{".claude-plugin/plugin.json", "hooks/hooks.json", "skills/three-review/SKILL.md"} {
 				b, _ := os.ReadFile(filepath.Join(state.Marketplaces[i].Path, name, filepath.FromSlash(rel)))
 				p := filepath.Join(dir, filepath.FromSlash(rel))
 				os.MkdirAll(filepath.Dir(p), 0o700)

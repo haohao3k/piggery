@@ -59,6 +59,44 @@ Use `triple-review` when you want two independent semantic reviews plus a reprod
 of the reviewed files. The coordinator resolves findings by evidence; there is no majority vote.
 This is an optional review workflow, not a requirement for ordinary work.
 
+After installing or refreshing the Piggery integration, use the native short entry point:
+
+| Harness | Invocation |
+|---|---|
+| Claude Code | `/piggery:three-review` |
+| Codex | `$piggery-three-review`, or select it with `/skills` |
+| Pi | `/three-review` |
+
+Add ordinary scope text when useful, such as `review the import and rollback lanes since their
+last accepted candidate`, or `prepare for commit <SHA>` (`prepare` starts no team or reviewers).
+With no extra text, the coordinator
+investigates the current project's recent lanes, changes and decisions. You do not need to write
+the full review prompt. The wrappers load `piggery skills three-review` from the installed binary;
+this command only prints the same playbook used by the coordinator role.
+
+The coordinator identifies a defensible baseline, reads relevant requirements and decisions,
+distinguishes accepted decisions from proposals, and states its scope before starting reviewers.
+It uses one integration candidate when that covers the request, or separate frozen candidates
+for divergent lanes. Dirty or unresolved lanes stay visible as blockers; they are never silently
+omitted from an "all lanes" result. It asks only for choices the available evidence cannot settle.
+Prior reviewer conclusions are reconciled after the independent first pass rather than supplied
+as hints. Both semantic reviewers receive the same full scope.
+
+Invoke from a solo session at the repository root to prepare and found the review team. If the
+current session already belongs to another team, the entry point prepares a scope handoff for a
+separate solo session; it does not leave, replace or close the development team. A prepare-only
+request creates neither a team nor reviewers. New commands/skills may require a new host session
+to become visible; Pi can reload its extension with `/reload`. A local build is not activation:
+the built CLI, integration assets and template must be applied before these entries are live.
+
+The Codex entry is a managed skill at `<CODEX_HOME>/skills/piggery-three-review/SKILL.md`
+(`CODEX_HOME` defaults to `~/.codex`). Its ownership receipt sits beside `config.toml` as
+`piggery-three-review.json`. Refresh reports a conflict and preserves a skill you customized or
+removed; it never overwrites an existing unowned skill directory. To replace a conflicting copy,
+move its directory and any ownership receipt aside, preserving needed custom files, then rerun
+setup. Alternatively restore the recorded managed copy before refreshing. Claude's entry
+belongs to the existing Piggery plugin and follows its enablement/cache-refresh lifecycle.
+
 The template has four roles: `coordinator`, `semantic_a`, `semantic_b`, `coverage`. Reviewer
 routes are pinned; they do not inherit a model from the founder or worker profile:
 

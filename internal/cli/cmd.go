@@ -152,14 +152,8 @@ func (e *env) root() *cobra.Command {
 	root.AddCommand(
 		e.cmd("setup [--outdated|--refresh] | setup <pi|claude|codex|omp|dsh|paseo> | setup remove <harness> [--ext PATH] [--force]", "Add or remove a harness integration; --outdated updates older versions; --refresh refreshes installed local assets", grpStart,
 			"piggery setup", authLocal, e.setup),
-		e.cmd("skills", "Print the guide for agents (a SKILL.md)", grpStart,
-			"piggery skills", authLocal, func(args []string) error {
-				if len(args) != 0 {
-					return fmt.Errorf("%w: skills takes no arguments", errUsage)
-				}
-				fmt.Fprint(e.stdout, skillsMD)
-				return nil
-			}),
+		e.cmd("skills [three-review]", "Print the agent guide or three-arm review playbook", grpStart,
+			"piggery skills\npiggery skills three-review", authLocal, e.skills),
 		team, template,
 		e.cmd("ps [--json|--view]", "Daemon, teams, members, solos and pending mail, once", grpWatch,
 			"piggery ps", authAdmin, e.ps),
