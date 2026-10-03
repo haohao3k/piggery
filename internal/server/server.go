@@ -38,6 +38,9 @@ type Config struct {
 	// outdated part it returns (claude, codex, paseo: only `piggery setup --outdated` changes
 	// them). ps reports the same list, read again on each call (files only).
 	Integrations func(dir string) []proto.Outdated
+	// Latest, when set, is the newest release's tag: the call `piggery update --check` makes. A release
+	// build (not server.DevBuild) with update.check on asks it at most once a day (updatecheck.go).
+	Latest func(ctx context.Context) (string, error)
 }
 
 // DefaultDir is ~/.piggery.
@@ -55,6 +58,9 @@ func LockPath(dir string) string       { return filepath.Join(dir, "piggery.lock
 func DBPath(dir string) string         { return filepath.Join(dir, "piggery.db") }
 func ArchiveDir(dir string) string     { return filepath.Join(dir, "archive") }
 
+// noticesShown is how many of the latest notices ps carries (top shows them).
+const noticesShown = 5
+
 // maxLine bounds one request line.
 const maxLine = 16 << 20
 
@@ -64,9 +70,11 @@ type server struct {
 	adminToken   string
 	log          *slog.Logger
 	dir          string
-	version      string                            // Config.Version, for ps
-	integrations func(dir string) []proto.Outdated // Config.Integrations, for ps
-	settings     Settings                          // config.yaml
+	version      string                                // Config.Version, for ps
+	integrations func(dir string) []proto.Outdated     // Config.Integrations, for ps
+	latest       func(context.Context) (string, error) // Config.Latest, for the daily update check
+	updateAt     time.Time                             // when it last asked (read from the cache at the first tick); tick only
+	settings     Settings                              // config.yaml
 	startedAt    time.Time
 	stop         context.CancelFunc // the normal shutdown (as SIGINT/SIGTERM), for the stop verb
 
@@ -137,7 +145,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer db.Close()
 
-	s := &server{adminToken: token, log: log, dir: cfg.Dir, version: cfg.Version, integrations: cfg.Integrations, settings: settings, startedAt: time.Now(), stop: stop, conns: map[*conn]struct{}{}, runs: map[string]string{}}
+	s := &server{adminToken: token, log: log, dir: cfg.Dir, version: cfg.Version, integrations: cfg.Integrations, latest: cfg.Latest, settings: settings, startedAt: time.Now(), stop: stop, conns: map[*conn]struct{}{}, runs: map[string]string{}}
 	opts := local.Options{OnExit: func(participantID, runID string, e core.Exit) {
 		// Every worker exit is recorded: one that ends on its own, and the ones StopAll ends
 		// while the daemon shuts down (so not the request/daemon ctx). Idempotent after Stop.
@@ -310,6 +318,7 @@ func (s *server) tick(ctx context.Context) {
 			if _, err := s.eng.Watch(ctx); err != nil && ctx.Err() == nil {
 				s.log.Error("watch", "err", err)
 			}
+			s.checkUpdate(ctx, time.Now())
 		}
 	}
 }
@@ -453,6 +462,8 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 				if s.integrations != nil {
 					r.Outdated = s.integrations(s.dir)
 				}
+				r.Update = UpdateAvailable(s.dir, s.settings, s.version)
+				r.Notices, _ = s.eng.Notices(ctx, noticesShown)
 				return r, err
 			})
 		case proto.VerbShutdown:

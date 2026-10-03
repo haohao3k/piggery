@@ -114,3 +114,28 @@ func FillProfile(path string, def any) ([]string, error) {
 	}
 	return added, os.Rename(tmp, path)
 }
+
+// CheckProfiles reads every worker profile file under dir that exists with the loader its driver
+// uses at a launch, and returns what that loader refuses (not JSON, a wrong type, a pi or dsh
+// profile with no cmd). A harness with no profile is not a problem here: setup writes it. It
+// changes nothing.
+func CheckProfiles(dir string) (errs []error) {
+	for _, p := range []struct {
+		path string
+		load func() error
+	}{
+		{ProfilePath(dir), func() error { _, err := piCodec{dir: dir}.profile(); return err }},
+		{ClaudeProfilePath(dir), func() error { _, err := (&claudeCodec{dir: dir}).profile(); return err }},
+		{CodexProfilePath(dir), func() error { _, err := (&codexCodec{dir: dir}).profile(); return err }},
+		{OmpProfilePath(dir), func() error { _, err := ompCodec{piCodec{dir: dir}}.profile(); return err }},
+		{DshProfilePath(dir), func() error { _, err := (&dshCodec{dir: dir}).profile(); return err }},
+	} {
+		if _, err := os.Stat(p.path); err != nil {
+			continue
+		}
+		if err := p.load(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs
+}

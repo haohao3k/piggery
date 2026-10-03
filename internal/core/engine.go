@@ -295,6 +295,48 @@ func noDeclaredTools(text string) error {
 	return nil
 }
 
+// notifyWarnings are the lines of a manifest that name notify as a target: they load and have no
+// effect, because only the engine writes to notify (an agent's send to it is refused, and a watch
+// rule never fires there). Not refused, so a user's edited template keeps working.
+func notifyWarnings(text string) []string {
+	var raw struct {
+		Routing []routeRule `yaml:"routing"`
+		Timers  []watchRule `yaml:"timers"`
+	}
+	_ = yaml.Unmarshal([]byte(text), &raw) // a manifest that does not parse never gets here
+	var out []string
+	for i, r := range raw.Routing {
+		if r.To == AddrNotify {
+			out = append(out, fmt.Sprintf("routing[%d]: to: notify is ignored: only the engine writes to notify, agents cannot send to it", i))
+		}
+	}
+	for i, r := range raw.Timers {
+		if r.Notify == AddrNotify {
+			out = append(out, fmt.Sprintf("timers[%d]: notify: notify is ignored: only the engine writes to notify, a watch rule cannot", i))
+		}
+	}
+	return out
+}
+
+// loadManifest is everything a manifest load runs: it parses the manifest, refuses what team up
+// refuses (validManifest: removed tools, timers, roles, limits) and returns what loads but is
+// probably not meant (manifestWarnings, the notify lines). Team up, found and the templates listing
+// read a manifest through it, so they hold one rule set.
+func loadManifest(text string) (manifest, []string, error) {
+	m, err := validManifest(text)
+	if err != nil {
+		return m, nil, err
+	}
+	return m, append(manifestWarnings(m), notifyWarnings(text)...), nil
+}
+
+// CheckManifest is loadManifest for a caller that has no use for the parsed manifest (piggery
+// check): the warnings, and the error the manifest would be refused with.
+func CheckManifest(text string) (warnings []string, err error) {
+	_, warnings, err = loadManifest(text)
+	return warnings, err
+}
+
 // inherit is the written value of a spawn setting that follows the chain.
 const inherit = "inherit"
 

@@ -53,6 +53,11 @@ type PsResult struct {
 	// Outdated are the installs only `piggery setup --outdated` brings up (claude, codex, paseo),
 	// read from files on each call; absent when there are none.
 	Outdated []Outdated `json:"outdated,omitempty"`
+	// Update is the newest release tag when it is newer than the daemon's build (the daily check,
+	// cache/update.json); empty when none, when update.check is off, or on a dev build.
+	Update string `json:"update,omitempty"`
+	// Notices are the latest few messages to notify, newest first (what the notify hooks received).
+	Notices []core.NotifyMail `json:"notices,omitempty"`
 	core.State
 }
 
@@ -62,6 +67,15 @@ type Outdated struct {
 	Have  int    `json:"have"`            // the integer installed (0: from before the integers)
 	Want  int    `json:"want"`            // the integer this binary writes
 	Drift string `json:"drift,omitempty"` // same integer, other entries: what differs
+}
+
+// UpdateNotice is `v0.7.0 available: piggery update`, or "" when latest is "" (no newer release).
+// It is what top, ps --view and setup say of the daily update check.
+func UpdateNotice(latest string) string {
+	if latest == "" {
+		return ""
+	}
+	return latest + " available: piggery update"
 }
 
 // Detail is `v1 < v2`, or `v2: <drift>` when the integer is the binary's but the entries differ.

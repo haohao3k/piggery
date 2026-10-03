@@ -27,6 +27,7 @@ type Settings struct {
 	GCClosedAfter time.Duration // automatic gc of teams closed longer than this
 	GCArchiveKeep time.Duration // gc archives are deleted after this
 	Harness       string        // workers of no role or session harness; default pi
+	UpdateCheck   bool          // the daily check for a newer release (a release build only)
 	// Columns are the columns top and ps show after the name, in order, as written (the CLI
 	// checks them: ColumnsOf). The CLI reads them on every run; the daemon does not use them.
 	Columns []string
@@ -49,7 +50,7 @@ const gcEvery = 24 * time.Hour
 
 // defaultSettings are the settings with no config file, and the values setup writes.
 func defaultSettings() Settings {
-	return Settings{GCClosedAfter: 14 * 24 * time.Hour, GCArchiveKeep: 30 * 24 * time.Hour, Harness: local.Harness,
+	return Settings{GCClosedAfter: 14 * 24 * time.Hour, GCArchiveKeep: 30 * 24 * time.Hour, Harness: local.Harness, UpdateCheck: true,
 		Columns: slices.Clone(DisplayColumns), AllowedRoots: []string{}, Prompts: []PromptEntry{}}
 }
 
@@ -66,6 +67,9 @@ type configFile struct {
 	Spawn struct {
 		AllowedRoots *[]string `yaml:"allowed_roots"`
 	} `yaml:"spawn"`
+	Update struct {
+		Check *bool `yaml:"check"`
+	} `yaml:"update"`
 	Prompts []PromptEntry `yaml:"prompts"`
 }
 
@@ -114,6 +118,9 @@ func LoadSettings(dir string) (Settings, error) {
 		}
 		set.AllowedRoots = *roots
 	}
+	if raw.Update.Check != nil {
+		set.UpdateCheck = *raw.Update.Check
+	}
 	if raw.Prompts != nil {
 		kept, warns := checkPromptShape(ConfigPath(dir), raw.Prompts)
 		set.Prompts, set.Warnings = append([]PromptEntry{}, kept...), warns
@@ -150,6 +157,7 @@ func configKeys() []configKey {
 			"columns top and ps show, in order; remove one to hide it (name is always shown); read on every run, no restart"},
 		{"spawn.allowed_roots", "[" + strings.Join(d.AllowedRoots, ", ") + "]",
 			"absolute directories outside a team's root where a worker may be spawned with a cwd (the root and its repo's git worktrees always may)"},
+		{"update.check", "true", "ask GitHub once a day whether a newer piggery release is out, and say so in top, setup and update --check; nothing is installed (a dev build never asks)"},
 		{"prompts", "[]", "your prompt files by role, added to those roles' cards: - {file: rules/code.md, roles: [executor, solo, supervisor-executor/supervisor]} (file: relative to this directory or absolute; the file is read at each session start, the list needs a restart)"},
 	}
 }
@@ -284,6 +292,9 @@ func ConfigStatus(dir string) string {
 	}
 	if set.GCArchiveKeep != d.GCArchiveKeep {
 		diff = append(diff, "gc.archive_keep "+formatRetention(set.GCArchiveKeep))
+	}
+	if set.UpdateCheck != d.UpdateCheck {
+		diff = append(diff, "update.check false")
 	}
 	if len(set.AllowedRoots) > 0 {
 		diff = append(diff, "spawn.allowed_roots ["+strings.Join(set.AllowedRoots, ", ")+"]")

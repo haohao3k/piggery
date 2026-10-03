@@ -58,7 +58,7 @@ func (t *txn) leave(p participant, toTeam string) (wake, notice string, err erro
 		notice = newID(t.now)
 		body := fmt.Sprintf("%s left team %s, which has no live member now: %d unacked messages and %d workers of "+
 			"%s wait for the team's next gate.", p.name, team, held, workers, p.name)
-		if _, err := t.insertMessage(notice, "", p.team, AddrEngine, AddrNotify, "", "", "", "", body); err != nil {
+		if _, err := t.insertMessage(notice, "", p.team, AddrEngine, AddrNotify, noticeGateLost, "", "", "", body); err != nil {
 			return "", "", err
 		}
 	}

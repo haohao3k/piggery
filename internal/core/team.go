@@ -13,7 +13,7 @@ import (
 
 // TeamUp creates a team from a manifest. The name must not clash with an open team.
 func (e *Engine) TeamUp(ctx context.Context, a TeamUpArgs) (Team, error) {
-	m, err := validManifest(a.Manifest)
+	m, warnings, err := loadManifest(a.Manifest)
 	if err != nil {
 		return Team{}, err
 	}
@@ -39,7 +39,7 @@ func (e *Engine) TeamUp(ctx context.Context, a TeamUpArgs) (Team, error) {
 		return err
 	})
 	if err == nil {
-		team.Warnings = manifestWarnings(m)
+		team.Warnings = warnings
 	}
 	return team, err
 }

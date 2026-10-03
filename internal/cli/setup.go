@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/sting8k/piggery/internal/driver/local"
+	"github.com/sting8k/piggery/internal/proto"
 	"github.com/sting8k/piggery/internal/server"
 	"github.com/sting8k/piggery/manifests"
 )
@@ -22,7 +23,8 @@ import (
 //     missing keys, with their defaults), then shows where each harness and the config stand;
 //   - `piggery setup <pi|claude|codex|omp|dsh|paseo>` adds piggery to that harness, or its plugin to
 //     Paseo (a second run changes nothing);
-//   - `piggery setup remove <name>` takes out what setup added.
+//   - `piggery setup remove <name>` takes out what setup added;
+//   - `piggery setup notify [add|remove <target>]` writes or removes a notify hook in hooks/notify.d.
 func (e *env) setup(args []string) error {
 	fs := e.flags("setup")
 	ext := fs.String("ext", "", "a checkout's pi extension (extensions/pi) instead of the one in this binary")
@@ -36,7 +38,7 @@ func (e *env) setup(args []string) error {
 	if *outdated && len(pos) != 0 {
 		return fmt.Errorf("%w: setup --outdated takes no argument (only --paseo-home)", errUsage)
 	}
-	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|paseo] | setup remove <pi|claude|codex|omp|dsh|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
+	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|paseo] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
 	self, err := selfPath()
 	if err != nil {
 		return err
@@ -56,6 +58,8 @@ func (e *env) setup(args []string) error {
 	switch {
 	case *outdated:
 		return e.updateOutdated(o)
+	case len(pos) > 0 && pos[0] == "notify":
+		return e.setupNotify(o.dir, pos[1:], *force)
 	case len(pos) == 1:
 		if t, ok := targetNamed(pos[0]); ok {
 			return e.say(t.install(o))
@@ -110,6 +114,11 @@ func (e *env) setup(args []string) error {
 		}
 	}
 	fmt.Fprintln(e.stdout, server.ConfigStatus(e.dir))
+	if set, err := server.LoadSettings(e.dir); err == nil {
+		if n := proto.UpdateNotice(server.UpdateAvailable(e.dir, set, Version)); n != "" {
+			fmt.Fprintln(e.stdout, n)
+		}
+	}
 	return nil
 }
 

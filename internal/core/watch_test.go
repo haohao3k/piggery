@@ -99,19 +99,6 @@ func TestWatchSilentFor(t *testing.T) {
 	f.fires(t, 1)
 }
 
-// A notice to notify has no inbox to wait in: it must reach the notify hook.
-func TestWatchNoticeToNotifyRunsHook(t *testing.T) {
-	var sunk []string
-	f := newWatchFixture(t, "{on: worker, notify: notify, silent_for: 10m}",
-		core.WithNotifySink(func(id string) { sunk = append(sunk, id) }))
-	f.presence(t, core.PresenceAgentStart)
-	f.advance(11 * time.Minute)
-	f.fires(t, 1)
-	if len(sunk) != 1 {
-		t.Fatalf("sink got %v, want one notice", sunk)
-	}
-}
-
 func TestWatchRulesValidated(t *testing.T) {
 	db, err := store.OpenMemory()
 	if err != nil {

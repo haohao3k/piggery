@@ -10,7 +10,7 @@ import (
 )
 
 // limits.max_respawn_per_hour: N resumes of a worker in 60 minutes pass; the next one does not
-// start it, parks it, and tells its lead and notify once; a later resume is denied quietly; once
+// start it, parks it, and tells its lead once (not notify); a later resume is denied quietly; once
 // the oldest resume slides out of the hour, resume works again.
 func TestRespawnLimit(t *testing.T) {
 	db, err := store.OpenMemory()
@@ -65,13 +65,13 @@ func TestRespawnLimit(t *testing.T) {
 	if err := resume(31 * time.Minute); rule(err) != "limit/"+core.RuleRespawn {
 		t.Fatalf("third resume in the hour: %v", err)
 	}
-	if l, h := notices(); l != 1 || h != 1 || len(rt.starts) != 3 {
+	if l, h := notices(); l != 1 || h != 0 || len(rt.starts) != 3 {
 		t.Fatalf("after the limit: %d lead / %d notify notices, %d starts", l, h, len(rt.starts))
 	}
 	if err := resume(40 * time.Minute); rule(err) != "limit/"+core.RuleRespawn {
 		t.Fatalf("resume of the parked worker inside the hour: %v", err)
 	}
-	if l, h := notices(); l != 1 || h != 1 {
+	if l, h := notices(); l != 1 || h != 0 {
 		t.Fatalf("second refusal notified again: %d lead / %d notify", l, h)
 	}
 	// The resume at 0 is out of the hour at 61m (only the one at 30m is left).

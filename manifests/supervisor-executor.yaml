@@ -34,7 +34,6 @@ roles:
 routing:
   - {from: supervisor, to: executor, allow: true, cc: []}
   - {from: executor, to: supervisor, allow: true, cc: []}
-  - {from: supervisor, to: notify, allow: true, cc: []}
 timers:
   - {on: executor, notify: reports_to, silent_for: 20m}
 limits:                  # none: no limit

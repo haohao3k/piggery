@@ -16,7 +16,7 @@ import (
 // watchRule is one entry of the manifest's `timers:` list.
 type watchRule struct {
 	On        string `yaml:"on"`
-	Notify    string `yaml:"notify"` // a role, reports_to, or notify
+	Notify    string `yaml:"notify"` // a role or reports_to (notify loads and is ignored)
 	SilentFor string `yaml:"silent_for"`
 }
 
@@ -105,11 +105,14 @@ func (e *Engine) Watch(ctx context.Context) (int, error) {
 			if err != nil {
 				continue // TeamUp validated; skip anything unreadable
 			}
-			var wake, hooks []string
+			if r.Notify == AddrNotify {
+				continue // only the engine writes to notify (notifyWarnings)
+			}
+			var wake []string
 			err = e.inTx(ctx, func(t *txn) error {
-				n, w, h, err := t.watchRule(tm.id, i, r, d)
+				n, w, err := t.watchRule(tm.id, i, r, d)
 				fired += n
-				wake, hooks = w, h
+				wake = w
 				return err
 			})
 			if err != nil {
@@ -117,9 +120,6 @@ func (e *Engine) Watch(ctx context.Context) (int, error) {
 			}
 			for _, id := range wake {
 				e.notifyAfterCommit(id)
-			}
-			for _, id := range hooks {
-				e.notifyHookAfterCommit(id)
 			}
 		}
 	}
@@ -134,19 +134,18 @@ type incident struct {
 }
 
 // watchRule fires one rule of a team: every incident with an unseen key gets notices and a
-// watch_fired event. It returns the incidents fired, the participants to wake, and the
-// notices to notify (for its hook).
-func (t *txn) watchRule(teamID string, idx int, r watchRule, d time.Duration) (fired int, wake, hooks []string, err error) {
+// watch_fired event. It returns the incidents fired and the participants to wake.
+func (t *txn) watchRule(teamID string, idx int, r watchRule, d time.Duration) (fired int, wake []string, err error) {
 	subjects, err := t.teamRole(teamID, r.On)
 	if err != nil {
-		return 0, nil, nil, err
+		return 0, nil, err
 	}
 	ruleID := fmt.Sprintf("timers[%d] silent_for", idx)
 	var incidents []incident
 	for _, p := range subjects {
 		in, ok, err := t.silentIncident(p, d)
 		if err != nil {
-			return 0, nil, nil, err
+			return 0, nil, err
 		}
 		if ok {
 			in.key = teamID + "/" + ruleID + "/" + in.key
@@ -157,39 +156,32 @@ func (t *txn) watchRule(teamID string, idx int, r watchRule, d time.Duration) (f
 		var seen int
 		if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM events WHERE type='watch_fired' AND
 			participant=? AND json_extract(payload,'$.key')=?`, in.subject.id, in.key).Scan(&seen); err != nil {
-			return 0, nil, nil, internal(err)
+			return 0, nil, internal(err)
 		}
 		if seen > 0 {
 			continue
 		}
 		targets, err := t.watchTargets(teamID, r.Notify, in.subject)
 		if err != nil {
-			return 0, nil, nil, err
+			return 0, nil, err
 		}
 		for _, to := range targets {
-			who := in.subject.name + " (" + in.subject.role + ")"
-			if to.id != AddrNotify {
-				who = label(to, in.subject)
-			}
+			who := label(to, in.subject)
 			body := fmt.Sprintf("%s %s (rule silent_for %s).", who, in.what, r.SilentFor)
 			msg := newID(t.now)
 			if _, err := t.insertMessage(msg, "", teamID, AddrEngine, to.id, "", "", "", "", body); err != nil {
-				return 0, nil, nil, err
+				return 0, nil, err
 			}
-			if to.id == AddrNotify {
-				hooks = append(hooks, msg)
-			} else {
-				wake = append(wake, to.id)
-			}
+			wake = append(wake, to.id)
 		}
 		if err := t.event(evt{typ: "watch_fired", participant: in.subject.id, team: teamID, run: in.subject.run,
 			payload: map[string]any{"rule": ruleID, "participant": in.subject.id, "key": in.key,
 				"notified": len(targets)}}); err != nil {
-			return 0, nil, nil, err
+			return 0, nil, err
 		}
 		fired++
 	}
-	return fired, wake, hooks, nil
+	return fired, wake, nil
 }
 
 // silentIncident reports p working with no turn end for longer than d. The key (relative to
@@ -216,8 +208,6 @@ func (t *txn) silentIncident(p participant, d time.Duration) (incident, bool, er
 // watchTargets resolves a rule's notify target for subject p.
 func (t *txn) watchTargets(teamID, notify string, p participant) ([]participant, error) {
 	switch notify {
-	case AddrNotify:
-		return []participant{{id: AddrNotify}}, nil
 	case "reports_to":
 		if p.reportsTo == "" {
 			return nil, nil

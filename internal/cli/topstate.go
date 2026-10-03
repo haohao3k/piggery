@@ -9,7 +9,7 @@ import (
 )
 
 // What top remembers between runs (<dir>/cache/top.json, next to logs.json): which teams the user
-// opened or folded, which teams' folded gone members were expanded, and whether the events list was
+// opened or folded, which teams' folded gone members were expanded, and whether the events list and the notices box were
 // opened. Only where the user chose; the rest follows the defaults (a live team open, a dead or closed
 // one folded, gone members folded, events folded). It is the CLI's own: the daemon never reads it, and losing it only costs the choices.
 type topState struct {
@@ -17,6 +17,8 @@ type topState struct {
 	Gone  map[string]bool `json:"gone,omitempty"`  // team id -> its gone members are listed, not folded into one line
 	// Events is true when the user opened the events list (it starts folded to one line).
 	Events bool `json:"events,omitempty"`
+	// Notices is true when the user opened the notices box (it starts folded to one line, like the events).
+	Notices bool `json:"notices,omitempty"`
 }
 
 func topStatePath(dir string) string { return filepath.Join(dir, "cache", "top.json") }
@@ -45,7 +47,7 @@ func saveTopState(dir string, s topState, known map[string]bool) {
 	if dir == "" {
 		return
 	}
-	out := topState{Teams: map[string]bool{}, Gone: map[string]bool{}, Events: s.Events}
+	out := topState{Teams: map[string]bool{}, Gone: map[string]bool{}, Events: s.Events, Notices: s.Notices}
 	for id, v := range s.Teams {
 		if known[id] {
 			out.Teams[id] = v

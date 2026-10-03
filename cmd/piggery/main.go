@@ -23,7 +23,7 @@ func main() {
 	case len(args) > 0 && args[0] == "serve":
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
-		if err := server.Run(ctx, server.Config{Dir: dir, Version: cli.Version, Integrations: cli.DaemonOutdated}); err != nil {
+		if err := server.Run(ctx, server.Config{Dir: dir, Version: cli.Version, Integrations: cli.DaemonOutdated, Latest: cli.DaemonLatest}); err != nil {
 			fmt.Fprintln(os.Stderr, "piggery serve:", err)
 			os.Exit(1)
 		}

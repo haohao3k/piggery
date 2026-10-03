@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sting8k/piggery/internal/proto"
 	"github.com/sting8k/piggery/internal/server"
 )
 
@@ -23,7 +24,7 @@ import (
 //
 //	go build -ldflags "-X github.com/sting8k/piggery/internal/cli.Version=v0.3.0" ./cmd/piggery
 //
-// "dev" is a build from source with no tag.
+// "dev" is a build from source with no tag ("dev-<sha>": a local deploy); see server.DevBuild.
 var Version = "dev"
 
 // latestRelease is the GitHub API URL of the newest release (the release workflow names its
@@ -71,6 +72,18 @@ func (u updater) latest(ctx context.Context) (release, error) {
 	}
 	return r, nil
 }
+
+// latestTag is server.Config.Latest for the release at api: the daemon's daily check makes the call
+// `update --check` makes.
+func latestTag(api string) func(context.Context) (string, error) {
+	return func(ctx context.Context) (string, error) {
+		r, err := updater{api: api, client: http.DefaultClient}.latest(ctx)
+		return r.Tag, err
+	}
+}
+
+// DaemonLatest is server.Config.Latest of the real binary.
+var DaemonLatest = latestTag(latestRelease)
 
 func (u updater) get(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -170,8 +183,8 @@ func (u updater) install(ctx context.Context, r release) error {
 // it is this one or this is a dev build (--force for both). It reports whether it replaced the
 // binary.
 func (u updater) run(ctx context.Context, w io.Writer, check, force bool) (bool, error) {
-	if Version == "dev" && !check && !force {
-		return false, errors.New("this is a dev build (no version stamped); --force replaces it with the latest release")
+	if server.DevBuild(Version) && !check && !force {
+		return false, errors.New("this is a dev build (not a release); --force replaces it with the latest release")
 	}
 	r, err := u.latest(ctx)
 	if err != nil {
@@ -179,6 +192,9 @@ func (u updater) run(ctx context.Context, w io.Writer, check, force bool) (bool,
 	}
 	if check {
 		fmt.Fprintf(w, "current %s, latest %s\n", Version, r.Tag)
+		if !server.DevBuild(Version) && server.Newer(r.Tag, Version) {
+			fmt.Fprintln(w, proto.UpdateNotice(r.Tag))
+		}
 		return false, nil
 	}
 	switch {

@@ -2,13 +2,13 @@
 	"tools": [
 		{
 			"name": "send",
-			"description": "Send a message to a teammate (by name), to 'board' (team pins), or to 'notify' (a one-way notification to the operator; nothing comes back, so never wait for a reply to it). Set reply_to to the #N of the message you answer. Another team or a solo session is reached only gate to gate: from your team's gate, send to the team's name (it reaches that team's gate) or the solo's name; see {tool:who}.",
+			"description": "Send a message to a teammate (by name) or to 'board' (team pins). Set reply_to to the #N of the message you answer. Another team or a solo session is reached only gate to gate: from your team's gate, send to the team's name (it reaches that team's gate) or the solo's name; see {tool:who}.",
 			"parameters": {
 				"type": "object",
 				"properties": {
 					"to": {
 						"type": "string",
-						"description": "a name (teammate, team, solo), 'board', or 'notify'"
+						"description": "a name (teammate, team, solo) or 'board'"
 					},
 					"body": {
 						"type": "string",

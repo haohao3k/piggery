@@ -199,7 +199,7 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 	var res AgentResult
 	var spec Spec
 	var limited *Error  // the respawn limit parked the worker (committed, then returned)
-	var notify []string // reports_to to wake, notify notice ids
+	var notified string // reports_to to wake: it has the notice
 	err = e.inTx(ctx, func(t *txn) error {
 		p, w, err := find(t)
 		if err != nil {
@@ -218,7 +218,7 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 		if err != nil {
 			return err
 		}
-		if limited, notify, err = t.gateRespawn(p, w, m); err != nil || limited != nil {
+		if limited, notified, err = t.gateRespawn(p, w, m); err != nil || limited != nil {
 			return err
 		}
 		if err := t.gateConcurrency(p, m, "agent.resume", w.id); err != nil { // a parked w already counts
@@ -278,12 +278,8 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 		return AgentResult{}, err
 	}
 	if limited != nil {
-		for i, id := range notify {
-			if i == 0 && id != "" {
-				e.notifyAfterCommit(id)
-			} else if i > 0 {
-				e.notifyHookAfterCommit(id)
-			}
+		if notified != "" {
+			e.notifyAfterCommit(notified)
 		}
 		return AgentResult{}, limited
 	}
@@ -295,49 +291,40 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 
 // gateRespawn applies limits.max_respawn_per_hour to resuming w: with N resumes of w in the last 60
 // minutes already, w is not started. The first time, w goes parked with a respawn_limit event and
-// one notice to its reports_to and to notify; the error is returned after that commits. While w
-// stays parked a later resume is simply denied. notify is [reports_to or "", notify notice id].
-func (t *txn) gateRespawn(p, w participant, m manifest) (*Error, []string, error) {
+// one notice to its reports_to (not to notify: that is the engine's gate events only); the error is
+// returned after that commits. While w stays parked a later resume is simply denied. notified is the
+// reports_to that got the notice ("" = none).
+func (t *txn) gateRespawn(p, w participant, m manifest) (*Error, string, error) {
 	limit, ok := m.Limits["max_respawn_per_hour"]
 	if !ok {
-		return nil, nil, nil
+		return nil, "", nil
 	}
 	var n int
 	if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM events WHERE type='resumed' AND ref_id=? AND ts>?`,
 		w.id, t.now-3_600_000).Scan(&n); err != nil {
-		return nil, nil, internal(err)
+		return nil, "", internal(err)
 	}
 	if n < limit {
-		return nil, nil, nil
+		return nil, "", nil
 	}
 	reason := fmt.Sprintf("%s resumed %d times in the last hour; parked (%s)", w.name, n, RuleRespawn)
 	if w.state == "parked" {
-		return nil, nil, deny(&p, "agent.resume", "limit", RuleRespawn, reason, nil,
+		return nil, "", deny(&p, "agent.resume", "limit", RuleRespawn, reason, nil,
 			map[string]any{"target": w.id, "resumes": n})
 	}
 	if err := t.setState(&w, "parked", "respawn_limit"); err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 	if err := t.event(evt{typ: "respawn_limit", participant: w.id, team: w.team, run: w.run, ref: w.id,
 		payload: map[string]any{"resumes": n, "limit": limit, "by": p.id}}); err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
-	notify := []string{""}
-	for _, to := range []string{w.reportsTo, AddrNotify} {
-		if to == "" {
-			continue
-		}
-		id := newID(t.now)
-		if _, err := t.insertMessage(id, "", w.team, AddrEngine, to, "", "", "", "", reason+"."); err != nil {
-			return nil, nil, err
-		}
-		if to == AddrNotify {
-			notify = append(notify, id)
-		} else {
-			notify[0] = to
+	if w.reportsTo != "" {
+		if _, err := t.insertMessage(newID(t.now), "", w.team, AddrEngine, w.reportsTo, "", "", "", "", reason+"."); err != nil {
+			return nil, "", err
 		}
 	}
-	return &Error{Code: CodeDenied, Message: reason, RuleID: RuleRespawn, Layer: "limit"}, notify, nil
+	return &Error{Code: CodeDenied, Message: reason, RuleID: RuleRespawn, Layer: "limit"}, w.reportsTo, nil
 }
 
 // RuleRespawn is the respawn limit's rule id.

@@ -51,7 +51,6 @@ routing:
   - {from: lead, to: peer, allow: true, cc: []}
   - {from: peer, to: lead, allow: true, cc: []}
   - {from: supervisor, to: peer, allow: true, cc: [lead]}   # the Lead sees what the Supervisor tells a Peer
-  - {from: supervisor, to: notify, allow: true, cc: []}
 timers:
   - {on: peer, notify: reports_to, silent_for: 20m}
   - {on: lead, notify: reports_to, silent_for: 30m}

@@ -101,6 +101,36 @@ func EventRows(s core.State, n int, now time.Time) []EventRow {
 	return rows
 }
 
+// NoticeRow is one notice top shows: when, where it is from (the team, or the gate of a solo), its
+// kind (reply, settled, failed, gate_lost) and the sentence the engine wrote.
+type NoticeRow struct {
+	Age   string `json:"age"`
+	Where string `json:"where"`
+	Kind  string `json:"kind"`
+	Body  string `json:"body"`
+}
+
+// NoticeRows are the notices as top shows them, in the order given (newest first).
+func NoticeRows(ns []core.NotifyMail, now time.Time) []NoticeRow {
+	rows := make([]NoticeRow, len(ns))
+	for i, n := range ns {
+		where := n.Team
+		if where == "" {
+			where = n.Gate
+		}
+		rows[i] = NoticeRow{Age: Ago(n.CreatedAt, now), Where: orDash(where), Kind: orDash(n.Kind), Body: n.Body}
+	}
+	return rows
+}
+
+// orDash is s, or "-" when it is empty (a column with nothing to say, as in the list).
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}
+
 // VersionNotes are what the footer can end with, longest first: the daemon's build version and,
 // when this binary is another build, the fix (`dev-9057651 (cli dev-99443dc: piggery restart)`, then
 // the version alone). None when the daemon does not report a version.

@@ -18,7 +18,7 @@ var eventWhitelist = map[string]bool{
 
 // A full ordinary flow writes only whitelisted events.
 func TestEventsAreMinimal(t *testing.T) {
-	f := newLiveFixture(t) // leadWorker, lead joined, lead -> notify routed
+	f := newLiveFixture(t) // leadWorker, lead joined
 	f.spawn(t)
 	s := f.rt.starts[0]
 	worker, err := f.e.Authenticate(ctx, s.ParticipantID, s.Token)
@@ -50,8 +50,6 @@ func TestEventsAreMinimal(t *testing.T) {
 	_, err = f.e.FireDue(ctx)
 	must(err)
 	_, err = f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentTail, Target: "w1"})
-	must(err)
-	_, err = f.e.Send(ctx, f.lead, core.SendArgs{To: core.AddrNotify, Body: "ok?"})
 	must(err)
 	_, err = f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentStop, Target: "w1"})
 	must(err)

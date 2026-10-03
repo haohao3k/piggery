@@ -17,7 +17,6 @@ roles:
       allow_tools: []      # native tools the harness profile turns off that this role keeps
 routing:
   - {from: peer, to: peer, allow: true, cc: []}
-  - {from: peer, to: notify, allow: true, cc: []}
 timers: []
 limits:                  # none: no limit
   depth: 2                 # how deep spawned_by chains may go

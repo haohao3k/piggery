@@ -27,6 +27,7 @@ const maxBlocks = 8
 func (e *Engine) HarnessEvent(ctx context.Context, c Caller, a HarnessEventArgs) (HarnessEventResult, error) {
 	var res HarnessEventResult
 	wake, held := false, false
+	var notice string // the notice the turn's end wrote to notify
 	err := e.inTx(ctx, func(t *txn) error {
 		p, err := t.caller(c, "harness.event")
 		if err != nil {
@@ -85,7 +86,7 @@ func (e *Engine) HarnessEvent(ctx context.Context, c Caller, a HarnessEventArgs)
 			}
 			return t.newCard(p, &res)
 		case HarnessTurnEnd:
-			res, wake, err = t.endTurn(p, a)
+			res, wake, notice, err = t.endTurn(p, a)
 			return err
 		case HarnessPermission:
 			held = false
@@ -121,6 +122,9 @@ func (e *Engine) HarnessEvent(ctx context.Context, c Caller, a HarnessEventArgs)
 	}
 	if wake || held {
 		e.notifyAfterCommit(c.ParticipantID)
+	}
+	if notice != "" {
+		e.notifyHookAfterCommit(notice)
 	}
 	return res, nil
 }
@@ -238,7 +242,8 @@ func cardKey(p participant) string { return hashToken(p.team + "\x00" + p.role +
 // in turn/completed failed with no Stop hook). A run that is no longer current is ignored, and so
 // is an open turn with another key (the next turn's hook may come first).
 func (e *Engine) RuntimeTurnFailed(ctx context.Context, participantID, runID, key string) error {
-	return e.inTx(ctx, func(t *txn) error {
+	var notice string
+	err := e.inTx(ctx, func(t *txn) error {
 		p, ok, err := t.participantByID(participantID)
 		if err != nil || !ok || p.run != runID {
 			return err
@@ -246,9 +251,13 @@ func (e *Engine) RuntimeTurnFailed(ctx context.Context, participantID, runID, ke
 		if b, open, err := t.openTurnBatch(p); err != nil || (open && b.promptID != key) {
 			return err
 		}
-		_, _, err = t.endTurn(p, HarnessEventArgs{Event: HarnessTurnEnd, PromptID: key, Outcome: HarnessOutcomeFailed})
+		_, _, notice, err = t.endTurn(p, HarnessEventArgs{Event: HarnessTurnEnd, PromptID: key, Outcome: HarnessOutcomeFailed})
 		return err
 	})
+	if err == nil && notice != "" {
+		e.notifyHookAfterCommit(notice)
+	}
+	return err
 }
 
 // SessionRef is the session id participantID runs now ("" unknown), for a wake that names it.
@@ -269,12 +278,12 @@ func (t *txn) closeOpenTurns(run string) error {
 // endTurn applies turn_end. ok on the turn in progress: mail it has not seen blocks the end (up to
 // maxBlocks in a row), else the batch completes and acks. Any other end (failed, interrupted,
 // another turn's key) ends the open turn without an ack. wake: the turn ended ok and mail is still
-// pending; a failed or aborted turn does not wake itself (abort).
-func (t *txn) endTurn(p participant, a HarnessEventArgs) (HarnessEventResult, bool, error) {
-	var res HarnessEventResult
+// pending; a failed or aborted turn does not wake itself (abort). notice: the id of the notice the
+// end wrote to notify, if any (gateNotice); the caller runs the hook after commit.
+func (t *txn) endTurn(p participant, a HarnessEventArgs) (res HarnessEventResult, wake bool, notice string, err error) {
 	b, ok, err := t.openTurnBatch(p)
 	if err != nil {
-		return res, false, err
+		return res, false, "", err
 	}
 	ours := ok && a.PromptID == b.promptID && a.Outcome == HarnessOutcomeOK
 	if ours && b.blocks < maxBlocks {
@@ -284,32 +293,39 @@ func (t *txn) endTurn(p participant, a HarnessEventArgs) (HarnessEventResult, bo
 				_, err = t.ExecContext(t.ctx, `UPDATE batches SET blocks=blocks+1 WHERE run_id=? AND batch_seq=?`, p.run, b.n)
 				err = internal(err)
 			}
-			return HarnessEventResult{Text: text, Block: true}, false, err
+			return HarnessEventResult{Text: text, Block: true}, false, "", err
 		}
 	}
 	if ours {
 		if _, err := t.complete(p, b.n); err != nil {
-			return res, false, err
+			return res, false, "", err
 		}
 	}
 	if ok {
 		if _, err := t.ExecContext(t.ctx, `UPDATE batches SET ended_at=? WHERE run_id=? AND batch_seq=?`,
 			t.now, p.run, b.n); err != nil {
-			return res, false, internal(err)
+			return res, false, "", internal(err)
 		}
 	}
 	if _, err := t.ExecContext(t.ctx, `UPDATE participants SET last_turn_end=?, last_activity=? WHERE id=?`,
 		t.now, t.now, p.id); err != nil {
-		return res, false, internal(err)
+		return res, false, "", internal(err)
 	}
 	if err := t.setState(&p, "idle", "turn_end"); err != nil {
-		return res, false, err
+		return res, false, "", err
 	}
-	if a.Outcome != HarnessOutcomeOK {
-		return res, false, nil
+	left := 0
+	if a.Outcome == HarnessOutcomeOK {
+		if left, err = t.pendingMail(p, 0); err != nil {
+			return res, false, "", err
+		}
 	}
-	left, err := t.pendingMail(p, 0)
-	return res, left > 0, err
+	if ok && a.PromptID == b.promptID { // the turn that ended is the open one
+		if notice, err = t.gateNotice(p, b.n, a.Outcome, left); err != nil {
+			return res, false, "", err
+		}
+	}
+	return res, left > 0, notice, nil
 }
 
 // pendingMail counts p's mail waiting (unacked, not held) and not yet given in batch n (0: any).
