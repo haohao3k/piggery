@@ -188,6 +188,7 @@ class ReceiptTests(unittest.TestCase):
             receipt_path.write_text(json.dumps({
                 "schema": 1,
                 "build_mode": "local",
+                "source_root": str(root.resolve()),
                 "state": "candidate",
                 "version": version,
                 "commit": commit,
@@ -196,6 +197,12 @@ class ReceiptTests(unittest.TestCase):
             }), encoding="utf-8")
             with mock.patch.object(local_dev, "source_digest", return_value=digest), mock.patch.object(local_dev, "commit_id", return_value=commit):
                 self.assertIsNotNone(local_dev._candidate_matches(root, digest, commit))
+                receipt = json.loads(receipt_path.read_text())
+                receipt["source_root"] = str(root.parent / "moved-checkout")
+                receipt_path.write_text(json.dumps(receipt))
+                self.assertIsNone(local_dev._candidate_matches(root, digest, commit))
+                receipt["source_root"] = str(root.resolve())
+                receipt_path.write_text(json.dumps(receipt))
                 candidate.write_bytes(b"stale")
                 self.assertIsNone(local_dev._candidate_matches(root, digest, commit))
 
@@ -211,6 +218,7 @@ class ReceiptTests(unittest.TestCase):
             sha = local_dev._sha256_file(candidate)
             candidate_receipt.write_text(json.dumps({
                 "schema": 1, "build_mode": "local", "state": "candidate", "version": version,
+                "source_root": str(root.resolve()),
                 "commit": commit, "source_digest": digest, "binary_sha256": sha,
             }), encoding="utf-8")
             install = root / "install"
@@ -223,6 +231,7 @@ class ReceiptTests(unittest.TestCase):
                 mock.patch.object(local_dev, "_daemon_snapshot", return_value=valid_snapshot(version=version)):
                 info = local_dev.BuildInfo(root, candidate, candidate_receipt, {
                     "schema": 1, "build_mode": "local", "state": "candidate", "version": version,
+                    "source_root": str(root.resolve()),
                     "commit": commit, "source_digest": digest, "binary_sha256": sha,
                 })
                 _, _, pending = local_dev.install_candidate(info)
@@ -287,10 +296,12 @@ class ReceiptTests(unittest.TestCase):
             version = f"local-{commit}-{digest}"
             candidate_receipt.write_text(json.dumps({
                 "schema": 1, "build_mode": "local", "state": "candidate", "version": version,
+                "source_root": str(root.resolve()),
                 "commit": commit, "source_digest": digest, "binary_sha256": local_dev._sha256_file(candidate),
             }), encoding="utf-8")
             local_dev._write_json_atomic(install / local_dev.INSTALLED_RECEIPT_NAME, {
                 "schema": 1, "build_mode": "local", "state": "activated", "version": version,
+                "source_root": str(root.resolve()),
                 "commit": commit, "source_digest": digest, "binary_sha256": local_dev._sha256_file(installed),
             })
             with mock.patch.dict(local_dev.os.environ, {"PIGGERY_INSTALL_DIR": str(install)}, clear=False), \

@@ -16,6 +16,7 @@ daemon. No mode downloads a Piggery release or calls a release updater.
 from __future__ import annotations
 
 import argparse
+import base64
 from contextlib import contextmanager
 import datetime as _dt
 import hashlib
@@ -328,6 +329,7 @@ def _go_version(go: str, root: Path) -> str:
 
 def _receipt_for_build(
     *,
+    root: Path,
     version: str,
     commit: str,
     digest: str,
@@ -337,6 +339,7 @@ def _receipt_for_build(
     return {
         "schema": RECEIPT_SCHEMA,
         "build_mode": "local",
+        "source_root": str(root.resolve()),
         "state": "candidate",
         "version": version,
         "commit": commit,
@@ -365,7 +368,9 @@ def build(root: Path) -> BuildInfo:
     try:
         ldflags = (
             f"-s -w -X {MODULE}/internal/cli.Version={version} "
-            f"-X {MODULE}/internal/cli.BuildMode=local"
+            f"-X {MODULE}/internal/cli.BuildMode=local "
+            f"-X {MODULE}/internal/cli.LocalSourceRootBase64="
+            + base64.b64encode(os.fsencode(root.resolve())).decode("ascii")
         )
         proc = _run(
             [go, "build", "-trimpath", "-ldflags", ldflags, "-o", temp, "./cmd/piggery"],
@@ -383,6 +388,7 @@ def build(root: Path) -> BuildInfo:
         os.chmod(temp, 0o755)
         binary_sha = _sha256_file(temp)
         receipt = _receipt_for_build(
+            root=root,
             version=version,
             commit=commit,
             digest=digest,
@@ -411,6 +417,7 @@ def _candidate_matches(root: Path, digest: str, commit: str) -> BuildInfo | None
     expected = {
         "schema": RECEIPT_SCHEMA,
         "build_mode": "local",
+        "source_root": str(root.resolve()),
         "state": "candidate",
         "version": version,
         "commit": commit,
@@ -715,7 +722,7 @@ def inspect(root: Path) -> CheckInfo:
     expected_version = f"{LOCAL_VERSION_PREFIX}{current_commit}-{current_digest}"
     candidate, candidate_receipt_path = candidate_paths(root)
     installed, installed_receipt_path = installed_paths()
-    lines: list[str] = [f"source digest: {current_digest}", f"commit: {current_commit}"]
+    lines: list[str] = [f"checkout: {root.resolve()}", f"source digest: {current_digest}", f"commit: {current_commit}"]
     failures: list[str] = []
 
     candidate_receipt = _read_json(candidate_receipt_path)
@@ -728,6 +735,7 @@ def inspect(root: Path) -> CheckInfo:
         candidate_ok = (
             candidate_receipt.get("schema") == RECEIPT_SCHEMA
             and candidate_receipt.get("build_mode") == "local"
+            and candidate_receipt.get("source_root") == str(root.resolve())
             and candidate_receipt.get("state") == "candidate"
             and candidate_receipt.get("version") == expected_version
             and candidate_receipt.get("commit") == current_commit
@@ -766,6 +774,7 @@ def inspect(root: Path) -> CheckInfo:
         installed_ok = (
             installed_receipt.get("schema") == RECEIPT_SCHEMA
             and installed_receipt.get("build_mode") == "local"
+            and installed_receipt.get("source_root") == str(root.resolve())
             and installed_receipt.get("state") == "activated"
             and activation_ok
             and installed_receipt.get("version") == expected_version

@@ -66,8 +66,10 @@ See the local workflow for the invoking-session exception and readback requireme
 Using [Paseo](https://paseo.sh)? `piggery setup paseo` adds a Piggery view (the same as
 `piggery top`) to the app. Turn on plugins in Paseo's settings once.
 
-Local builds refuse release replacement through `piggery update`, including `--force`. Rebuild and
-activate through `scripts/local-dev.sh apply`; do not install `sting8k/...@latest` over this fork.
+After installation, `piggery update` rebuilds and activates the owning local checkout's source and
+assets; `piggery update --check` verifies source, installation and daemon without changing them.
+`--force` cannot bypass the idle gate or download a release. Bootstrap or repair with
+`scripts/local-dev.sh apply`; do not install `sting8k/...@latest` over this fork.
 The Go module keeps its upstream import path for compatibility; `go build ./cmd/piggery` uses the
 local checkout's source and embedded assets. Changes are in [CHANGELOG.md](CHANGELOG.md).
 

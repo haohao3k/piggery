@@ -370,9 +370,10 @@ Remove a column to hide it; the name is always shown.
 - **A worker does not start.** Its harness profile is missing or wrong (`piggery setup` writes them),
   or the harness has no login for the daemon's `HOME`. `piggery tail <worker>` shows the harness's
   own error.
-- **Local fork updates.** After editing this checkout, run `scripts/local-dev.sh apply`, then
-  `scripts/local-dev.sh check`; see [the local workflow](local-development.md). Local builds refuse
-  release replacement through `piggery update`, even with `--force`. Release-mode builds use the
+- **Local fork updates.** Bootstrap with `scripts/local-dev.sh apply`, then use `piggery update`
+  to rebuild and apply the owning checkout's current source and embedded assets, followed by
+  `piggery update --check`; see [the local workflow](local-development.md). Local builds never
+  download a release, and `--force` cannot bypass safe activation. Release-mode builds use the
   fork's release endpoint and checksum verification. Before a database upgrade, Piggery copies the
   database to `~/.piggery/backups/` (the three newest are kept).
 - **After a crash or a restart.** State and mail are in SQLite, so nothing is lost. The next command

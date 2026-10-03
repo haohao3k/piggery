@@ -13,6 +13,16 @@ go test ./...                         # narrow this when a focused check is appr
 ./scripts/local-dev.sh check
 ```
 
+After the first installation, the shorter equivalent is:
+
+```sh
+piggery update                         # rebuild as needed, apply local assets, verify
+piggery update --check                 # read-only; nonzero if source/install/daemon differ
+```
+
+From an active solo session, use `piggery update --caller <participant-id>` with its current exact
+identity. `--force` still uses the same guarded local workflow; it never bypasses the idle gate.
+
 `build` creates a candidate in the ignored `dist/local` directory. It fingerprints checkout inputs,
 including local source and embedded assets, and stamps a unique local version plus the local build
 mode. A fingerprint mismatch requires another build. `apply` builds the current candidate, checks
@@ -66,10 +76,19 @@ Editing those checkout files requires a build. Version-based `setup --outdated` 
 release installations, but it cannot by itself guarantee that same-version development assets were
 refreshed. The local workflow explicitly runs `setup --refresh` for that reason.
 
-`piggery update --check` identifies a local checkout build without contacting a release endpoint.
-`piggery update`, including `--force`, refuses to replace a local build. `install.sh` in this fork
-delegates to the local workflow; it is not a curl-to-shell release downloader. Do not run upstream
-release installers or `go install ...@latest` over the development installation.
+`piggery update` follows the owning checkout path stamped into the local executable, validated
+against the receipt beside that executable. It rebuilds stale candidates and refreshes assets
+from that checkout, regardless of the calling directory. It does not fetch Git, pull, switch
+branches or contact a Piggery release endpoint. `--check` reads source, candidate, installed binary
+and live daemon without building or restarting; it returns nonzero for drift.
+
+A missing/moved checkout, absent or mismatched receipt fails explicitly rather than selecting
+another checkout or downloading a release. Recover by running `scripts/local-dev.sh apply` in the
+intended fork checkout. The installation directory is the current executable's directory; an
+inherited `PIGGERY_INSTALL_DIR` cannot redirect `piggery update` to another installation.
+`install.sh` in this fork delegates to the local workflow; it is not a curl-to-shell release
+downloader. Do not run upstream release installers or `go install ...@latest` over the development
+installation.
 
 ## Git and recovery
 

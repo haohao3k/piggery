@@ -51,8 +51,14 @@ or reload. Report that boundary honestly; never equate installing new bytes with
 running model context. New sessions must resolve the local executable/assets. Do not restart an
 unrelated host application merely to reload an integration.
 
-Local builds reject `piggery update`, including `--force`. Update the checkout from the fork and
-use the build/apply/check workflow instead. Documentation-only changes do not require a daemon
+After the first guarded installation, `piggery update` runs build/apply/check from the owning local
+checkout stamped into the executable and recorded in its installation receipt. It uses current
+local source and embedded artifacts, never a downloaded release or a guessed current directory.
+`piggery update --check` is read-only and fails on drift; `--force` cannot bypass the idle gate.
+Use `--caller <participant-id>` only for the exact invoking solo, as with the script. Updating
+does not fetch, pull, switch branches or edit source. If the checkout moves or the receipt is
+missing, use that checkout's `scripts/local-dev.sh apply` to bind the installation again.
+Documentation-only changes do not require a daemon
 restart unless the installed instruction/assets or the build fingerprint are affected; they
 still require applicable validation and the same honest handback.
 
