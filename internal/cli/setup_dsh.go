@@ -26,6 +26,7 @@ import (
 var dshHarness = harnessProfile{
 	setupTarget: setupTarget{name: "dsh", cmd: "dsh",
 		install: func(o setupOpts) (string, error) { return installDsh(o.dir) },
+		refresh: func(o setupOpts) (string, error) { return refreshDsh(o) },
 		remove:  func(o setupOpts) (string, error) { return removeDsh(o.dir) },
 		status:  func(o setupOpts) harnessState { return dshStatus(o.dir, o.self) },
 		version: func(ctx context.Context, cmd string) (string, error) { return local.DshVersion(ctx, cmd) },
@@ -133,6 +134,35 @@ func writeAtomic(path, doc string) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// refreshDsh updates the managed plugin only while dsh's setup-owned row is still present. A
+// removed or edited row is a disabled/unregistered host state; restoring it belongs to setup dsh,
+// not setup --refresh.
+func refreshDsh(o setupOpts) (string, error) {
+	ext := local.DshExtDir(o.dir)
+	if _, managed := local.DshExtVersion(ext); !managed {
+		return "dsh: skipped (the managed plugin is not installed)", nil
+	}
+	patch := dshHomePatch()
+	cur, err := os.ReadFile(patch)
+	if errors.Is(err, os.ErrNotExist) {
+		return "dsh: skipped (dsh's piggery row is not registered)", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !bytes.Contains(cur, []byte(dshBlock(o.dir))) {
+		return "dsh: skipped (dsh's piggery row is not registered)", nil
+	}
+	wrote, err := local.InstallDshExt(ext)
+	if err != nil {
+		return "", err
+	}
+	if !wrote {
+		return "dsh: already current", nil
+	}
+	return fmt.Sprintf("dsh: refreshed piggery's plugin (v%d) in %s", local.IntegrationVersion("dsh"), ext), nil
 }
 
 func installDsh(dir string) (string, error) {

@@ -14,10 +14,38 @@ import (
 	"testing"
 )
 
+func TestLocalBuildCannotBeReplacedByRelease(t *testing.T) {
+	oldMode, oldVersion := BuildMode, Version
+	BuildMode, Version = "local", "local-test"
+	t.Cleanup(func() { BuildMode, Version = oldMode, oldVersion })
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		http.Error(w, "must not contact releases", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	u := updater{api: srv.URL, client: srv.Client()}
+	for _, force := range []bool{false, true} {
+		if replaced, err := u.run(context.Background(), io.Discard, false, force); replaced || err == nil || !strings.Contains(err.Error(), "release updates are disabled") {
+			t.Fatalf("local update force=%v: replaced=%v err=%v", force, replaced, err)
+		}
+	}
+	var out strings.Builder
+	if replaced, err := u.run(context.Background(), &out, true, false); replaced || err != nil || !strings.Contains(out.String(), "local checkout build") {
+		t.Fatalf("local check: replaced=%v err=%v output=%q", replaced, err, out.String())
+	}
+	if requests != 0 {
+		t.Fatalf("local build contacted release API %d times", requests)
+	}
+}
+
 // update against a fake GitHub API: --check writes nothing; a binary whose sha256 is not the
 // one in checksums.txt is refused and the running binary stays; the right one replaces it (the
 // asset for this os/arch, through a symlink to the binary, keeping its mode).
 func TestUpdate(t *testing.T) {
+	oldMode := BuildMode
+	BuildMode = "release"
+	t.Cleanup(func() { BuildMode = oldMode })
 	newBin, otherBin := []byte("piggery v0.2.0 linux arm64"), []byte("piggery v0.2.0 darwin arm64")
 	sum := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 	sums := sum(otherBin) + "  piggery-darwin-arm64\n" + sum(newBin) + "  piggery-linux-arm64\n"

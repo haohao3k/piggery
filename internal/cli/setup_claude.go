@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -193,6 +194,7 @@ func samePath(a, b string) bool {
 var claudeHarness = harnessProfile{
 	setupTarget: setupTarget{name: "claude", cmd: "claude",
 		install: func(o setupOpts) (string, error) { return installClaude(filepath.Join(o.dir, "claude"), o.self) },
+		refresh: func(o setupOpts) (string, error) { return refreshClaude(filepath.Join(o.dir, "claude"), o.self) },
 		remove:  func(o setupOpts) (string, error) { return removeClaude(filepath.Join(o.dir, "claude")) },
 		status:  func(o setupOpts) harnessState { return claudeStatus(filepath.Join(o.dir, "claude"), o.self) },
 	},
@@ -200,6 +202,93 @@ var claudeHarness = harnessProfile{
 	hookEvent:   claudeHookEvent, hookOutput: claudeHookOutput,
 	wake:    func(s *mcpServer, _ string) { s.nudge() },
 	channel: local.ClaudeChannel,
+}
+
+// claudePluginCurrent compares the source plugin with Claude's cached copy. Claude's plugin
+// version is intentionally an integration integer, so a local rebuild can change bytes without
+// changing that version; comparing the managed tree catches that case.
+func claudePluginCurrent(source, cache string) bool {
+	var errClaudeStale = errors.New("stale")
+	seen := map[string]bool{}
+	err := filepath.WalkDir(source, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		seen[rel] = true
+		want, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		got, err := os.ReadFile(filepath.Join(cache, rel))
+		if err != nil || !bytes.Equal(want, got) {
+			return errClaudeStale
+		}
+		return nil
+	})
+	if err != nil {
+		return false
+	}
+	err = filepath.WalkDir(cache, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(cache, path)
+		if err != nil {
+			return err
+		}
+		if !seen[rel] {
+			return errClaudeStale
+		}
+		return nil
+	})
+	return err == nil
+}
+
+// refreshClaude rewrites the local marketplace files and Claude's cached plugin only when the
+// plugin is still enabled from this marketplace. Missing or disabled registrations are skipped;
+// refresh must not recreate them or enable them as setup claude does.
+func refreshClaude(root, self string) (string, error) {
+	if _, err := exec.LookPath(claudeBin); err != nil {
+		return "", errors.New("claude: `claude` is not on PATH; cannot verify the installed plugin")
+	}
+	st, err := readClaudeState()
+	if err != nil {
+		return "", err
+	}
+	if !st.plugin || !st.enabled || st.marketplace == "" || !samePath(st.marketplace, root) || st.pluginPath == "" {
+		return "claude: skipped (piggery's plugin is not currently enabled from its marketplace)", nil
+	}
+	if err := writeClaudePlugin(root, self); err != nil {
+		return "", err
+	}
+	if claudePluginCurrent(filepath.Join(root, "piggery"), st.pluginPath) {
+		return "claude: already current", nil
+	}
+	if _, err := claudeRun("plugin", "uninstall", local.ClaudePlugin); err != nil {
+		return "", err
+	}
+	if _, err := claudeRun("plugin", "install", local.ClaudePlugin); err != nil {
+		return "", err
+	}
+	st, err = readClaudeState()
+	if err != nil {
+		return "", err
+	}
+	if !st.plugin || !st.enabled || !samePath(st.marketplace, root) || st.pluginPath == "" ||
+		!claudePluginCurrent(filepath.Join(root, "piggery"), st.pluginPath) {
+		return "", errors.New("claude: plugin cache is still stale after refresh")
+	}
+	return "claude: refreshed the cached piggery plugin; restart any open sessions.", nil
 }
 
 func installClaude(root, self string) (string, error) {

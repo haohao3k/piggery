@@ -27,9 +27,13 @@ import (
 // "dev" is a build from source with no tag ("dev-<sha>": a local deploy); see server.DevBuild.
 var Version = "dev"
 
+// Source builds default to local ownership. Only the release workflow stamps "release".
+// A checkout build must never be replaced by a downloaded release, even with --force.
+var BuildMode = "local"
+
 // latestRelease is the GitHub API URL of the newest release (the release workflow names its
 // assets: piggery-<os>-<arch> and checksums.txt).
-const latestRelease = "https://api.github.com/repos/sting8k/piggery/releases/latest"
+const latestRelease = "https://api.github.com/repos/haohao3k/piggery/releases/latest"
 
 // maxDownload bounds a downloaded binary or checksums file.
 const maxDownload = 256 << 20
@@ -183,6 +187,13 @@ func (u updater) install(ctx context.Context, r release) error {
 // it is this one or this is a dev build (--force for both). It reports whether it replaced the
 // binary.
 func (u updater) run(ctx context.Context, w io.Writer, check, force bool) (bool, error) {
+	if BuildMode == "local" {
+		if check {
+			fmt.Fprintf(w, "current %s; local checkout build: use scripts/local-dev.sh apply, then check\n", Version)
+			return false, nil
+		}
+		return false, errors.New("local checkout build: release updates are disabled, including --force; run scripts/local-dev.sh apply, then check in the owning checkout")
+	}
 	if server.DevBuild(Version) && !check && !force {
 		return false, errors.New("this is a dev build (not a release); --force replaces it with the latest release")
 	}

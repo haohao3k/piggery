@@ -30,7 +30,7 @@ const (
 	paseoInstalled = "server/installed.ts" // `export const piggeryPath = "";` in the repo
 )
 
-var paseoTarget = setupTarget{name: "paseo", cmd: "paseo", install: installPaseo, remove: removePaseo, status: paseoStatus}
+var paseoTarget = setupTarget{name: "paseo", cmd: "paseo", install: installPaseo, refresh: refreshPaseo, remove: removePaseo, status: paseoStatus}
 
 func paseoDir(dir string) string { return filepath.Join(dir, "paseo") }
 
@@ -208,6 +208,40 @@ func installPaseo(o setupOpts) (string, error) {
 		return "paseo: piggery's plugin is already installed", nil
 	}
 	return strings.Join(msgs, "\n") + "\npaseo: reload the Paseo app to see it.", nil
+}
+
+// refreshPaseo updates the managed plugin only while Paseo still has this exact plugin registered
+// and enabled. A removed, replaced, or disabled registration is left alone; setup paseo is the
+// explicit command that changes those host states.
+func refreshPaseo(o setupOpts) (string, error) {
+	if _, err := exec.LookPath("paseo"); err != nil {
+		return "", errors.New("paseo: `paseo` is not on PATH; cannot verify the installed plugin")
+	}
+	dst := paseoDir(o.dir)
+	if _, installed := paseoIntegration(dst); !installed {
+		return "paseo: skipped (the managed plugin is not installed)", nil
+	}
+	p, found, err := paseoListed(o.paseoHome)
+	if err != nil {
+		return "", err
+	}
+	if !found || !samePath(p.Path, dst) {
+		return "paseo: skipped (piggery's plugin is not registered from its managed path)", nil
+	}
+	if !p.Enabled {
+		return "paseo: skipped (piggery's plugin is disabled)", nil
+	}
+	wrote, err := writePaseoPlugin(dst, o.self)
+	if err != nil {
+		return "", err
+	}
+	if !wrote {
+		return "paseo: already current", nil
+	}
+	if _, err := paseoRun(o.paseoHome, "plugin", "reload", paseoPluginID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("paseo: refreshed piggery's plugin (v%d) in %s", local.IntegrationVersion("paseo"), dst), nil
 }
 
 // removePaseo has Paseo remove the plugin when it is setup's (from ~/.piggery/paseo), then removes

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +24,8 @@ import (
 //     missing keys, with their defaults), then shows where each harness and the config stand;
 //   - `piggery setup <pi|claude|codex|omp|dsh|paseo>` adds piggery to that harness, or its plugin to
 //     Paseo (a second run changes nothing);
+//   - `piggery setup --refresh` reapplies the embedded assets to integrations already installed and
+//     safely refreshes built-in templates, without writing worker profiles;
 //   - `piggery setup remove <name>` takes out what setup added;
 //   - `piggery setup notify [add|remove <target>]` writes or removes a notify hook in hooks/notify.d.
 func (e *env) setup(args []string) error {
@@ -31,12 +34,22 @@ func (e *env) setup(args []string) error {
 	force := fs.Bool("force", false, "overwrite an existing profile")
 	paseoHome := fs.String("paseo-home", "", "the Paseo daemon home setup paseo installs into (default: Paseo's own)")
 	outdated := fs.Bool("outdated", false, "bring every installed piggery integration that is outdated up to date (takes no other argument)")
+	refresh := fs.Bool("refresh", false, "refresh every installed piggery integration and built-in template (takes no other argument)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
+	if *outdated && *refresh {
+		return fmt.Errorf("%w: setup --outdated and setup --refresh are mutually exclusive", errUsage)
+	}
 	if *outdated && len(pos) != 0 {
 		return fmt.Errorf("%w: setup --outdated takes no argument (only --paseo-home)", errUsage)
+	}
+	if *refresh && len(pos) != 0 {
+		return fmt.Errorf("%w: setup --refresh takes no argument (only --paseo-home)", errUsage)
+	}
+	if *refresh && *ext != "" {
+		return fmt.Errorf("%w: setup --refresh cannot be used with --ext", errUsage)
 	}
 	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|paseo] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
 	self, err := selfPath()
@@ -60,6 +73,8 @@ func (e *env) setup(args []string) error {
 		return e.updateOutdated(o)
 	case len(pos) > 0 && pos[0] == "notify":
 		return e.setupNotify(o.dir, pos[1:], *force)
+	case *refresh:
+		return e.refresh(o)
 	case len(pos) == 1:
 		if t, ok := targetNamed(pos[0]); ok {
 			return e.say(t.install(o))
@@ -120,6 +135,77 @@ func (e *env) setup(args []string) error {
 		}
 	}
 	return nil
+}
+
+// refresh runs each target's bounded refresh handler for every integration that is already
+// installed, regardless of its integration version. Handlers compare embedded assets and only
+// rewrite managed files while preserving host registration, enablement, unrelated config and
+// profiles. Built-in templates use the same safe Unpack semantics as ordinary setup. All selected
+// work is attempted before a failure is returned.
+func (e *env) refresh(o setupOpts) error {
+	var failed []string
+	if err := manifests.Unpack(e.dir); err != nil {
+		fmt.Fprintf(e.stdout, "templates: NOT refreshed: %v\n", err)
+		failed = append(failed, "templates")
+	} else {
+		overrides, err := builtinTemplateOverrides(e.dir)
+		if err != nil {
+			fmt.Fprintf(e.stdout, "templates: unable to verify refreshed built-ins: %v\n", err)
+			failed = append(failed, "templates")
+		} else if len(overrides) > 0 {
+			fmt.Fprintf(e.stdout, "templates refreshed in %s; preserved local overrides: %s\n",
+				manifests.Dir(e.dir), strings.Join(overrides, ", "))
+		} else {
+			fmt.Fprintf(e.stdout, "templates refreshed in %s\n", manifests.Dir(e.dir))
+		}
+	}
+
+	list := installedIntegrations(o.dir)
+	if len(list) == 0 {
+		fmt.Fprintln(e.stdout, "piggery integrations: none installed")
+	}
+	for _, i := range list {
+		t, ok := targetNamed(i.Name)
+		if !ok || t.refresh == nil {
+			continue
+		}
+		msg, err := t.refresh(o)
+		if err != nil {
+			fmt.Fprintf(e.stdout, "%s: NOT refreshed: %v\n", i.Name, err)
+			failed = append(failed, i.Name)
+			continue
+		}
+		fmt.Fprintln(e.stdout, msg)
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("not refreshed: %s", strings.Join(failed, ", "))
+	}
+	return nil
+}
+
+// builtinTemplateOverrides reports built-in names whose self-contained manifest after Unpack is
+// not the embedded one. Unpack deliberately keeps user-edited, removed, or pre-existing
+// same-named templates; those are useful local overrides rather than refresh failures.
+func builtinTemplateOverrides(home string) ([]string, error) {
+	var overrides []string
+	for _, name := range manifests.Builtins() {
+		want, err := manifests.Builtin(name)
+		if err != nil {
+			return nil, fmt.Errorf("builtin %s: %w", name, err)
+		}
+		got, err := manifests.Resolve(name, home)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				overrides = append(overrides, name)
+				continue
+			}
+			return nil, fmt.Errorf("template %s: %w", name, err)
+		}
+		if got != want {
+			overrides = append(overrides, name)
+		}
+	}
+	return overrides, nil
 }
 
 // updateOutdated runs `setup <name>` for every integration that is installed and outdated (pi, omp

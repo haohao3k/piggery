@@ -1,5 +1,9 @@
 # Piggery 🐖 - Lợn cày tasks
 
+This is the local development fork at [haohao3k/piggery](https://github.com/haohao3k/piggery),
+derived from [sting8k/piggery](https://github.com/sting8k/piggery). Development pushes go to this
+fork. Read [AGENTS.md](AGENTS.md) and the [local workflow](docs/local-development.md) before changing it.
+
 Your coding agents are pigs. Piggery is the farm.
 
 Work goes into a pig's trough and waits there until the pig is back. It only counts as eaten
@@ -46,23 +50,26 @@ piggery is installed in it.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sting8k/piggery/main/install.sh | sh
+git clone https://github.com/haohao3k/piggery.git
+cd piggery
+git switch codex/local-development
+./install.sh
 piggery setup pi       # and/or: claude, codex, omp, dsh
 ```
 
-The script picks the build for your OS and CPU (Linux or macOS, amd64 or arm64), checks it against
-the release's `checksums.txt`, and installs it in `~/.local/bin` (`PIGGERY_INSTALL_DIR` to change it,
-`PIGGERY_VERSION=v0.3.0` for a given release). By hand: download `piggery-<os>-<arch>` (`darwin-arm64`,
-`darwin-amd64`, `linux-amd64`, `linux-arm64`) from the
-[latest release](https://github.com/sting8k/piggery/releases/latest), `chmod +x` it and put it on
-your PATH.
+The installer builds this checkout, stamps its source identity, checks whether activation is safe,
+installs it in `~/.local/bin`, refreshes installed integration assets, and restarts the existing
+Piggery home. Go 1.26+ and Python 3 are required. Busy agents block activation; an idle worker is
+stopped by the normal graceful restart and keeps its recorded session for a later authorized resume.
+See the local workflow for the invoking-session exception and readback requirements.
 
 Using [Paseo](https://paseo.sh)? `piggery setup paseo` adds a Piggery view (the same as
 `piggery top`) to the app. Turn on plugins in Paseo's settings once.
 
-Or build it: `go install github.com/sting8k/piggery/cmd/piggery@latest` (Go 1.26+).
-`piggery update` installs a newer release. Every release has a `checksums.txt`; what changed is in
-[CHANGELOG.md](CHANGELOG.md).
+Local builds refuse release replacement through `piggery update`, including `--force`. Rebuild and
+activate through `scripts/local-dev.sh apply`; do not install `sting8k/...@latest` over this fork.
+The Go module keeps its upstream import path for compatibility; `go build ./cmd/piggery` uses the
+local checkout's source and embedded assets. Changes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick start
 
@@ -93,8 +100,10 @@ provider families and [open-code-review](https://github.com/alibaba/open-code-re
 ## Build from source
 
 ```sh
-go build ./cmd/piggery
 go test ./...
+./scripts/local-dev.sh build
+./scripts/local-dev.sh apply
+./scripts/local-dev.sh check
 ```
 
 ## License

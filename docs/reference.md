@@ -13,6 +13,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `setup [pi\|claude\|codex\|omp\|dsh\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys, and show where each harness stands) |
 | `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
 | `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it |
+| `setup --refresh` | Refresh already-installed integration assets even at the same integration version, and safely unpack built-in templates; preserve custom template overrides and report their names; no new harness integration is enabled; mutually exclusive with `--outdated` and harness arguments |
 | `setup remove <harness>` | Take out exactly what `setup` added; `--ext PATH` (setup pi) uses a checkout's extension |
 | `skills` | Print the guide for agents |
 | `team up <template\|path.yaml> [--cwd D] [--name N]` | Start a team from a template in `~/.piggery/templates`, or a manifest file |
@@ -33,7 +34,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon and `team up` use. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
 | `doctor` | Findings about the daemon's state; exit 1 when any |
 | `shutdown` / `restart` | Stop the daemon (workers stopped), or stop and start it again from this binary |
-| `update [--check] [--force]` | Install the latest release in place; `--force` for a build from source (`dev`, `dev-<sha>`); `--check` prints the current and latest versions and `vX available` when a newer one is out |
+| `update [--check] [--force]` | Release builds: install the latest fork release in place; `--force` reinstalls. Local/source builds: `--check` reports local ownership; replacement is refused even with `--force`; use `scripts/local-dev.sh apply` |
 
 `ps` and `top` show a line such as `outdated: codex (v0 < v1): piggery setup --outdated` in their header
 when a claude, codex or paseo install is outdated (`ps --json` has the same list as `outdated`).
@@ -48,7 +49,9 @@ The model sees the tools with a `piggery_` prefix in pi, omp and dsh (`piggery_s
 `mcp__piggery__send` in Claude Code and Codex; manifests and the CLI use the short names.
 
 Environment: `PIGGERY_DISABLED=1` makes an adapter inert (a session that must not join);
-`PIGGERY_INSTALL_DIR` and `PIGGERY_VERSION` steer `install.sh`.
+`PIGGERY_INSTALL_DIR` changes the local installer destination. `install.sh` builds this checkout;
+it does not download a release or accept a release-version selector. Piggery uses `~/.piggery`;
+the local installer rejects a nondefault `PIGGERY_HOME` because the daemon does not support it.
 
 ## config.yaml
 
@@ -135,7 +138,7 @@ exactly that. Copies piggery unpacks start with a `managed by piggery` line: do 
 there that is not piggery's is left alone. Each installed thing has an integration version, raised
 only when what is installed changes, so a new build alone never makes an install outdated. pi, omp
 and dsh copies with a lower version are updated by the daemon at its start; claude, codex and paseo
-are never changed on their own, only reported: `piggery setup --outdated` updates them. `piggery setup` alone (and `doctor`) shows each
+are never changed on their own, only reported: `piggery setup --outdated` updates them. Local development uses `setup --refresh` to pick up changed bytes at the same integration version. `piggery setup` alone (and `doctor`) shows each
 harness's version and problems, each with its fix, and `vN < vM` for an outdated install.
 
 | Harness | Changed |
