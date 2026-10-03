@@ -101,7 +101,7 @@ refused with the reason when the team is brought up.
 | `routing[]` | none = all denied | `{from, to, allow, cc}`; the first rule matching a sender and receiver decides; `to: notify` is your hook; `cc` roles get a copy |
 | `timers[]` | `[]` | `{on: <role>, silent_for: <duration>, notify: <role\|reports_to\|notify>}`: one notice when a working member has no turn end for that long |
 | `limits.depth` | none | How deep spawn chains may go |
-| `limits.concurrency` | none | Live workers at once (the built-ins set 10) |
+| `limits.concurrency` | none | Live workers at once (most built-ins set 10; `triple-review` sets 3) |
 | `limits.messages_per_participant_per_minute` | none | Flood guard; a mail over it is held until you `release` it |
 | `limits.max_respawn_per_hour` | none | A worker resumed that often in an hour is parked and its lead is told |
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add the optional `triple-review` team template: two independent semantic reviews from different
+  provider families and one OCR delegate coverage review of a frozen candidate. The coordinator
+  verifies readiness, keeps the first pass sealed and adjudicates findings by evidence.
+
 ## v0.6.0 - 2026-10-01
 
 The Paseo plugin is rebuilt on what `piggery top` shows, and a project no longer jumps around the
