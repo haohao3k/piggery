@@ -28,8 +28,12 @@ import (
 var Version = "dev"
 
 // Source builds default to local ownership. Only the release workflow stamps "release".
-// A checkout build must never be replaced by a downloaded release, even with --force.
 var BuildMode = "local"
+
+// LocalSourceRootBase64 is stamped into local binaries by scripts/local-dev.sh.
+// It binds `piggery update` to the exact checkout that produced the installed
+// binary; a local update never guesses from the caller's working directory.
+var LocalSourceRootBase64 = ""
 
 // latestRelease is the GitHub API URL of the newest release (the release workflow names its
 // assets: piggery-<os>-<arch> and checksums.txt).
@@ -44,6 +48,7 @@ type updater struct {
 	exe          string // the running binary ("" = os.Executable)
 	goos, goarch string
 	client       *http.Client
+	caller       string // exact solo ID passed to a local-dev apply
 }
 
 type release struct {
@@ -184,15 +189,11 @@ func (u updater) install(ctx context.Context, r release) error {
 }
 
 // run is `update`: --check prints the versions only; else it installs the latest release unless
-// it is this one or this is a dev build (--force for both). It reports whether it replaced the
-// binary.
+// it is this one or this is a dev build (--force for both). Local builds delegate to the exact
+// stamped checkout and report no replacement because local-dev owns restart/activation.
 func (u updater) run(ctx context.Context, w io.Writer, check, force bool) (bool, error) {
 	if BuildMode == "local" {
-		if check {
-			fmt.Fprintf(w, "current %s; local checkout build: use scripts/local-dev.sh apply, then check\n", Version)
-			return false, nil
-		}
-		return false, errors.New("local checkout build: release updates are disabled, including --force; run scripts/local-dev.sh apply, then check in the owning checkout")
+		return u.runLocal(ctx, w, check, force, u.caller)
 	}
 	if server.DevBuild(Version) && !check && !force {
 		return false, errors.New("this is a dev build (not a release); --force replaces it with the latest release")
@@ -220,12 +221,14 @@ func (u updater) run(ctx context.Context, w io.Writer, check, force bool) (bool,
 	return true, nil
 }
 
-// update is `piggery update [--check] [--force]`. A running daemon is shut down after the
-// binary is replaced; the next command starts the new one.
+// update is `piggery update [--check] [--force] [--caller SOLO_ID]`. Release builds replace the
+// binary and then stop the old daemon. Local builds delegate the complete guarded activation to
+// the owning checkout's scripts/local-dev.sh, which owns its restart and asset refresh.
 func (e *env) update(args []string) error {
 	fs := e.flags("update")
-	check := fs.Bool("check", false, "print the current and latest versions only")
-	force := fs.Bool("force", false, "install even over a dev build or the same version")
+	check := fs.Bool("check", false, "check the release or owning local checkout without replacing it")
+	force := fs.Bool("force", false, "reinstall the release or repeat the guarded local apply")
+	caller := fs.String("caller", "", "exact solo participant ID allowed to remain active during a local apply")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -233,9 +236,21 @@ func (e *env) update(args []string) error {
 	if len(pos) != 0 {
 		return fmt.Errorf("%w: update takes no arguments", errUsage)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	u := updater{api: latestRelease, goos: runtime.GOOS, goarch: runtime.GOARCH, client: http.DefaultClient}
+	if *caller != "" && *check {
+		return fmt.Errorf("%w: --caller cannot be combined with --check", errUsage)
+	}
+	if BuildMode != "local" && *caller != "" {
+		return fmt.Errorf("%w: --caller is only valid for local builds", errUsage)
+	}
+	// A local apply can compile, refresh integrations and wait on a guarded daemon
+	// restart. Do not wrap it in the release updater's five-minute network timeout.
+	ctx := context.Background()
+	u := updater{api: latestRelease, goos: runtime.GOOS, goarch: runtime.GOARCH, client: http.DefaultClient, caller: *caller}
+	if BuildMode != "local" {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
+	}
 	replaced, err := u.run(ctx, e.stdout, *check, *force)
 	if err != nil || !replaced {
 		return err

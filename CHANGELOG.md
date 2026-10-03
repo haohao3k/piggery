@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Make local `piggery update` rebuild and activate assets from its owning checkout through the
+  guarded local workflow. Bind the source path to the binary and receipt, keep `--check` read-only,
+  and prevent `--force` or the calling directory from redirecting it to a release installation.
+
 - Add short three-review entries for Claude Code, Codex and Pi, backed by the local CLI's shared
   `skills three-review` playbook. The coordinator resolves recent lane scope and decision context
   before review, preserves existing development teams, and accounts for blocked/unreviewed lanes.

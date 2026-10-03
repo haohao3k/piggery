@@ -34,7 +34,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon and `team up` use. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
 | `doctor` | Findings about the daemon's state; exit 1 when any |
 | `shutdown` / `restart` | Stop the daemon (workers stopped), or stop and start it again from this binary |
-| `update [--check] [--force]` | Release builds: install the latest fork release in place; `--force` reinstalls. Local/source builds: `--check` reports local ownership; replacement is refused even with `--force`; use `scripts/local-dev.sh apply` |
+| `update [--check] [--force] [--caller ID]` | Managed local builds: build/apply/check the owning checkout's source and embedded assets, without downloading releases; `--check` is read-only and fails on drift. `--caller` permits only the exact invoking solo during safe activation, and `--force` cannot bypass the gate. Bootstrap or repair an unbound source build with `scripts/local-dev.sh apply`. Release builds: install the latest fork release; `--force` reinstalls; `--caller` is unavailable. |
 
 `ps` and `top` show a line such as `outdated: codex (v0 < v1): piggery setup --outdated` in their header
 when a claude, codex or paseo install is outdated (`ps --json` has the same list as `outdated`).

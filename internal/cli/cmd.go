@@ -186,8 +186,8 @@ func (e *env) root() *cobra.Command {
 			"piggery doctor", authAdmin, e.doctor),
 		e.cmd("check", "Errors and ignored lines in config.yaml, harness profiles, templates and prompts (local; exit 1 when any error)", grpMaintain,
 			"piggery check", authLocal, e.check),
-		e.cmd("update [--check] [--force]", "Release builds: install the latest fork release; local builds: use scripts/local-dev.sh apply", grpMaintain,
-			"piggery update --check\npiggery update", authLocal, e.update),
+		e.cmd("update [--check] [--force] [--caller SOLO_ID]", "Release builds: install the latest fork release; local builds: run the owning checkout's guarded local-dev workflow", grpMaintain,
+			"piggery update --check\npiggery update [--caller SOLO_ID]", authLocal, e.update),
 		e.cmd("stop", "", "", "", authLocal, func([]string) error {
 			return fmt.Errorf("%w: no admin stop: abort a turn, kill a worker, shutdown the daemon", errUsage)
 		}),

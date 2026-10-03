@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-func TestLocalBuildCannotBeReplacedByRelease(t *testing.T) {
+func TestLocalBuildUsesStampedCheckout(t *testing.T) {
 	oldMode, oldVersion := BuildMode, Version
 	BuildMode, Version = "local", "local-test"
 	t.Cleanup(func() { BuildMode, Version = oldMode, oldVersion })
@@ -24,18 +24,23 @@ func TestLocalBuildCannotBeReplacedByRelease(t *testing.T) {
 		http.Error(w, "must not contact releases", http.StatusInternalServerError)
 	}))
 	t.Cleanup(srv.Close)
-	u := updater{api: srv.URL, client: srv.Client()}
+	f := newLocalUpdateFixture(t, "pending")
+	u := updater{api: srv.URL, exe: f.binary, client: srv.Client()}
 	for _, force := range []bool{false, true} {
-		if replaced, err := u.run(context.Background(), io.Discard, false, force); replaced || err == nil || !strings.Contains(err.Error(), "release updates are disabled") {
+		if replaced, err := u.run(context.Background(), io.Discard, false, force); replaced || err != nil {
 			t.Fatalf("local update force=%v: replaced=%v err=%v", force, replaced, err)
 		}
 	}
 	var out strings.Builder
-	if replaced, err := u.run(context.Background(), &out, true, false); replaced || err != nil || !strings.Contains(out.String(), "local checkout build") {
+	if replaced, err := u.run(context.Background(), &out, true, false); replaced || err != nil {
 		t.Fatalf("local check: replaced=%v err=%v output=%q", replaced, err, out.String())
 	}
 	if requests != 0 {
 		t.Fatalf("local build contacted release API %d times", requests)
+	}
+	invocation, err := os.ReadFile(f.invocation)
+	if err != nil || !strings.HasPrefix(string(invocation), "check\n") {
+		t.Fatalf("local checkout invocation = %q (%v); want check", invocation, err)
 	}
 }
 
