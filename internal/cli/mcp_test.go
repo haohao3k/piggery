@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -141,7 +142,7 @@ func TestMCP(t *testing.T) {
 	outR, outW := io.Pipe()
 	s := &mcpServer{dir: dir, id: "P", token: "T", run: "R", ref: "sess-1", sock: filepath.Join(dir, "cc.sock"),
 		sockTk: "tk", out: outW, ready: make(chan struct{})}
-	go s.keepConnected()
+	s.startKeepConnected()
 	go s.serve(inR)
 	out := bufio.NewScanner(outR)
 	rpc := func(id int, method string, params any) map[string]any {
@@ -201,9 +202,75 @@ func TestMCP(t *testing.T) {
 	inW.Close()
 }
 
+func TestMCPThreadIDMetadata(t *testing.T) {
+	tests := []struct {
+		name string
+		meta string
+		want string
+		err  bool
+	}{
+		{name: "codex", meta: `{"threadId":"t1","source":"codex"}`, want: "t1"},
+		{name: "legacy snake case", meta: `{"thread_id":"t2"}`, want: "t2"},
+		{name: "absent", meta: `{}`},
+		{name: "non object", meta: `"bad"`, err: true},
+		{name: "non string", meta: `{"threadId":7}`, err: true},
+		{name: "conflict", meta: `{"threadId":"t1","thread_id":"t2"}`, err: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := mcpThreadID(json.RawMessage(tt.meta))
+			if (err != nil) != tt.err || got != tt.want {
+				t.Fatalf("mcpThreadID(%s) = %q, %v; want %q, error=%v", tt.meta, got, err, tt.want, tt.err)
+			}
+		})
+	}
+}
+
+func TestRequireSessionAuthFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		answer any
+	}{
+		{name: "old daemon", answer: &core.Error{Code: core.CodeInvalid, Message: "unknown verb " + proto.VerbSessionSupport}},
+		{name: "capability absent", answer: proto.SessionSupportResult{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, err := os.MkdirTemp("", "pgsupport")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.RemoveAll(dir) })
+			startFakeDaemon(t, dir, func(string, json.RawMessage) any { return tc.answer })
+			c, err := Dial(dir, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close()
+			err = requireSessionAuth(c)
+			var ce *core.Error
+			if !errors.As(err, &ce) || ce.Code != core.CodeUnsupported || ce.RuleID != "session.unsupported" ||
+				!strings.Contains(ce.Message, "upgrade the Piggery daemon and integration") {
+				t.Fatalf("requireSessionAuth = %v, want session.unsupported", err)
+			}
+		})
+	}
+}
+
+func TestMCPCodexInitializeRequestsBinding(t *testing.T) {
+	s := &mcpServer{host: "codex:9:1", harness: "codex", out: io.Discard, ready: make(chan struct{})}
+	res, rerr := s.handle(rpcMsg{Method: "initialize", Params: json.RawMessage(`{}`)})
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	instructions := res.(map[string]any)["instructions"].(string)
+	if !strings.Contains(instructions, mcpPrefix+"who") || !strings.Contains(instructions, "cannot route mail or wakes") {
+		t.Fatalf("unbound Codex instructions = %q", instructions)
+	}
+}
+
 // piggery mcp in a Claude session the Human opened (no PIGGERY_*): it places the session with
-// join.auto by host, then speaks as that host; it declares wake and steer only, and hands the role
-// card and the mail channel to Claude as the server's instructions.
+// join.auto by exact ref plus host lineage, then authenticates the same binding; it declares wake
+// and steer only, and hands the role card and mail channel to Claude as server instructions.
 func TestMCPSession(t *testing.T) {
 	dir, err := os.MkdirTemp("", "pgmcps")
 	if err != nil {
@@ -225,7 +292,7 @@ func TestMCPSession(t *testing.T) {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	s := &mcpServer{dir: dir, host: "claude:9:1", ref: "sess-1", out: outW, ready: make(chan struct{})}
-	go s.keepConnected()
+	s.startKeepConnected()
 	go s.serve(inR)
 	out := bufio.NewScanner(outR)
 	inW.Write([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}` + "\n"))
@@ -247,12 +314,13 @@ func TestMCPSession(t *testing.T) {
 	var id core.IdentifyArgs
 	json.Unmarshal(calls[1].Args, &id)
 	if calls[0].Verb != proto.VerbJoinAuto || j.Host != "claude:9:1" || j.HarnessRef != "sess-1" || j.Mode != "interactive" ||
-		calls[1].Verb != proto.VerbIdentify || calls[1].Auth == nil || calls[1].Auth.Host != "claude:9:1" || calls[1].Auth.Token != "" ||
+		calls[1].Verb != proto.VerbIdentify || calls[1].Auth == nil || calls[1].Auth.Host != "claude:9:1" || calls[1].Auth.HarnessRef != "sess-1" || calls[1].Auth.Token != "" ||
 		strings.Join(id.Capabilities, ",") != "wake,steer" || id.ProtocolVersion != core.ProtocolVersion {
 		t.Fatalf("calls %s %+v, %s %+v %+v", calls[0].Verb, j, calls[1].Verb, calls[1].Auth, id)
 	}
 
-	// found: the session is another participant now; it identifies again (by host) and says so.
+	// found: the session is another participant now; it identifies again by the
+	// same exact session binding and says so.
 	inW.Write([]byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"agent","arguments":{"action":"found","template":"x"}}}` + "\n"))
 	out.Scan()
 	if !strings.Contains(out.Text(), "founded team t1; you are gopher (lead), its gate") {
@@ -344,7 +412,7 @@ func TestHookClaudeSession(t *testing.T) {
 	json.Unmarshal(d.calls[1].Args, &start)
 	json.Unmarshal(d.calls[2].Args, &idle)
 	if len(d.calls) != 3 || d.calls[0].Verb != proto.VerbJoinAuto || j.Host != "claude:9:1" || j.Source != "clear" || j.HarnessRef != "s2" ||
-		j.Cwd != "/w" || j.Transcript == nil || *j.Transcript != (core.Transcript{Path: "/p/s2.jsonl", Format: "claude"}) || d.calls[1].Auth.Host != "claude:9:1" || start.Event != core.HarnessSessionStart || start.Source != "clear" || idle.Event != core.HarnessIdle {
+		j.Cwd != "/w" || j.Transcript == nil || *j.Transcript != (core.Transcript{Path: "/p/s2.jsonl", Format: "claude"}) || d.calls[1].Auth.Host != "claude:9:1" || d.calls[1].Auth.HarnessRef != "s2" || d.calls[1].Auth.Cwd != "/w" || start.Event != core.HarnessSessionStart || start.Source != "clear" || idle.Event != core.HarnessIdle {
 		t.Fatalf("calls %d: %+v %+v %+v", len(d.calls), j, start, idle)
 	}
 	if out.Len() != 0 {
@@ -358,8 +426,8 @@ func TestHookClaudeSession(t *testing.T) {
 	}
 }
 
-// piggery hook codex in a TUI session: SessionStart joins by the codex host with its source; the
-// turn key is turn_id; Stop with no mail still answers JSON; Interrupt ends the turn unacked; a
+// piggery hook codex in a TUI session: SessionStart joins by the exact thread ref with its source;
+// the turn key is turn_id; Stop with no mail still answers JSON; Interrupt ends the turn unacked; a
 // native subagent's hook (agent_id) is dropped; SessionEnd names its session id. An ephemeral
 // thread's null transcript_path sends no transcript.
 func TestHookCodexSession(t *testing.T) {
@@ -368,7 +436,12 @@ func TestHookCodexSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	d := startFakeDaemon(t, dir, func(string, json.RawMessage) any { return map[string]any{} })
+	d := startFakeDaemon(t, dir, func(verb string, _ json.RawMessage) any {
+		if verb == proto.VerbSessionSupport {
+			return proto.SessionSupportResult{ThreadAuth: true}
+		}
+		return map[string]any{}
+	})
 	t.Setenv("PIGGERY_ID", "")
 	t.Setenv("PIGGERY_TOKEN", "")
 	t.Setenv("PIGGERY_DISABLED", "")
@@ -389,14 +462,24 @@ func TestHookCodexSession(t *testing.T) {
 	run("Interrupt", `{"session_id":"s1","turn_id":"t2"}`)
 	run("SessionEnd", `{"session_id":"s0","reason":"other"}`)
 	var j core.JoinAutoArgs
-	json.Unmarshal(d.calls[0].Args, &j)
 	var evs []core.HarnessEventArgs
-	for _, c := range d.calls[1:] {
+	var eventAuth *proto.Auth
+	for _, c := range d.calls {
+		if c.Verb == proto.VerbSessionSupport {
+			continue
+		}
+		if c.Verb == proto.VerbJoinAuto {
+			json.Unmarshal(c.Args, &j)
+			continue
+		}
 		var a core.HarnessEventArgs
 		json.Unmarshal(c.Args, &a)
 		evs = append(evs, a)
+		if eventAuth == nil {
+			eventAuth = c.Auth
+		}
 	}
-	if j.Harness != "codex" || j.Host != "codex:9:1" || j.Transcript != nil || j.Source != "startup" || j.HarnessRef != "s1" || len(evs) != 5 ||
+	if j.Harness != "codex" || j.Host != "codex:9:1" || j.Transcript != nil || j.Source != "startup" || j.HarnessRef != "s1" || eventAuth == nil || eventAuth.HarnessRef != "s1" || len(evs) != 5 ||
 		evs[1].Event != core.HarnessTurnStart || evs[1].PromptID != "t1" ||
 		evs[2].Event != core.HarnessTurnEnd || evs[2].Outcome != core.HarnessOutcomeOK || evs[2].PromptID != "t1" ||
 		evs[3].Outcome != core.HarnessOutcomeIntr || evs[3].PromptID != "t2" ||
@@ -418,7 +501,11 @@ func TestMCPCodexWakeQueues(t *testing.T) {
 	old := codexBin
 	codexBin = func() string { return fake }
 	t.Cleanup(func() { codexBin = old })
-	s := &mcpServer{host: "codex:9:1", harness: "codex"}
+	s := &mcpServer{host: "codex:9:1", harness: "codex", ref: "thread-2"}
+	s.queueNudge("thread-1") // a wake for the old /clear binding must be dropped
+	if _, err := os.Stat(args); !os.IsNotExist(err) {
+		t.Fatalf("stale wake reached codex: stat err=%v", err)
+	}
 	s.onPush(proto.Push{Event: proto.EventWake, Ref: "thread-2"})
 	b, _ := os.ReadFile(args)
 	if !strings.HasPrefix(string(b), "queue --thread thread-2 --message [piggery] wake #1") {
@@ -426,54 +513,195 @@ func TestMCPCodexWakeQueues(t *testing.T) {
 	}
 }
 
-// piggery mcp in a Codex TUI has no session id: it never joins (the SessionStart hook does, at
-// the first prompt) and keeps identifying by host until that session exists (seen live:
-// join.auto without a ref failed forever and the tools said "not reachable").
+func TestMCPCodexWakeTimeout(t *testing.T) {
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "codex")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nwhile true; do :; done\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldBin, oldTimeout := codexBin, codexQueueTimeout
+	codexBin = func() string { return fake }
+	codexQueueTimeout = 20 * time.Millisecond
+	t.Cleanup(func() {
+		codexBin = oldBin
+		codexQueueTimeout = oldTimeout
+	})
+	s := &mcpServer{host: "codex:9:1", harness: "codex", ref: "thread-2"}
+	started := time.Now()
+	s.queueNudge("thread-2")
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("queue wake ignored timeout: %s", elapsed)
+	}
+}
+
+func TestHookPartialCredentialsFailClosed(t *testing.T) {
+	t.Setenv("PIGGERY_ID", "participant")
+	t.Setenv("PIGGERY_TOKEN", "")
+	var out, errOut bytes.Buffer
+	e := &env{dir: t.TempDir(), stdout: &out}
+	e.runHook("codex", "UserPromptSubmit", strings.NewReader(`{"session_id":"s1","turn_id":"t1"}`), &errOut)
+	if out.Len() != 0 || !strings.Contains(errOut.String(), "PIGGERY_ID and PIGGERY_TOKEN must be set together") {
+		t.Fatalf("partial credentials: stdout=%q stderr=%q", out.String(), errOut.String())
+	}
+}
+
+// Codex does not expose its thread id in the MCP child's environment. Discovery
+// remains identity-neutral; the first call must carry _meta.threadId and then
+// authenticates the exact ref.
 func TestMCPCodexWaitsForTheSession(t *testing.T) {
 	dir, err := os.MkdirTemp("", "pgmcpw")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	var mu sync.Mutex
-	tries := 0
+	identifyCount := 0
 	d := startFakeDaemon(t, dir, func(verb string, _ json.RawMessage) any {
-		mu.Lock()
-		defer mu.Unlock()
+		if verb == proto.VerbSessionSupport {
+			return proto.SessionSupportResult{ThreadAuth: true}
+		}
 		if verb == proto.VerbIdentify {
-			if tries++; tries == 1 {
-				return &core.Error{Code: core.CodeUnauthorized, RuleID: "host.unknown", Message: "no live session with this host"}
-			}
+			identifyCount++
+			return core.IdentifyResult{ParticipantID: fmt.Sprintf("P%d", identifyCount), RunID: "R", RoleCard: fmt.Sprintf("CODEX CARD %d", identifyCount), Tools: []string{"send"}}
 		}
-		return map[string]any{}
+		if verb == proto.VerbSend {
+			return core.SendResult{Seq: 1}
+		}
+		return core.JoinResult{ID: "P", RunID: "R"}
 	})
-	s := &mcpServer{dir: dir, host: "codex:9:1", harness: "codex", ready: make(chan struct{})}
-	go s.keepConnected()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		s.mu.Lock()
-		c := s.conn
-		s.mu.Unlock()
-		if c != nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("never connected")
-		}
-		time.Sleep(20 * time.Millisecond)
+	s := &mcpServer{dir: dir, host: "codex:9:1", harness: "codex", out: io.Discard, ready: make(chan struct{})}
+	if got := s.toolList(); len(got) != len(mcpBaseTools) {
+		t.Fatalf("unbound tools/list = %d, want %d", len(got), len(mcpBaseTools))
+	}
+	s.mu.Lock()
+	listed := s.listed
+	s.mu.Unlock()
+	if !listed {
+		t.Fatal("unbound tools/list did not mark the catalog as listed")
+	}
+	if _, err := s.callTool("send", json.RawMessage(`{"to":"lead","body":"no ref"}`), ""); !errors.Is(err, errSessionIdentity) {
+		t.Fatalf("missing metadata error = %v, want %v", err, errSessionIdentity)
+	}
+	params, _ := json.Marshal(map[string]any{
+		"name":      "send",
+		"arguments": map[string]any{"to": "lead", "body": "hi"},
+		"_meta":     map[string]any{"threadId": "thread-1"},
+	})
+	res, rerr := s.handle(rpcMsg{Method: "tools/call", Params: params})
+	if rerr != nil {
+		t.Fatalf("bound call = %v", rerr)
+	}
+	if text := res.(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string); !strings.HasPrefix(text, "CODEX CARD 1\n\n") {
+		t.Fatalf("first bound result omitted role card: %q", text)
+	}
+	if _, err := s.callTool("send", json.RawMessage(`{"to":"lead","body":"missing ref after bind"}`), ""); !errors.Is(err, errSessionIdentity) {
+		t.Fatalf("missing metadata after bind error = %v, want %v", err, errSessionIdentity)
+	}
+	params, _ = json.Marshal(map[string]any{
+		"name":      "send",
+		"arguments": map[string]any{"to": "lead", "body": "after clear"},
+		"_meta":     map[string]any{"threadId": "thread-2"},
+	})
+	res, rerr = s.handle(rpcMsg{Method: "tools/call", Params: params})
+	if rerr != nil {
+		t.Fatalf("rotated call = %v", rerr)
+	}
+	if text := res.(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string); !strings.HasPrefix(text, "CODEX CARD 2\n\n") {
+		t.Fatalf("rotated bound result omitted role card: %q", text)
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, c := range d.calls {
-		if c.Verb == proto.VerbJoinAuto || c.Auth == nil || c.Auth.Host != "codex:9:1" {
+		if c.Verb == proto.VerbSessionSupport {
+			continue
+		}
+		if c.Verb == proto.VerbJoinAuto {
+			t.Fatalf("Codex MCP must not join.auto: %+v", c)
+		}
+		if c.Auth == nil || c.Auth.Host != "codex:9:1" || (c.Auth.HarnessRef != "thread-1" && c.Auth.HarnessRef != "thread-2") {
 			t.Fatalf("call %s auth %+v", c.Verb, c.Auth)
+		}
+	}
+	last := d.calls[len(d.calls)-1]
+	if last.Verb != proto.VerbSend || last.Auth == nil || last.Auth.HarnessRef != "thread-2" {
+		t.Fatalf("rotated send auth = %+v", last.Auth)
+	}
+}
+
+// An old daemon must be rejected before the Codex MCP child can join, call a
+// participant verb, or queue a wake by the shared app-server host.
+func TestMCPCodexOldDaemonFailsClosedBeforeJoinAndWake(t *testing.T) {
+	dir, err := os.MkdirTemp("", "pgold")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	args := filepath.Join(dir, "args")
+	fake := filepath.Join(dir, "codex")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho called > "+args+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldBin := codexBin
+	codexBin = func() string { return fake }
+	t.Cleanup(func() { codexBin = oldBin })
+	d := startFakeDaemon(t, dir, func(verb string, _ json.RawMessage) any {
+		if verb == proto.VerbSessionSupport {
+			return &core.Error{Code: core.CodeInvalid, Message: "unknown verb " + proto.VerbSessionSupport}
+		}
+		return map[string]any{}
+	})
+	s := &mcpServer{dir: dir, host: "codex:9:1", harness: "codex", ref: "thread-1", out: io.Discard, ready: make(chan struct{})}
+	s.startKeepConnected()
+	waitFor(t, "session capability failure", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return isSessionAuthUnsupported(s.identErr)
+	})
+	if _, err := s.callTool("send", json.RawMessage(`{"to":"lead","body":"must not send"}`), "thread-1"); !isSessionAuthUnsupported(err) {
+		t.Fatalf("old daemon tool call = %v, want session.unsupported", err)
+	}
+	s.onPush(proto.Push{Event: proto.EventWake, Ref: "thread-1"})
+	time.Sleep(50 * time.Millisecond)
+	if _, err := os.Stat(args); !os.IsNotExist(err) {
+		t.Fatalf("old daemon queued a wake: stat err=%v", err)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, c := range d.calls {
+		if c.Verb != proto.VerbSessionSupport {
+			t.Fatalf("old daemon received mutating/identity verb %q", c.Verb)
 		}
 	}
 }
 
-// A Codex TUI after a daemon restart: its participant is gone and its MCP server has no session
-// id to join with, so the next hook joins (by host and the hook's session id) and sends its event
-// again (seen live: the TUI stayed out of piggery until /clear).
+func TestHookCodexOldDaemonFailsClosedBeforeJoin(t *testing.T) {
+	dir, err := os.MkdirTemp("", "pghold")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	d := startFakeDaemon(t, dir, func(verb string, _ json.RawMessage) any {
+		if verb == proto.VerbSessionSupport {
+			return &core.Error{Code: core.CodeInvalid, Message: "unknown verb " + proto.VerbSessionSupport}
+		}
+		return map[string]any{}
+	})
+	t.Setenv("PIGGERY_ID", "")
+	t.Setenv("PIGGERY_TOKEN", "")
+	t.Setenv("PIGGERY_DISABLED", "")
+	old := sessionHost
+	sessionHost = func(...string) string { return "codex:9:1" }
+	t.Cleanup(func() { sessionHost = old })
+	e := &env{dir: dir, stdout: io.Discard}
+	e.runHook("codex", "SessionStart", strings.NewReader(`{"session_id":"thread-1","source":"startup","cwd":"/project"}`), io.Discard)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.calls) != 1 || d.calls[0].Verb != proto.VerbSessionSupport {
+		t.Fatalf("old daemon calls = %v, want only session.support", d.calls)
+	}
+}
+
+// A Codex TUI after a daemon restart: its participant is gone and the next
+// hook rejoins by its exact session ref and sends its event again.
 func TestHookCodexRejoinsWhenHostUnknown(t *testing.T) {
 	dir, err := os.MkdirTemp("", "pghookr")
 	if err != nil {
@@ -482,6 +710,9 @@ func TestHookCodexRejoinsWhenHostUnknown(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	events := 0
 	d := startFakeDaemon(t, dir, func(verb string, _ json.RawMessage) any {
+		if verb == proto.VerbSessionSupport {
+			return proto.SessionSupportResult{ThreadAuth: true}
+		}
 		if verb == proto.VerbHarnessEvent {
 			if events++; events == 1 {
 				return &core.Error{Code: core.CodeUnauthorized, RuleID: "host.unknown", Message: "no live session with this host"}
@@ -502,10 +733,10 @@ func TestHookCodexRejoinsWhenHostUnknown(t *testing.T) {
 		verbs = append(verbs, c.Verb)
 	}
 	var j core.JoinAutoArgs
-	if len(d.calls) == 3 {
-		json.Unmarshal(d.calls[1].Args, &j)
+	if len(d.calls) == 4 {
+		json.Unmarshal(d.calls[2].Args, &j)
 	}
-	if strings.Join(verbs, ",") != "harness.event,join.auto,harness.event" || j.HarnessRef != "s1" || j.Host != "codex:9:1" {
+	if strings.Join(verbs, ",") != "session.support,harness.event,join.auto,harness.event" || j.HarnessRef != "s1" || j.Host != "codex:9:1" || d.calls[3].Auth.HarnessRef != "s1" {
 		t.Fatalf("calls %v, join %+v", verbs, j)
 	}
 }
@@ -640,9 +871,9 @@ func TestMCPCallWaitsThroughReconnect(t *testing.T) {
 		return core.IdentifyResult{ParticipantID: "P", RunID: "R", Tools: []string{"send"}}
 	})
 	s := &mcpServer{dir: dir, id: "P", token: "T", run: "R", out: io.Discard, ready: make(chan struct{})}
-	go s.keepConnected()
+	s.startKeepConnected()
 	send := func() (string, error) {
-		return s.callTool("send", json.RawMessage(`{"to":"lead","body":"hi"}`))
+		return s.callTool("send", json.RawMessage(`{"to":"lead","body":"hi"}`), "")
 	}
 	if txt, err := send(); err != nil || txt != "sent #7" {
 		t.Fatalf("first send = %q, %v", txt, err)

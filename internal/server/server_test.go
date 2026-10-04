@@ -16,6 +16,7 @@ import (
 
 	"github.com/sting8k/piggery/internal/cli"
 	"github.com/sting8k/piggery/internal/core"
+	"github.com/sting8k/piggery/internal/driver/local"
 	"github.com/sting8k/piggery/internal/proto"
 	"github.com/sting8k/piggery/internal/server"
 	"github.com/sting8k/piggery/internal/store"
@@ -141,6 +142,37 @@ func TestServerAuth(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Body != "hi bob" || !strings.HasPrefix(got[0].FromLabel, "alice") {
 		t.Fatalf("bob inbox = %+v", got)
+	}
+}
+
+func TestSessionSupportProbeIsReadOnly(t *testing.T) {
+	dir := startServer(t)
+	snapshot := func() [3]int {
+		t.Helper()
+		db, err := store.Open(server.DBPath(dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		var counts [3]int
+		for i, table := range []string{"participants", "messages", "events"} {
+			if err := db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&counts[i]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return counts
+	}
+	before := snapshot()
+	c := dial(t, dir)
+	var got proto.SessionSupportResult
+	if _, err := c.CallInto(proto.VerbSessionSupport, nil, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.ThreadAuth {
+		t.Fatalf("session support = %+v; want thread_auth", got)
+	}
+	if after := snapshot(); after != before {
+		t.Fatalf("session support changed state: before=%v after=%v", before, after)
 	}
 }
 
@@ -675,18 +707,34 @@ func TestIdentifyAgainKeepsTheTurn(t *testing.T) {
 	}
 }
 
-// A wake goes to the participant's newest identified connection only, naming its session id (Codex
-// runs the old MCP server ~30 s after /clear; two nudges would be two turns).
-func TestWakeGoesToTheNewestConnection(t *testing.T) {
+// Claude's MCP connection survives /clear while hooks advance session_ref. Its host-based wake
+// channel remains current and receives one nudge on the newest identified connection.
+func TestClaudeMCPClearKeepsWakeChannel(t *testing.T) {
 	dir := startServer(t)
 	_, alice, bob := p2pTeam(t, dir)
+	start := local.ProcessStartTime(os.Getpid())
+	if start == 0 {
+		t.Skip("OS process start time unavailable")
+	}
+	host := fmt.Sprintf("claude:%d:%d", os.Getpid(), start)
+	db, err := store.Open(server.DBPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE participants SET host=?, harness='claude', harness_ref='s-1', session_ref='s-1' WHERE id=?`, host, bob.ID); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
 	old, cur := rawDial(t, dir, bob), rawDial(t, dir, bob)
+	old.auth = &proto.Auth{Host: host, HarnessRef: "s-1", Cwd: dir}
+	cur.auth = &proto.Auth{Host: host, HarnessRef: "s-1", Cwd: dir}
 	var id core.IdentifyResult
-	r := old.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "claude"})
+	r := old.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "claude", HarnessRef: "s-1"})
 	if !r.OK || json.Unmarshal(r.Result, &id) != nil {
 		t.Fatalf("identify: %+v", r)
 	}
-	if r := cur.call(proto.VerbIdentify, core.IdentifyArgs{RunID: id.RunID}); !r.OK {
+	if r := cur.call(proto.VerbIdentify, core.IdentifyArgs{RunID: id.RunID, HarnessRef: "s-2"}); !r.OK {
 		t.Fatalf("identify again: %+v", r)
 	}
 	if r := cur.call(proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionStart, HarnessRef: "s-2"}); !r.OK {
@@ -705,6 +753,76 @@ func TestWakeGoesToTheNewestConnection(t *testing.T) {
 	old.c.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
 	if err := old.dec.Decode(&push); err == nil {
 		t.Fatalf("older connection got %+v; want nothing", push)
+	}
+}
+
+// A Codex session auth carries the same thread id that identify and harness.event report. The
+// server rejects a frame that tries to name a different thread before it reaches core.
+func TestCodexSessionAuthRejectsRefRetarget(t *testing.T) {
+	dir := startServer(t)
+	cwd := t.TempDir()
+	start := local.ProcessStartTime(os.Getpid())
+	if start == 0 {
+		t.Skip("OS process start time unavailable")
+	}
+	host := fmt.Sprintf("codex:%d:%d", os.Getpid(), start)
+	join := dial(t, dir)
+	var j core.JoinResult
+	if _, err := join.CallInto(proto.VerbJoinAuto, core.JoinAutoArgs{
+		Harness: "codex", Mode: "interactive", Host: host, HarnessRef: "thread-a", Cwd: cwd,
+	}, &j); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := net.Dial("unix", server.SocketPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	enc, dec := json.NewEncoder(raw), json.NewDecoder(raw)
+	auth := &proto.Auth{Host: host, HarnessRef: "thread-a", Cwd: cwd}
+	call := func(auth *proto.Auth, verb string, args any) proto.Response {
+		t.Helper()
+		body, _ := json.Marshal(args)
+		if err := enc.Encode(proto.Request{ID: verb, Verb: verb, Auth: auth, Args: body}); err != nil {
+			t.Fatal(err)
+		}
+		var resp proto.Response
+		if err := dec.Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	bad := call(auth, proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "codex", HarnessRef: "thread-b"})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("retargeted identify = %+v; want session.ref", bad)
+	}
+	bad = call(auth, proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "codex"})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("identify without ref = %+v; want session.ref", bad)
+	}
+	good := call(auth, proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "codex", HarnessRef: "thread-a"})
+	if !good.OK {
+		t.Fatalf("identify for authenticated thread: %+v", good)
+	}
+	badAuth := call(&proto.Auth{Host: host, HarnessRef: "thread-b", Cwd: cwd}, proto.VerbWho, nil)
+	if badAuth.OK || badAuth.Error == nil || badAuth.Error.RuleID != "session.ref" {
+		t.Fatalf("retargeted auth = %+v; want session.ref", badAuth)
+	}
+	bad = call(auth, proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionStart})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("session_start without ref = %+v; want session.ref", bad)
+	}
+	bad = call(auth, proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionStart, HarnessRef: "thread-b"})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("retargeted harness event = %+v; want session.ref", bad)
+	}
+	ordinary := call(auth, proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessModelChanged})
+	if !ordinary.OK {
+		t.Fatalf("ordinary event without ref = %+v; want allowed", ordinary)
+	}
+	bad = call(auth, proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionEnd})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("session_end without ref = %+v; want session.ref", bad)
 	}
 }
 
