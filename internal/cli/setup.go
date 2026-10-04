@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/sting8k/piggery/internal/driver/local"
+	"github.com/sting8k/piggery/internal/proto"
 	"github.com/sting8k/piggery/internal/server"
 	"github.com/sting8k/piggery/manifests"
 )
@@ -25,7 +26,8 @@ import (
 //     Paseo (a second run changes nothing);
 //   - `piggery setup --refresh` reapplies the embedded assets to integrations already installed and
 //     safely refreshes built-in templates, without writing worker profiles;
-//   - `piggery setup remove <name>` takes out what setup added.
+//   - `piggery setup remove <name>` takes out what setup added;
+//   - `piggery setup notify [add|remove <target>]` writes or removes a notify hook in hooks/notify.d.
 func (e *env) setup(args []string) error {
 	fs := e.flags("setup")
 	ext := fs.String("ext", "", "a checkout's pi extension (extensions/pi) instead of the one in this binary")
@@ -49,7 +51,7 @@ func (e *env) setup(args []string) error {
 	if *refresh && *ext != "" {
 		return fmt.Errorf("%w: setup --refresh cannot be used with --ext", errUsage)
 	}
-	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|paseo] | setup remove <pi|claude|codex|omp|dsh|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
+	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|paseo] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
 	self, err := selfPath()
 	if err != nil {
 		return err
@@ -69,6 +71,8 @@ func (e *env) setup(args []string) error {
 	switch {
 	case *outdated:
 		return e.updateOutdated(o)
+	case len(pos) > 0 && pos[0] == "notify":
+		return e.setupNotify(o.dir, pos[1:], *force)
 	case *refresh:
 		return e.refresh(o)
 	case len(pos) == 1:
@@ -125,6 +129,11 @@ func (e *env) setup(args []string) error {
 		}
 	}
 	fmt.Fprintln(e.stdout, server.ConfigStatus(e.dir))
+	if set, err := server.LoadSettings(e.dir); err == nil {
+		if n := proto.UpdateNotice(server.UpdateAvailable(e.dir, set, Version)); n != "" {
+			fmt.Fprintln(e.stdout, n)
+		}
+	}
 	return nil
 }
 

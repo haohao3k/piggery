@@ -14,35 +14,36 @@ import (
 // Verbs. Admin verbs require AdminToken; the rest require Auth (participant token).
 // A request never falls back from a bad participant token to admin.
 const (
-	VerbTeamUp       = "team.up"       // admin, args core.TeamUpArgs -> core.Team
-	VerbJoin         = "join"          // admin, args core.JoinArgs -> core.JoinResult
-	VerbLog          = "log"           // admin, args core.LogArgs -> []core.Event
-	VerbRelease      = "release"       // admin, args core.ReleaseArgs -> null; delivers a held message
-	VerbSend         = "send"          // args core.SendArgs -> core.SendResult
-	VerbInbox        = "inbox"         // args core.InboxArgs -> []core.Delivered
-	VerbCompletion   = "completion"    // args core.CompletionArgs -> core.CompletionResult
-	VerbWho          = "who"           // no args -> []core.Presence
-	VerbBoard        = "board"         // no args -> []core.Message (live pins)
-	VerbWatchAdd     = "watch.add"     // args core.TimerArgs -> core.Timer
-	VerbWatchList    = "watch.list"    // no args -> []core.Timer
-	VerbAgent        = "agent"         // args core.AgentArgs -> core.AgentResult
-	VerbJoinAuto     = "join.auto"     // no auth (socket 0600 is the boundary), args core.JoinAutoArgs -> core.JoinResult
-	VerbIdentify     = "identify"      // args core.IdentifyArgs -> core.IdentifyResult; binds the connection
-	VerbPresence     = "presence"      // args core.PresenceArgs -> {}
-	VerbHarnessEvent = "harness.event" // args core.HarnessEventArgs -> core.HarnessEventResult (adapter events)
-	VerbWhy          = "why"           // admin, args core.WhyArgs -> core.WhyResult (read-only)
-	VerbDoctor       = "doctor"        // admin, no args -> core.DoctorResult (read-only)
-	VerbLabels       = "labels"        // admin, args core.LabelsArgs -> map id -> name or #seq (read-only)
-	VerbTeamDown     = "team.down"     // admin, args core.TeamDownArgs -> core.TeamDownResult
-	VerbPs           = "ps"            // admin, args core.StateArgs -> PsResult (read-only)
-	VerbTail         = "tail"          // admin, args core.WorkerLogArgs -> TailResult (read-only): a worker's log or a session's transcript
-	VerbShutdown     = "shutdown"      // admin, no args -> {}; the daemon shuts down after answering
-	VerbAbort        = "abort"         // admin, args core.AdminTarget -> core.AbortResult
-	VerbKill         = "kill"          // admin, args core.AdminTarget -> core.AgentResult (exit)
-	VerbResume       = "resume"        // admin, args core.AdminTarget -> core.AgentResult (new run)
-	VerbModel        = "model"         // admin, args core.ModelArgs -> core.ModelResult
-	VerbModels       = "models"        // admin, args core.AdminTarget -> core.ModelsResult (read-only): what `model` accepts for the worker
-	VerbGC           = "gc"            // admin, args core.GCArgs -> core.GCResult (archives under <dir>/archive)
+	VerbTeamUp         = "team.up"         // admin, args core.TeamUpArgs -> core.Team
+	VerbJoin           = "join"            // admin, args core.JoinArgs -> core.JoinResult
+	VerbLog            = "log"             // admin, args core.LogArgs -> []core.Event
+	VerbRelease        = "release"         // admin, args core.ReleaseArgs -> null; delivers a held message
+	VerbSend           = "send"            // args core.SendArgs -> core.SendResult
+	VerbInbox          = "inbox"           // args core.InboxArgs -> []core.Delivered
+	VerbCompletion     = "completion"      // args core.CompletionArgs -> core.CompletionResult
+	VerbWho            = "who"             // no args -> []core.Presence
+	VerbBoard          = "board"           // no args -> []core.Message (live pins)
+	VerbWatchAdd       = "watch.add"       // args core.TimerArgs -> core.Timer
+	VerbWatchList      = "watch.list"      // no args -> []core.Timer
+	VerbAgent          = "agent"           // args core.AgentArgs -> core.AgentResult
+	VerbSessionSupport = "session.support" // no auth (socket 0600 is the boundary), capability probe
+	VerbJoinAuto       = "join.auto"       // no auth (socket 0600 is the boundary), args core.JoinAutoArgs -> core.JoinResult
+	VerbIdentify       = "identify"        // args core.IdentifyArgs -> core.IdentifyResult; binds the connection
+	VerbPresence       = "presence"        // args core.PresenceArgs -> {}
+	VerbHarnessEvent   = "harness.event"   // args core.HarnessEventArgs -> core.HarnessEventResult (adapter events)
+	VerbWhy            = "why"             // admin, args core.WhyArgs -> core.WhyResult (read-only)
+	VerbDoctor         = "doctor"          // admin, no args -> core.DoctorResult (read-only)
+	VerbLabels         = "labels"          // admin, args core.LabelsArgs -> map id -> name or #seq (read-only)
+	VerbTeamDown       = "team.down"       // admin, args core.TeamDownArgs -> core.TeamDownResult
+	VerbPs             = "ps"              // admin, args core.StateArgs -> PsResult (read-only)
+	VerbTail           = "tail"            // admin, args core.WorkerLogArgs -> TailResult (read-only): a worker's log or a session's transcript
+	VerbShutdown       = "shutdown"        // admin, no args -> {}; the daemon shuts down after answering
+	VerbAbort          = "abort"           // admin, args core.AdminTarget -> core.AbortResult
+	VerbKill           = "kill"            // admin, args core.AdminTarget -> core.AgentResult (exit)
+	VerbResume         = "resume"          // admin, args core.AdminTarget -> core.AgentResult (new run)
+	VerbModel          = "model"           // admin, args core.ModelArgs -> core.ModelResult
+	VerbModels         = "models"          // admin, args core.AdminTarget -> core.ModelsResult (read-only): what `model` accepts for the worker
+	VerbGC             = "gc"              // admin, args core.GCArgs -> core.GCResult (archives under <dir>/archive)
 )
 
 // PsResult is the operator snapshot with the daemon's own pid and start time.
@@ -53,6 +54,11 @@ type PsResult struct {
 	// Outdated are the installs only `piggery setup --outdated` brings up (claude, codex, paseo),
 	// read from files on each call; absent when there are none.
 	Outdated []Outdated `json:"outdated,omitempty"`
+	// Update is the newest release tag when it is newer than the daemon's build (the daily check,
+	// cache/update.json); empty when none, when update.check is off, or on a dev build.
+	Update string `json:"update,omitempty"`
+	// Notices are the latest few messages to notify, newest first (what the notify hooks received).
+	Notices []core.NotifyMail `json:"notices,omitempty"`
 	core.State
 }
 
@@ -62,6 +68,15 @@ type Outdated struct {
 	Have  int    `json:"have"`            // the integer installed (0: from before the integers)
 	Want  int    `json:"want"`            // the integer this binary writes
 	Drift string `json:"drift,omitempty"` // same integer, other entries: what differs
+}
+
+// UpdateNotice is `v0.7.0 available: piggery update`, or "" when latest is "" (no newer release).
+// It is what top, ps --view and setup say of the daily update check.
+func UpdateNotice(latest string) string {
+	if latest == "" {
+		return ""
+	}
+	return latest + " available: piggery update"
 }
 
 // Detail is `v1 < v2`, or `v2: <drift>` when the integer is the binary's but the entries differ.
@@ -119,12 +134,21 @@ type Push struct {
 	Ref string `json:"ref,omitempty"`
 }
 
-// Auth is a participant's id and token, or (a session a person opened, e.g. Claude's hooks and
-// MCP server) its host process alone (core.AuthenticateHost).
+// Auth is a participant's id and token, or a session a person opened. Session auth carries the
+// host process, the harness session id, and its current directory so the daemon can bind the
+// request to the exact session and project root. Host-only auth remains for legacy adapters.
 type Auth struct {
-	ID    string `json:"id"`
-	Token string `json:"token"`
-	Host  string `json:"host,omitempty"`
+	ID         string `json:"id"`
+	Token      string `json:"token"`
+	Host       string `json:"host,omitempty"`
+	HarnessRef string `json:"harness_ref,omitempty"`
+	Cwd        string `json:"cwd,omitempty"`
+}
+
+// SessionSupportResult is the additive capability probe used before a Codex session mutates
+// state. An old daemon rejects the unknown verb, so a new adapter can fail closed before join.auto.
+type SessionSupportResult struct {
+	ThreadAuth bool `json:"thread_auth"`
 }
 
 type Request struct {

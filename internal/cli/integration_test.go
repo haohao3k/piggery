@@ -75,11 +75,11 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 		version int
 		digest  string
 	}{
-		{"pi", 3, "5735cddb9a1c"},
-		{"omp", 2, "fa7693692aad"},
-		{"dsh", 3, "a02ba524f330"},
-		{"claude", 2, "5049a85d3eef"},
-		{"codex", 2, "ded7f8bb0e96"},
+		{"pi", 4, "e998a046450d"},
+		{"omp", 4, "61d59999323a"},
+		{"dsh", 5, "58b08c386480"},
+		{"claude", 4, "95b7a524f906"},
+		{"codex", 4, "9b2e1dc1504d"},
 		{"paseo", 3, "93664ce8a897"},
 	} {
 		if got := digestOf(trees[want.name]()); got != want.digest || local.IntegrationVersion(want.name) != want.version {
@@ -135,7 +135,7 @@ func TestClaudeLeftoverFilesAreNotAnInstall(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"piggery":{"command":"/x/piggery","args":["mcp"]}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if n := proto.Notice(DaemonOutdated(dir)); !strings.Contains(n, "claude (v0 < v2)") {
+	if n := proto.Notice(DaemonOutdated(dir)); !strings.Contains(n, "claude (v0 < v4)") {
 		t.Fatalf("Claude has piggery's MCP server and the plugin files are old: notice %q", n)
 	}
 }

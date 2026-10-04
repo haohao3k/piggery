@@ -38,6 +38,9 @@ type Config struct {
 	// outdated part it returns (claude, codex, paseo: only `piggery setup --outdated` changes
 	// them). ps reports the same list, read again on each call (files only).
 	Integrations func(dir string) []proto.Outdated
+	// Latest, when set, is the newest release's tag: the call `piggery update --check` makes. A release
+	// build (not server.DevBuild) with update.check on asks it at most once a day (updatecheck.go).
+	Latest func(ctx context.Context) (string, error)
 }
 
 // DefaultDir is ~/.piggery.
@@ -55,6 +58,9 @@ func LockPath(dir string) string       { return filepath.Join(dir, "piggery.lock
 func DBPath(dir string) string         { return filepath.Join(dir, "piggery.db") }
 func ArchiveDir(dir string) string     { return filepath.Join(dir, "archive") }
 
+// noticesShown is how many of the latest notices ps carries (top shows them).
+const noticesShown = 5
+
 // maxLine bounds one request line.
 const maxLine = 16 << 20
 
@@ -64,9 +70,11 @@ type server struct {
 	adminToken   string
 	log          *slog.Logger
 	dir          string
-	version      string                            // Config.Version, for ps
-	integrations func(dir string) []proto.Outdated // Config.Integrations, for ps
-	settings     Settings                          // config.yaml
+	version      string                                // Config.Version, for ps
+	integrations func(dir string) []proto.Outdated     // Config.Integrations, for ps
+	latest       func(context.Context) (string, error) // Config.Latest, for the daily update check
+	updateAt     time.Time                             // when it last asked (read from the cache at the first tick); tick only
+	settings     Settings                              // config.yaml
 	startedAt    time.Time
 	stop         context.CancelFunc // the normal shutdown (as SIGINT/SIGTERM), for the stop verb
 
@@ -93,6 +101,10 @@ type conn struct {
 	// participant verb on this connection, so a superseded process gets run.stale.
 	caller *core.Caller
 	ident  uint64 // order of its identify (server.idents); the newest gets the wake
+	// harnessRef is captured once for an exact Codex session auth. Claude intentionally keeps a
+	// host-based connection across /clear, so its changing session ref never binds this channel.
+	harnessRef       string
+	strictHarnessRef bool
 
 	hmu   sync.Mutex
 	hosts map[string]bool // peerHostOK results by host
@@ -137,7 +149,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer db.Close()
 
-	s := &server{adminToken: token, log: log, dir: cfg.Dir, version: cfg.Version, integrations: cfg.Integrations, settings: settings, startedAt: time.Now(), stop: stop, conns: map[*conn]struct{}{}, runs: map[string]string{}}
+	s := &server{adminToken: token, log: log, dir: cfg.Dir, version: cfg.Version, integrations: cfg.Integrations, latest: cfg.Latest, settings: settings, startedAt: time.Now(), stop: stop, conns: map[*conn]struct{}{}, runs: map[string]string{}}
 	opts := local.Options{OnExit: func(participantID, runID string, e core.Exit) {
 		// Every worker exit is recorded: one that ends on its own, and the ones StopAll ends
 		// while the daemon shuts down (so not the request/daemon ctx). Idempotent after Stop.
@@ -310,6 +322,7 @@ func (s *server) tick(ctx context.Context) {
 			if _, err := s.eng.Watch(ctx); err != nil && ctx.Err() == nil {
 				s.log.Error("watch", "err", err)
 			}
+			s.checkUpdate(ctx, time.Now())
 		}
 	}
 }
@@ -380,22 +393,53 @@ func (s *server) retireTeam(teamID string, except *conn) {
 	}
 }
 
-// wake (core notify hook) pushes a wake frame, naming the participant's current session id, to its newest
-// identified connection only: a harness that briefly runs two adapters of one session (Codex
-// after /clear: the old MCP server lives ~30 s more) must not get two nudges.
+// wake (core notify hook) pushes a wake frame, naming the participant's current session id, to its
+// newest identified connection only: a harness that briefly runs two adapters of one session (Codex
+// after /clear: the old MCP server lives ~30 s more) must not get two nudges. When a connection
+// carries a session ref, it is eligible only for that exact current ref. This prevents a stale
+// identified connection from becoming the return channel after a session changes. Ref-less
+// connections are retained for legacy token-authenticated workers and adapters that have not yet
+// supplied a session binding.
 func (s *server) wake(participantID string) {
 	ref := s.eng.SessionRef(context.Background(), participantID)
 	s.mu.Lock()
-	var newest *conn
+	var newest, fallback *conn
+	knownRef := false
 	run := s.runs[participantID]
 	for c := range s.conns {
-		if c.caller != nil && c.caller.ParticipantID == participantID && c.caller.RunID == run &&
-			(newest == nil || c.ident > newest.ident) {
-			newest = c
+		if c.caller != nil && c.caller.ParticipantID == participantID && c.caller.RunID == run {
+			// Remember that this participant has a ref-bound connection even when its ref is
+			// stale. A ref-less connection must not become a fallback while a known session is
+			// waiting to bind; otherwise a wake can return to the previous session.
+			if c.strictHarnessRef && c.harnessRef != "" {
+				knownRef = true
+			}
+			if c.strictHarnessRef && c.harnessRef != ref {
+				continue
+			}
+			if fallback == nil || c.ident > fallback.ident {
+				fallback = c
+			}
+			if c.strictHarnessRef && c.harnessRef == ref && (newest == nil || c.ident > newest.ident) {
+				newest = c
+			}
 		}
 	}
 	s.mu.Unlock()
+	if newest == nil && knownRef {
+		// A known session changed but no current connection has identified that ref yet. Do
+		// not queue the wake on an older session; its next hook/MCP reconnect will rebind it.
+		return
+	}
+	if newest == nil {
+		newest = fallback
+	}
 	if newest != nil {
+		// SessionStart can rotate the ref between the first read and the connection scan. Do
+		// not emit a push naming the ref that is no longer current.
+		if current := s.eng.SessionRef(context.Background(), participantID); current != ref {
+			return
+		}
 		if err := newest.write(proto.Push{Event: proto.EventWake, Ref: ref}, pushTimeout); err != nil {
 			s.log.Warn("push", "event", proto.EventWake, "participant", participantID, "err", err)
 		}
@@ -428,6 +472,10 @@ func (s *server) push(participantID, event string) int {
 // participant verbs check only Auth. Neither falls back to the other.
 func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.Response {
 	switch req.Verb {
+	case proto.VerbSessionSupport:
+		// This is a read-only local capability probe. It deliberately does not authenticate or
+		// touch the engine, so a new adapter can fail closed before join.auto on an old daemon.
+		return call(req, func(struct{}) (any, error) { return proto.SessionSupportResult{ThreadAuth: true}, nil })
 	case proto.VerbJoinAuto:
 		// No token: a pi session outside PIGGERY_* registers as a solo, or resumes its participant
 		// of an open team. The socket's 0600 mode is the boundary.
@@ -453,6 +501,8 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 				if s.integrations != nil {
 					r.Outdated = s.integrations(s.dir)
 				}
+				r.Update = UpdateAvailable(s.dir, s.settings, s.version)
+				r.Notices, _ = s.eng.Notices(ctx, noticesShown)
 				return r, err
 			})
 		case proto.VerbShutdown:
@@ -514,6 +564,12 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 	}
 
 	byHost := req.Auth != nil && req.Auth.ID == "" && req.Auth.Token == "" && req.Auth.Host != ""
+	if cn.strictHarnessRef && !isCodexSession(req) {
+		return errResponse(req.ID, sessionRefError())
+	}
+	if cn.strictHarnessRef && req.Auth.HarnessRef != cn.harnessRef {
+		return errResponse(req.ID, sessionRefError())
+	}
 	if !byHost && (req.Auth == nil || req.Auth.ID == "" || req.Auth.Token == "") {
 		msg := "participant id and token required"
 		if req.AdminToken != "" { // --admin on a participant verb: say which verb family it is
@@ -529,7 +585,11 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 			return errResponse(req.ID, &core.Error{Code: core.CodeUnauthorized, RuleID: "host.peer",
 				Message: "this connection does not come from the host process", Layer: "token"})
 		}
-		c, err = s.eng.AuthenticateHost(ctx, req.Auth.Host)
+		if strings.HasPrefix(req.Auth.Host, "codex:") && req.Auth.HarnessRef != "" {
+			c, err = s.eng.AuthenticateSession(ctx, req.Auth.Host, req.Auth.HarnessRef, req.Auth.Cwd)
+		} else {
+			c, err = s.eng.AuthenticateHost(ctx, req.Auth.Host)
+		}
 	} else {
 		c, err = s.eng.Authenticate(ctx, req.Auth.ID, req.Auth.Token)
 		if err == nil && (req.Verb == proto.VerbIdentify || req.Verb == proto.VerbHarnessEvent) {
@@ -548,6 +608,13 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 		return errResponse(req.ID, err)
 	}
 	s.mu.Lock()
+	// A Codex session-authenticated request already carries the exact immutable identity. Capture it
+	// before dispatch so an adapter that omits the ref on a reconnecting identify cannot leave a
+	// ref-bound connection looking anonymous to wake routing.
+	if isCodexSession(req) && !cn.strictHarnessRef {
+		cn.harnessRef = req.Auth.HarnessRef
+		cn.strictHarnessRef = true
+	}
 	if b := cn.caller; b != nil && b.ParticipantID == c.ParticipantID {
 		c.RunID = b.RunID // the run this connection identified as, not the token's latest
 	}
@@ -569,6 +636,11 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 		return call(req, func(struct{}) (any, error) { return s.eng.WatchList(ctx, c) })
 	case proto.VerbIdentify:
 		return call(req, func(a core.IdentifyArgs) (any, error) {
+			if isCodexSession(req) {
+				if err := authSessionRef(req, a.HarnessRef, true); err != nil {
+					return nil, err
+				}
+			}
 			s.mu.Lock()
 			if b := cn.caller; b != nil && b.ParticipantID == c.ParticipantID && b.RunID == c.RunID && !a.NewRun {
 				a.Again = true // the same connection after a role change, not a reconnect
@@ -591,7 +663,15 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 	case proto.VerbPresence:
 		return call(req, func(a core.PresenceArgs) (any, error) { return nil, s.eng.Presence(ctx, c, a) })
 	case proto.VerbHarnessEvent:
-		return call(req, func(a core.HarnessEventArgs) (any, error) { return s.eng.HarnessEvent(ctx, c, a) })
+		return call(req, func(a core.HarnessEventArgs) (any, error) {
+			if isCodexSession(req) {
+				required := a.Event == core.HarnessSessionStart || a.Event == core.HarnessSessionEnd
+				if err := authSessionRef(req, a.HarnessRef, required); err != nil {
+					return nil, err
+				}
+			}
+			return s.eng.HarnessEvent(ctx, c, a)
+		})
 	default: // VerbAgent
 		return call(req, func(a core.AgentArgs) (any, error) {
 			r, err := s.eng.Agent(ctx, c, a)
@@ -604,6 +684,28 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 			return r, err
 		})
 	}
+}
+
+// authSessionRef prevents an authenticated Codex session connection from naming another session
+// in identify or harness.event. Identify and session lifecycle events must carry the ref; ordinary
+// turn events may omit it but cannot supply a different one.
+func authSessionRef(req proto.Request, supplied string, required bool) error {
+	if !required && supplied == "" {
+		return nil
+	}
+	if req.Auth == nil || req.Auth.HarnessRef == "" || supplied == "" || req.Auth.HarnessRef != supplied {
+		return sessionRefError()
+	}
+	return nil
+}
+
+func isCodexSession(req proto.Request) bool {
+	return req.Auth != nil && strings.HasPrefix(req.Auth.Host, "codex:") && req.Auth.HarnessRef != ""
+}
+
+func sessionRefError() error {
+	return &core.Error{Code: core.CodeUnauthorized, RuleID: "session.ref", Layer: "token",
+		Message: "harness session ref does not match authenticated session"}
 }
 
 func (s *server) isAdmin(tok string) bool {

@@ -187,15 +187,28 @@ and sends nothing. A message held by a limit is delivered with `piggery release 
 log` lists decisions and lifecycle events; `piggery doctor` lists what looks stuck (open turns,
 unacked mail of agents that are gone, workers without a process) and exits 1 when it finds any.
 
-**Notifications.** A role may send to `notify`: piggery runs `~/.piggery/hooks/notify` (any
-executable) with one JSON line on stdin: `id, from_label, team, kind, body, created_at`. It has 10
-seconds; errors go to `serve.log`. Minimal hook:
+**Notifications.** piggery tells you what only it knows: when the mail flow of a team needs you.
+`piggery setup notify add desktop`, `add herdr` or `add ntfy:<topic>` writes a hook for you into
+`~/.piggery/hooks/notify.d/` (it needs `jq`; `piggery setup notify` lists what is there and what each
+target lacks; `remove <target>` takes one out; it works from the next notice, no restart). Or write
+your own: each executable file in `~/.piggery/hooks/notify.d/` is run, all of them in parallel, with
+one JSON line on stdin: `id, kind, team, gate, dir, body, created_at`. `gate` is your team's gate (your session; for a solo, itself),
+`dir` the team's root (a solo's directory) and `body` one short sentence. `kind` is one of:
 
-```sh
-mkdir -p ~/.piggery/hooks
-printf '#!/bin/sh\ncat >> "$HOME/notify.jsonl"\n' > ~/.piggery/hooks/notify
-chmod +x ~/.piggery/hooks/notify
-```
+| `kind` | When |
+|---|---|
+| `reply` | the gate finished a turn on team mail and sent nothing: its answer is in its session |
+| `settled` | the gate sent its last message and no member is working or has mail waiting |
+| `failed` | the gate's turn on team mail failed: that mail waits for new mail to be given again |
+| `gate_lost` | a team has no live member left (its mail and workers wait for the next gate) |
+
+It never fires for a chat turn of yours, a turn that is not over mail, an interrupted turn, a
+headless worker, or a member that is not the gate; whether you are looking at the session is for
+the hook to decide. Agents cannot send to `notify`. A hook passes `body` to any command as an
+argument, never inside a command string: it carries names that users and agents chose. A hook that
+runs longer than 10 seconds is killed; an error is a line in `serve.log` with the file's name. The old
+single `hooks/notify` is not run any more: move it into `hooks/notify.d/` (`piggery check` says so).
+`top` shows the latest notices in a box beside its events; `n` opens it.
 
 ## Between teams
 
@@ -232,7 +245,7 @@ Everything piggery keeps is in `~/.piggery`. Some of it is yours to edit; the re
 | `config.yaml` | yes | daemon settings; every key with its default and a comment |
 | `templates/<name>/` | yes | team templates: `manifest.yaml` and the prompt files it names |
 | `harness/<harness>.json` | yes | how workers of one harness start (command, model, blacklist) |
-| `hooks/notify` | yes | your notification hook (above) |
+| `hooks/notify.d/` | yes | your notification hooks (above) |
 | `rules/*.md`, any file you name | yes | your own rules for `prompts:` (below) |
 | `serve.log` | read | the daemon's log: **where problems are written** |
 | `piggery.db`, `piggery.sock`, `piggery.lock`, `admin.token` | no | state, socket, lock, your admin credential |
@@ -246,6 +259,10 @@ and order. It never overwrites what you wrote.
 `piggery resume <name>` brings them back), except `display.columns`, read on every run.
 `harness/<harness>.json`: at the next spawn or resume. A template: at the next `team up` (a
 running team keeps the one it started with). A rules file: at the next session start.
+
+Run `piggery check` before `piggery restart`: it reads `config.yaml`, the harness profiles, your
+templates and the `prompts` entries the way the daemon will, and prints what would be refused (exit 1)
+and what would be skipped or ignored (`warning:`), without starting or changing anything.
 
 **On a mistake.** A key `config.yaml` does not know, or a bad value, stops the daemon from
 starting: the command only says it could not connect, and the reason, naming the key, is in
@@ -376,6 +393,8 @@ Remove a column to hide it; the name is always shown.
   download a release, and `--force` cannot bypass safe activation. Release-mode builds use the
   fork's release endpoint and checksum verification. Before a database upgrade, Piggery copies the
   database to `~/.piggery/backups/` (the three newest are kept).
+  Once a day the daemon checks for a newer release; nothing is installed automatically.
+  `update.check: false` disables the check; a local source build never asks.
 - **After a crash or a restart.** State and mail are in SQLite, so nothing is lost. The next command
   starts the daemon again and open sessions reconnect by themselves. It marks every agent whose
   process or connection is gone as `gone`, never respawns workers and never acks mail: bring a worker

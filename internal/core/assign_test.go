@@ -64,7 +64,4 @@ func TestAssignment(t *testing.T) {
 	if _, err := f.e.Send(ctx, f.lead2, core.SendArgs{To: "w1", Op: core.OpAssign, Body: "mine"}); rule(err) != "permission/assign.not_reports_to" {
 		t.Fatalf("assign by a non-reports_to: %v", err)
 	}
-	if _, err := f.e.Send(ctx, f.lead, core.SendArgs{To: core.AddrNotify, Op: core.OpAssign, Body: "x"}); code(err) != core.CodeInvalid {
-		t.Fatalf("assign to notify: %v", err)
-	}
 }

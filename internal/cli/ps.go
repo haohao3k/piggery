@@ -273,7 +273,8 @@ func (e *env) psView() error {
 // version and what to say when this binary differs, and the notice for outdated installs.
 type psViewDoc struct {
 	view.Doc
-	Daemon struct {
+	Notices []view.NoticeRow `json:"notices"` // the latest notices to the operator, newest first
+	Daemon  struct {
 		PID          int      `json:"pid"`
 		StartedAt    int64    `json:"started_at"`
 		Age          string   `json:"age"`
@@ -281,6 +282,7 @@ type psViewDoc struct {
 		VersionNotes []string `json:"version_notes,omitempty"`
 		Mismatch     bool     `json:"version_mismatch,omitempty"`
 		Outdated     string   `json:"outdated,omitempty"`
+		Update       string   `json:"update,omitempty"` // "v0.7.0 available: piggery update": the daily check found a newer release
 	} `json:"daemon"`
 }
 
@@ -289,6 +291,8 @@ func viewDoc(r proto.PsResult, stats map[string]view.Stats, now time.Time) psVie
 	d.Daemon.PID, d.Daemon.StartedAt, d.Daemon.Age, d.Daemon.Version = r.PID, r.StartedAt, view.Ago(r.StartedAt, now), r.Version
 	d.Daemon.VersionNotes, d.Daemon.Mismatch = view.VersionNotes(r.Version, Version)
 	d.Daemon.Outdated = proto.Notice(r.Outdated)
+	d.Daemon.Update = proto.UpdateNotice(r.Update)
+	d.Notices = view.NoticeRows(r.Notices, now)
 	return d
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -68,8 +67,7 @@ func newLiveFixture(t *testing.T) liveFixture {
 	rt := &driverLike{fakeRuntime: &fakeRuntime{}, held: map[string]bool{}}
 	now := time.Unix(1_800_000_000, 0)
 	e := core.New(db, core.WithRuntime(rt), core.WithClock(func() time.Time { return now }))
-	man := strings.Replace(leadWorker, "routing:\n", "routing:\n  - {from: lead, to: notify, allow: true}\n", 1)
-	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: man, Cwd: t.TempDir()})
+	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: leadWorker, Cwd: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +172,8 @@ func TestStartAfterTeamDownStopsTheWorker(t *testing.T) {
 // between the archive and the delete must stop the delete: the archive would be stale.
 func TestGCSkipsTeamChangedWithoutNewRows(t *testing.T) {
 	f := newLiveFixture(t)
-	ask, err := f.e.Send(ctx, f.lead, core.SendArgs{To: core.AddrNotify, Body: "may I?"})
+	f.spawn(t)
+	ask, err := f.e.Send(ctx, f.lead, core.SendArgs{To: "w1", Body: "may I?"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +181,7 @@ func TestGCSkipsTeamChangedWithoutNewRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer core.SetGCAfterSnapshot(func() {
-		if _, err := f.db.Exec(`UPDATE messages SET acked_at=acked_at+1 WHERE id=?`, ask.ID); err != nil {
+		if _, err := f.db.Exec(`UPDATE messages SET acked_at=COALESCE(acked_at,0)+1 WHERE id=?`, ask.ID); err != nil {
 			t.Error(err)
 		}
 	})()

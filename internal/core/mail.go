@@ -117,9 +117,6 @@ func (e *Engine) send(ctx context.Context, c Caller, a SendArgs) (SendResult, er
 			e.notifyAfterCommit(id)
 		}
 	}
-	if !res.Duplicate && !res.Held && a.To == AddrNotify {
-		e.notifyHookAfterCommit(res.ID)
-	}
 	if noticeTo != "" {
 		e.notifyAfterCommit(noticeTo)
 	}
@@ -165,40 +162,38 @@ func (t *txn) sendGate(p participant, m manifest, a SendArgs, tr *gateTrace) (ga
 		if a.Target != "" || (a.Op != "" && a.Op != OpAssign) {
 			return g, errf(CodeInvalid, "target and op replace/remove are only valid for board; op assign for a member")
 		}
-		if a.Op == OpAssign && a.To == AddrNotify {
-			return g, errf(CodeInvalid, "op assign is for a member of your team, not notify")
+		if a.To == AddrNotify { // the engine's channel: no routing rule opens it
+			return g, deny(&p, "send", "routing", "routing.notify", "notify is the engine's channel: agents cannot send to it", nil,
+				map[string]any{"to": a.To})
 		}
 		if a.Body == "" {
 			return g, errf(CodeInvalid, "body is required")
 		}
-		g.toID, toRole = AddrNotify, AddrNotify
-		if a.To != AddrNotify {
-			q, other, err := t.resolveSendTarget(p, a.To)
-			if err != nil {
-				return g, err
-			}
-			g.toID, toRole, g.recipient = q.id, q.role, q.id
-			if other != nil && a.Op == OpAssign {
-				return g, errf(CodeInvalid, "op assign is for a member of your team")
-			}
-			if a.Op == OpAssign && q.reportsTo != p.id {
-				return g, deny(&p, "send", "permission", "assign.not_reports_to", "only the member's reports_to can assign it a task", nil,
-					map[string]any{"to": a.To})
-			}
-			if other != nil {
-				// Another team: gate to gate only; neither team's routing nor cc applies.
-				if err := t.gateCrossTeam(p, q, *other, a); err != nil {
-					return g, err
-				}
-				tr.add("team_gate", "pass", "", fmt.Sprintf("%s is the gate of its team and %s the gate of team %s", p.name, a.To, other.name))
-				g.crossTeam = true
-				break
-			}
-			if g.noGate, err = t.gateLeaver(p, q, a); err != nil {
-				return g, err
-			}
-			tr.add("visibility", "pass", "", fmt.Sprintf("%s is %s, role %s, in team %s", a.To, q.id, q.role, p.team))
+		q, other, err := t.resolveSendTarget(p, a.To)
+		if err != nil {
+			return g, err
 		}
+		g.toID, toRole, g.recipient = q.id, q.role, q.id
+		if other != nil && a.Op == OpAssign {
+			return g, errf(CodeInvalid, "op assign is for a member of your team")
+		}
+		if a.Op == OpAssign && q.reportsTo != p.id {
+			return g, deny(&p, "send", "permission", "assign.not_reports_to", "only the member's reports_to can assign it a task", nil,
+				map[string]any{"to": a.To})
+		}
+		if other != nil {
+			// Another team: gate to gate only; neither team's routing nor cc applies.
+			if err := t.gateCrossTeam(p, q, *other, a); err != nil {
+				return g, err
+			}
+			tr.add("team_gate", "pass", "", fmt.Sprintf("%s is the gate of its team and %s the gate of team %s", p.name, a.To, other.name))
+			g.crossTeam = true
+			break
+		}
+		if g.noGate, err = t.gateLeaver(p, q, a); err != nil {
+			return g, err
+		}
+		tr.add("visibility", "pass", "", fmt.Sprintf("%s is %s, role %s, in team %s", a.To, q.id, q.role, p.team))
 		rule, ok := m.route(p.role, toRole)
 		if !ok {
 			return g, deny(&p, "send", "routing", rule, "routing does not allow "+p.role+" -> "+toRole, nil,

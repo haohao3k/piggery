@@ -3,6 +3,29 @@ semantic reviewers test one candidate; a coverage reviewer uses open-code-review
 deterministic file selection and rules, then performs its own semantic review. You adjudicate
 the evidence. Agreement, passing tests and coverage percentages do not decide the verdict.
 
+## Preflight this launch and bind every return path
+
+Before preparing or founding a review, establish the exact launch context from the current
+session. Use `{tool:who}` to record this session's `(you) id=...`, team, role and state, then use
+read-only `piggery ps --json` to record its current `run_id`, participant `cwd` and team root.
+`pwd -P` must match that participant `cwd`, and Piggery's root/allowed-root checks must show that
+cwd is an authorized project location. This session binding root is the operating/team root; it
+may be an outer workspace containing a nested product Git checkout and need not itself be a Git
+root. If a check is unavailable, the cwd is unauthorized, the participant is gone, or the
+readbacks disagree, stop with `BLOCKED` and report the observed state.
+
+Every launch has its own return binding. Put `return_to=<coordinator participant id>`,
+`return_team=<team>`, `return_root=<coordinator session/team root>`, `review_run=<run id>` and
+`candidate_head=<SHA>` in every worker assignment. `return_root` identifies the coordinator's
+session binding; it is not the candidate Git root and need not equal a detached worktree root.
+Never compare it with the candidate root. After spawning a worker, use read-only
+`piggery ps --json` to map the exact worker name from the spawn result to its current participant
+id, run id, cwd and team root; verify its cwd is the assigned candidate worktree and its team
+root matches `return_root`, record the returned task assignment's `#N`, and send the assignment
+to that id. A role label, a remembered name from another review, or a cross-project address is
+not a return binding. Never hardcode `coordinator` or `lead`, and never send review mail to
+`notify`; v0.7 reserves that channel for engine notices.
+
 ## Expand a short request into a review brief
 
 The Human may invoke this workflow with no extra text, or ask to review recent lanes, changes
@@ -63,7 +86,7 @@ Use the native Piggery `who` and `agent templates` tools to check the current se
 requested review template (`triple-review` by default). Honor an explicitly named compatible
 custom template, including the permitted Claude coverage variant. A direct invocation in a
 solo session authorizes founding that review team once the scope is ready; use `agent` action
-`found` with that template from the intended repository root. Do not infer that this printed guide proves the installed
+`found` with that template from the exact preflight operating root. Do not infer that this printed guide proves the installed
 template or an existing team's frozen manifest is current. Verify its roles/routes and the
 coordinator instructions actually delivered before spawning.
 
@@ -90,6 +113,11 @@ incompatible template is a concrete blocker, not permission to install, restart 
 - Give every reviewer the same candidate identity and brief. For test commands that write,
   use separate disposable copies and record their identity. Keep review reports out of the
   candidate and out of shared files visible to the other reviewers during the first pass.
+- Before releasing a candidate, run `git -C <candidate-root> rev-parse --show-toplevel` and
+  `git -C <candidate-root> rev-parse HEAD`; both must succeed and the latter must match the
+  candidate SHA in the brief. This candidate Git root is independent of the coordinator session
+  binding and may be a detached lane worktree. Pass that exact candidate root to OCR and every
+  worker instead of relying on a prior launch's cwd; never compare it with `return_root`.
 
 ## Verify routes, then release the sealed pass
 
@@ -119,9 +147,11 @@ configured model as proof of the route that ran. The coverage worker calls OCR i
 not start another coding-agent CLI inside its session.
 
 Once every readiness check passes, send each worker `{tool:send}` kind `review`, op `assign`,
-with the same neutral brief. Do not add OCR's selected files or mechanisms to either semantic
-assignment. Then end your turn: mail wakes you. Do not poll or begin forwarding findings as
-they arrive. The first pass ends only when all three handbacks exist for this candidate.
+with the same neutral brief. Use the exact worker participant id recorded in the launch binding;
+never substitute a role label or re-resolve a name after the assignment is sent. Do not add OCR's
+selected files or mechanisms to either semantic assignment. Then end your turn: mail wakes you.
+Do not poll or begin forwarding findings as they arrive. The first pass ends only when all three
+handbacks exist for this candidate.
 
 Routing prevents reviewer-to-reviewer mail and board pins. Team membership is visible, and
 the template does not sandbox files or hide transcripts. Keep findings in private handback
@@ -139,7 +169,11 @@ a new round. Coverage is a floor for inspection, not a third vote or proof of co
 
 After all sealed handbacks arrive, deduplicate by failing mechanism. For a material conflict,
 send the same neutral contradiction packet only to the conflicting reviewers, using
-`{tool:send}` kind `follow`, `reply_to` their handbacks. State two falsifiable claims and the
+`{tool:send}` kind `follow`, with `to` bound to the handback's reported participant id and
+`reply_to` bound to that handback's message number. Recheck that id's current `run_id`, team and
+root before sending; if it is unknown or gone, retain the contradiction packet and report
+`BLOCKED` instead of re-resolving a name. Never address a follow-up to `coordinator`, `lead`,
+`notify`, or a recipient remembered from another launch. State two falsifiable claims and the
 governing constraint. Ask what disproves each claim, whether the opposing mechanism meets
 the constraint, and which smallest bounded check decides it. Request CONCEDE, MAINTAIN,
 NARROW or REVERSE with evidence. Run or route that bounded check if authorized. Record the

@@ -102,3 +102,6 @@ receipt. Inspect the reported stage, retain the backup, and retry the corrected 
 when the daemon can be safely restarted. Rollback restores the previous executable, not a copied
 credential/database directory; any asset changes also need the corresponding prior build's guarded
 refresh. Keep backups and receipts outside Git and never paste auth material into a handback.
+If the candidate migrated the schema, do not start the previous executable against the upgraded
+database. Prefer a corrected candidate; a deliberate rollback must account for the store's
+pre-migration backup and any activity after it. See [session isolation](session-isolation.md).

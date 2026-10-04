@@ -400,7 +400,7 @@ func TestTopEventsBoxAndKeyLines(t *testing.T) {
 		t.Fatalf("key lines = %q; want a rule, then move and look, then act and toggle", got[len(got)-3:])
 	}
 	// The two key lines are one grid: the i-th entries start at the same cell.
-	for _, pair := range [][2]string{{"←/→ tab", "M model"}, {"enter open/close", "e events"}, {"esc back", "m mouse"}} {
+	for _, pair := range [][2]string{{"←/→ tab", "M model"}, {"enter open/close", "e events"}, {"esc back", "n notices"}} {
 		if a, b := strings.Index(keys[0], pair[0]), strings.Index(keys[1], pair[1]); lipgloss.Width(keys[0][:a]) != lipgloss.Width(keys[1][:b]) {
 			t.Fatalf("key lines = %q; want %q above %q", keys, pair[0], pair[1])
 		}

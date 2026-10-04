@@ -113,8 +113,10 @@ var topColumns = slices.DeleteFunc(slices.Clone(server.DisplayColumns), func(c s
 var (
 	listFit = []namedFit{{"cwd", 8}, {"model", 8}, {"role", 0}, {"model", 0}, {"turns", 0}, {"age", 0}, {"name", 8}}
 
-	eventCols = []string{"TIME", "WHO", "EVENT", "TARGET"}
-	eventFit  = []fitStep{{3, 6}, {1, 6}, {2, 8}}
+	noticeCols = []string{"AGE", "WHERE", "KIND", "BODY"}
+	noticeFit  = []fitStep{{3, 20}, {1, 8}, {2, 4}}
+	eventCols  = []string{"TIME", "WHO", "EVENT", "TARGET"}
+	eventFit   = []fitStep{{3, 6}, {1, 6}, {2, 8}}
 )
 
 const (
@@ -275,7 +277,8 @@ func (m *topModel) render() string {
 	if tabs := m.tabs(); len(tabs) > 1 {
 		head = append(head, cut.Render(m.tabBar(tabs, len(head))))
 	}
-	foot := m.eventsBox(width, height, now)
+	sw, beside := m.sideSplit(width)
+	foot := m.band(width, height, sw, beside, now)
 	if m.killing.id != "" { // the one question, above the keys
 		foot = append(foot, " "+lipgloss.NewStyle().Foreground(colWarning).Bold(true).Render("kill "+m.killing.name+"? y/n"))
 	} else if m.killNote != "" {
@@ -293,17 +296,16 @@ func (m *topModel) render() string {
 	y := len(head)
 	var main []string
 	switch {
-	case !m.sideShown() || m.sel == "": // no sidebar with nothing to show in it
-		main = m.listBox(width, room, y, now)
-	case !m.narrow():
-		sw := max(sideMin, width/3)
+	case beside:
 		left := m.listBox(width-sw, room, y, now)
 		right := m.sideBox(width-sw, y, sw, room, now)
 		for i := range left {
 			main = append(main, left[i]+right[i])
 		}
-	default: // narrow: the sidebar instead of the list, until esc
+	case m.sideShown() && m.sel != "": // narrow: the sidebar instead of the list, until esc
 		main = m.sideBox(0, y, width, room, now)
+	default: // no sidebar, or nothing to show in it
+		main = m.listBox(width, room, y, now)
 	}
 	frame := append(append(head, main...), foot...)
 	if m.pick != nil {
@@ -403,6 +405,9 @@ func (m *topModel) header(now time.Time) string {
 		stMuted.Render(fmt.Sprintf(" %s · %d working · %d idle ", view.Plural(len(m.ps.Teams), "team"), working, idle)) +
 		held + " " + pill(fmt.Sprintf("unacked %d", m.ps.Unacked), colSurface, colMuted)
 	if n := proto.Notice(m.ps.Outdated); n != "" { // an install only `piggery setup --outdated` brings up to date
+		head += " " + pill(n, colWarning, colInk)
+	}
+	if n := proto.UpdateNotice(m.ps.Update); n != "" { // the daily update check found a newer release
 		head += " " + pill(n, colWarning, colInk)
 	}
 	return head
@@ -811,9 +816,96 @@ func eventStyle(tone view.Tone) lipgloss.Style {
 	return stMuted
 }
 
+// sideSplit is the width of the Overview panel and whether it is beside the list: the one split the
+// list | Overview columns and the band below them (notices | events) share.
+func (m *topModel) sideSplit(width int) (sw int, beside bool) {
+	return max(sideMin, width/3), m.sideShown() && m.sel != "" && !m.narrow()
+}
+
+// band is the bottom of the screen above the keys: the notices (psResult.Notices: what the notify
+// hooks received) left, at the list's width, and the events right, at the Overview's, split where the
+// list and the Overview are. Each is a box or, folded, one line at the top of its side; the band is as
+// tall as the taller side. With no notices the events take the width, and where the Overview is not
+// beside the list the two are stacked.
+func (m *topModel) band(width, height, sw int, beside bool, now time.Time) []string {
+	if len(m.ps.Notices) == 0 {
+		return m.eventsBox(width, height, now, 0)
+	}
+	if !beside {
+		return append(m.noticesBox(width, height, now, 0), m.eventsBox(width, height, now, 0)...)
+	}
+	lw := width - sw
+	left, right := m.noticesBox(lw, height, now, 0), m.eventsBox(sw, height, now, 0)
+	n := max(len(left), len(right))
+	if m.notices {
+		left = m.noticesBox(lw, height, now, n)
+	}
+	if m.events {
+		right = m.eventsBox(sw, height, now, n)
+	}
+	pad := func(lines []string, i, w int) string {
+		if i >= len(lines) {
+			return strings.Repeat(" ", w)
+		}
+		return lines[i] + strings.Repeat(" ", max(w-lipgloss.Width(lines[i]), 0))
+	}
+	out := make([]string, n)
+	for i := range out {
+		out[i] = pad(left, i, lw) + pad(right, i, sw)
+	}
+	return out
+}
+
+// noticesBox is the latest notices in a box of width w (2 rows in a short window, else up to 5), at
+// least h lines tall, or, folded, one line with the newest.
+func (m *topModel) noticesBox(w, height int, now time.Time, h int) []string {
+	rows := view.NoticeRows(m.ps.Notices, now)
+	warn := func(r view.NoticeRow) bool { return r.Kind == "failed" || r.Kind == "gate_lost" }
+	if !m.notices { // folded: one line of text, indented like the key lines
+		line := " " + stTitle.Render("● Notices")
+		if len(rows) > 0 {
+			latest := truncate(rows[0].Age+" "+rows[0].Kind+" "+rows[0].Body, max(w-lipgloss.Width(" ● Notices · "), 0))
+			st := stMuted
+			if warn(rows[0]) {
+				st = eventStyle(view.ToneWarning)
+			}
+			line += stRule.Render(" · ") + st.Render(latest)
+		}
+		return []string{line}
+	}
+	n := 5
+	if height < 30 {
+		n = 2
+	}
+	rows = rows[:min(len(rows), n)]
+	cells := make([][]string, len(rows))
+	for i, r := range rows {
+		cells[i] = []string{r.Age, r.Where, r.Kind, r.Body}
+	}
+	inner := w - 2
+	cw := fitCols(noticeCols, cells, inner-3, noticeFit)
+	lines := make([]string, len(rows))
+	for i, r := range rows {
+		kind := stMuted
+		if warn(r) {
+			kind = eventStyle(view.ToneWarning)
+		}
+		lines[i] = row(cells[i], cw, nil, func(c int) lipgloss.Style {
+			switch c {
+			case 2:
+				return kind
+			case 3:
+				return stPlain
+			}
+			return stMuted
+		}, false, inner)
+	}
+	return box(stTitle.Render("Notices"), lines, w, max(len(lines)+2, h))
+}
+
 // eventsBox is the latest events in a box like the Overview's (3 rows in a short window, 5, or 8 in
-// a tall one), or, collapsed, one rule line with the title and the latest event.
-func (m *topModel) eventsBox(width, height int, now time.Time) []string {
+// a tall one), at least h lines tall, or, collapsed, one rule line with the title and the latest event.
+func (m *topModel) eventsBox(width, height int, now time.Time, h int) []string {
 	n := 8
 	switch {
 	case height < 30:
@@ -841,7 +933,7 @@ func (m *topModel) eventsBox(width, height int, now time.Time) []string {
 		st := eventStyle(tones[i])
 		lines[i] = row(r, w, nil, func(int) lipgloss.Style { return st }, false, inner)
 	}
-	return box(stTitle.Render("Events"), lines, width, max(len(rows), 1)+2)
+	return box(stTitle.Render("Events"), lines, width, max(max(len(rows), 1)+2, h))
 }
 
 // styleTail colors a tail line (view.ParseTail's kinds) cut to n cells: tool calls secondary with

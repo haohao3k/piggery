@@ -48,7 +48,7 @@ func (e *Engine) found(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 	if err != nil {
 		return AgentResult{}, errf(CodeInvalid, "template %s: %v", a.Template, err)
 	}
-	m, err := validManifest(text)
+	m, warnings, err := loadManifest(text)
 	if err != nil {
 		return AgentResult{}, err
 	}
@@ -110,7 +110,7 @@ func (e *Engine) found(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 	if notice != "" {
 		e.notifyHookAfterCommit(notice)
 	}
-	res.Warnings = manifestWarnings(m)
+	res.Warnings = warnings
 	return res, nil
 }
 
@@ -229,10 +229,8 @@ func (e *Engine) readTemplate(name, cwd string) (manifest, error) {
 	if err != nil {
 		return manifest{}, err
 	}
-	if err := noDeclaredTools(text); err != nil {
-		return manifest{}, err
-	}
-	return parseManifest(text)
+	m, _, err := loadManifest(text)
+	return m, err
 }
 
 func orNone(s string) string {

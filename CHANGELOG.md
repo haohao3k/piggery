@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Rebase the local fork on upstream v0.7.0 while retaining local build/update ownership and
+  native three-review entry points. Review templates follow the engine-owned notify flow.
+- Isolate interactive Codex chats by thread and canonical directory instead of the shared
+  app-server PID. Refuse missing or mismatched bindings before tools and mail; bind wakes
+  to the identified connection's thread.
+- Quarantine ambiguous legacy Codex aliases in schema 23 without deleting or redirecting
+  history. `doctor` exposes recovery candidates; review handbacks pin a fresh per-launch
+  participant ID. See [session isolation](docs/session-isolation.md).
+
 - Make local `piggery update` rebuild and activate assets from its owning checkout through the
   guarded local workflow. Bind the source path to the binary and receipt, keep `--check` read-only,
   and prevent `--force` or the calling directory from redirecting it to a release installation.
@@ -23,13 +32,46 @@
   provider families and one OCR delegate coverage review of a frozen candidate. The coordinator
   verifies readiness, keeps the first pass sealed and adjudicates findings by evidence.
 
+## v0.7.0 - 2026-10-03
+
+piggery now tells you, by itself, when a team's mail flow needs you, and `piggery check` tests your
+files before a restart.
+
+After upgrading, run `piggery setup --outdated`: the pi and omp integrations are now 3 and dsh 4
+(Paseo, Claude and Codex are unchanged). Then restart the pi, omp and dsh sessions that were open.
+
+Breaking: only piggery writes to `notify` now. An agent's send to `notify` is refused, and a
+`to: notify` routing line or a `notify: notify` timer in a template is ignored with a warning
+(`piggery check` lists them). Notify hooks run from `~/.piggery/hooks/notify.d/`; a single
+`~/.piggery/hooks/notify` is no longer run, so move it into that directory.
+
+- Notices, decided by the engine at the end of a gate's turn, from the team's mail alone: `reply`
+  (a turn on team mail ended and the gate sent nothing), `settled` (the gate sent its last message
+  and nobody works or has mail waiting), `failed` (a turn on team mail failed, so that mail waits)
+  and `gate_lost`. Your chat with the gate, a gate that is still dispatching work, a headless gate
+  and a member that is not the gate never notify. The hook's JSON line adds `gate` and `dir`,
+  and `kind` is the notice's kind. The respawn-limit notice goes to the worker's lead only.
+- `piggery setup notify add desktop|herdr|ntfy:<topic>` writes a ready hook into `notify.d/`
+  (`remove` takes it out; alone, it lists the hooks and what each needs). Every file there runs in
+  parallel, each with its own 10-second limit.
+- `piggery check`: reads `config.yaml`, the harness profiles, every template and your prompts with
+  the daemon's own loaders and prints what they would refuse or ignore; it changes nothing.
+- The daemon checks once a day for a newer release; `top`, `setup` and `update --check` say `vX
+  available: piggery update`. Nothing is installed on its own; `update.check: false` turns it off.
+- `top` shows the latest notices at the bottom left, beside the events; `n` opens or closes them,
+  like `e` for the events. `ps --view` carries them as `notices`, and the update notice as
+  `daemon.update`.
+- The template list an agent reads now also shows a template that `team up` would refuse.
+- Fix: a build stamped `dev-<sha>` is treated as a build from source: `piggery update` no longer
+  replaces it with an older release unless `--force`.
+
 ## v0.6.0 - 2026-10-01
 
 The Paseo plugin is rebuilt on what `piggery top` shows, and a project no longer jumps around the
 list when its sessions reconnect.
 
-After upgrading, reload the Paseo app if you use its plugin (its integration is now 3; `piggery setup
---outdated` updates it).
+After upgrading, run `piggery setup --outdated`: the pi and omp integrations are now 2, dsh 3 and
+Paseo 3. Then restart the pi, omp and dsh sessions that were open, and reload the Paseo app.
 
 - Paseo plugin, rebuilt: the Overview has `top`'s rows, order, state words, folds and since, one
   line per worker with a ctx column, a header with working/idle/waiting counts, events as short
@@ -42,12 +84,14 @@ After upgrading, reload the Paseo app if you use its plugin (its integration is 
 - Projects are listed live first, then sleeping (nothing working and no real turn for over a day),
   all gone, closed. A live project sorts by its latest real turn; a reconnect or a daemon restart
   moves nothing.
-- An idle worker's or solo's since counts from its last real turn, not from a reconnect.
+- An idle worker's or solo's since counts from its last real turn, not from a reconnect. `ps --json`
+  gives a solo's `last_turn_end` too.
 - `piggery top`: in a live headless worker's Overview, a click on the model (blue, `▾`) or `M` opens a
   picker of the models its harness offers, with the thinking level; `enter` or a double-click
-  applies. The footer always lists `M model`, dim where it does nothing.
-- Fix: a wake or reconnect that finds no mail is not a turn any more (no empty turn, last turn kept).
-- Fix: in `top`'s model picker, a mouse report that arrives as keys no longer types into the filter.
+  applies (a dsh worker lists its models once the dsh integration is updated). The footer always
+  lists `M model`, dim where it does nothing.
+- Fix: in pi, omp and dsh sessions, a wake or reconnect that finds no mail is not a turn any more (no
+  empty turn, last turn kept); needs the updated integration.
 - Fix: in `top`'s Overview, the last turn no longer runs into the joined/spawned value.
 
 ## v0.5.3 - 2026-09-30

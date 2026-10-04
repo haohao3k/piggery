@@ -31,7 +31,7 @@ func TestOpenMigratesV1File(t *testing.T) {
 	}
 	defer db.Close()
 	var version, team string
-	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "22" {
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "23" {
 		t.Fatalf("version = %q, %v", version, err)
 	}
 	if err := db.QueryRow(`SELECT name FROM teams WHERE id='T1'`).Scan(&team); err != nil || team != "p2p" {
@@ -166,10 +166,10 @@ func TestOpenBacksUpBeforeMigrating(t *testing.T) {
 		}
 		db.Close()
 	}
-	if got, want := names(), "mine.db pre-v18-22 pre-v19-22 pre-v20-22 pre-v3-4-by-hand.db"; got != want {
+	if got, want := names(), "mine.db pre-v18-23 pre-v19-23 pre-v20-23 pre-v3-4-by-hand.db"; got != want {
 		t.Fatalf("backups = %q; want the 3 newest upgrades, and both other files kept", got)
 	}
-	es, _ := filepath.Glob(filepath.Join(backups, "pre-v20-22-*.db"))
+	es, _ := filepath.Glob(filepath.Join(backups, "pre-v20-23-*.db"))
 	cp, err := sql.Open("sqlite", "file:"+es[0])
 	if err != nil {
 		t.Fatal(err)
@@ -196,6 +196,80 @@ func TestOpenBacksUpBeforeMigrating(t *testing.T) {
 	defer raw.Close()
 	if err := raw.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "20" {
 		t.Fatalf("after the failed backup the DB is at v%s, %v; want it left at v20", version, err)
+	}
+}
+
+// v22 -> v23 quarantines only ambiguous, interactive Codex bindings. It preserves the participant,
+// aliases and mail rows so an operator can audit the old history while a fresh exact thread binding
+// is created by the core.
+func TestMigrateV23QuarantinesAmbiguousCodexBindings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "piggery.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, ddl := range migrations[:22] {
+		if _, err := old.Exec(ddl); err != nil {
+			t.Fatalf("v%d: %v", i+1, err)
+		}
+	}
+	const participant = `INSERT INTO participants
+		(id, run_id, kind, harness, mode, name, cwd, state, state_since, last_activity, token_hash,
+		 harness_ref, session_ref, host, created_at)
+		VALUES (?, ?, 'agent', ?, ?, ?, ?, 'idle', 1, 1, 'hash', ?, ?, ?, 1)`
+	for _, p := range []struct {
+		id, harness, mode, name, cwd, harnessRef, sessionRef, host string
+	}{
+		{id: "ambiguous", harness: "codex", mode: "interactive", name: "ambiguous", cwd: "/a", harnessRef: "thread-a", sessionRef: "thread-b", host: "codex:1:1"},
+		{id: "headless", harness: "codex", mode: "headless", name: "headless", cwd: "/h", harnessRef: "worker-a", sessionRef: "worker-b", host: "codex:2:2"},
+		{id: "clean", harness: "codex", mode: "interactive", name: "clean", cwd: "/c", harnessRef: "thread-c", sessionRef: "thread-c", host: "codex:3:3"},
+		{id: "claude", harness: "claude", mode: "interactive", name: "claude", cwd: "/d", harnessRef: "session-a", sessionRef: "session-b", host: "claude:4:4"},
+	} {
+		if _, err := old.Exec(participant, p.id, "run-"+p.id, p.harness, p.mode, p.name, p.cwd,
+			p.harnessRef, p.sessionRef, p.host); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := old.Exec(`INSERT INTO participant_refs(ref, participant_id) VALUES ('thread-old','ambiguous'), ('worker-old','headless')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(`INSERT INTO messages(id, seq, from_id, to_id, body, created_at)
+		VALUES ('history', 1, 'ambiguous', 'notify', 'preserve me', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(`INSERT INTO meta(key, value) VALUES ('schema_version', '22')
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value`); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, want := range []struct {
+		id string
+		q  int
+	}{
+		{"ambiguous", 1},
+		{"headless", 0},
+		{"clean", 0},
+		{"claude", 0},
+	} {
+		var got int
+		if err := db.QueryRow(`SELECT binding_quarantined FROM participants WHERE id=?`, want.id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want.q {
+			t.Fatalf("%s binding_quarantined = %d, want %d", want.id, got, want.q)
+		}
+	}
+	var body string
+	if err := db.QueryRow(`SELECT body FROM messages WHERE id='history'`).Scan(&body); err != nil || body != "preserve me" {
+		t.Fatalf("history = %q, %v", body, err)
 	}
 }
 

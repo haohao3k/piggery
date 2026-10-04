@@ -23,8 +23,8 @@ piggery completion --batch N                  # ack a batch you pulled with inbo
 ```
 
 - `to`: a teammate's name; another team's name (reaches its gate; only gates write between
-  teams); a solo's name; `board` (pins: `--op replace|remove --target #N`); `notify` (one way,
-  to the Human; nothing comes back).
+  teams); a solo's name; `board` (pins: `--op replace|remove --target #N`). `notify` is piggery's own
+  channel to the Human; agents cannot send to it.
 - `--op assign` (to a member that reports to you): the mail becomes that member's current task,
   shown in `piggery top`; a later assign replaces it. Put a short title on the first line. A task
   given by `agent spawn|resume` is one already.
@@ -97,7 +97,7 @@ set `template:` to that name. You do not bring it up: the Human does, or asks a 
 `template` (required, the name), `summary`, `auto_join_role`, `roles.<role>` (`instructions` or
 `instructions_file`, `tools`, `can_spawn`, `can_pin`, `can_set_cwd`, `spawn`), `routing`, `limits`, `timers`.
 The tools are `send`, `inbox`, `who`, `agent` and no others. The first routing rule matching (sender's
-role, recipient's role) decides and none means denied; `to: notify` lets a role notify the Human; mail
+role, recipient's role) decides and none means denied; mail
 between teams ignores routing. A role that can spawn needs `limits.depth` and `limits.concurrency`.
 
 **Prompts.** Name tools only as `{tool:send}`, `{tool:agent}`, `{tool:inbox}`, `{tool:who}` (each harness names them
@@ -130,7 +130,6 @@ roles:
 routing:
   - {from: lead, to: helper, allow: true}
   - {from: helper, to: lead, allow: true}
-  - {from: lead, to: notify, allow: true}
 limits: {depth: 2, concurrency: 3}
 timers:
   - {on: helper, silent_for: 30m, notify: reports_to}

@@ -166,6 +166,10 @@ func (e *Engine) Doctor(ctx context.Context) (DoctorResult, error) {
 			args        []any
 			detail      func(cols []string) string
 		}{
+			{"session_quarantined", `SELECT id, run_id, name FROM participants WHERE binding_quarantined=1`, nil,
+				func(c []string) string {
+					return fmt.Sprintf("legacy Codex binding %s mixed thread identities; isolated on reconnect; history retained for explicit recovery", c[2])
+				}},
 			// A batch with ended_at was closed unacked (interrupted or failed turn): not open.
 			{"open_batch", `SELECT p.id, b.run_id, b.batch_seq, strftime('%Y-%m-%dT%H:%M:%SZ', b.opened_at/1000, 'unixepoch') FROM batches b
 				JOIN participants p ON p.run_id = b.run_id

@@ -93,7 +93,7 @@ func TestUpdate(t *testing.T) {
 
 	var out strings.Builder
 	if replaced, err := u.run(context.Background(), &out, true, false); err != nil || replaced ||
-		out.String() != "current v0.1.0, latest v0.2.0\n" {
+		out.String() != "current v0.1.0, latest v0.2.0\nv0.2.0 available: piggery update\n" {
 		t.Fatalf("--check = %v, %v, %q", replaced, err, out.String())
 	}
 	unchanged("--check")

@@ -55,10 +55,10 @@ export function sentText(r) {
  * team and per solo session. Teams and solos talk gate to gate; a team name addresses its gate.
  */
 export function renderWho(ps, selfId) {
-	// Names are addresses; an id only tells apart two listed people with the same name.
+	// A launch pins its own return address by id; duplicate names also need disambiguation.
 	const seen = new Map();
 	for (const p of ps) if (p.kind !== "team") seen.set(p.name, (seen.get(p.name) ?? 0) + 1);
-	const id = (p) => (seen.get(p.name) > 1 ? ` id=${p.id}` : "");
+	const id = (p) => (p.id === selfId || seen.get(p.name) > 1 ? ` id=${p.id}` : "");
 	const members = ps.filter((p) => p.kind === "member");
 	const teams = ps.filter((p) => p.kind === "team");
 	const solos = ps.filter((p) => p.kind === "solo");
@@ -88,4 +88,3 @@ export function renderWho(ps, selfId) {
 export function afterRetire(err, isWorker) {
 	return err?.rule_id === "team.closed" && !isWorker ? "solo" : "stale";
 }
-

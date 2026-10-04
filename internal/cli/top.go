@@ -104,6 +104,7 @@ type topModel struct {
 	full    bool     // the sidebar is shown instead of the list (narrow terminal)
 	sideTab int      // sideOverview or sideTail
 	events  bool     // the events strip is shown
+	notices bool     // the notices box is shown (else its newest, on one line)
 	mouse   bool     // clicks and the wheel are captured (off: select text)
 	fold    topState // the teams the user opened or folded and the gone members expanded, remembered (topstate.go)
 	hits    []hit    // the clickable spans of the last frame
@@ -153,16 +154,16 @@ func newTopModel(c *Client, dir string) *topModel {
 	h.ShortSeparator = "   "
 	// Its first read starts from what ps --json last read (logcache.go), not from the start of each log.
 	fold := loadTopState(dir)
-	return &topModel{c: c, dir: dir, modelRow: -1, side: true, events: fold.Events, mouse: true, fold: fold, keys: newTopKeys(), help: h,
+	return &topModel{c: c, dir: dir, modelRow: -1, side: true, events: fold.Events, notices: fold.Notices, mouse: true, fold: fold, keys: newTopKeys(), help: h,
 		cols: server.DisplayColumns, logs: loadLogCache(dir)}
 }
 
 // topKeys are top's keys; the footer shows the short list, ? the full one.
 type topKeys struct {
-	Next, Prev, Up, Down, Preview, Pane, Close, Events, Mouse, Kill, Help, Quit key.Binding
-	PgUp, PgDown, Home, End                                                     key.Binding // ? only
-	Model                                                                       key.Binding
-	mouseOn                                                                     bool // what the m entry says
+	Next, Prev, Up, Down, Preview, Pane, Close, Events, Notices, Mouse, Kill, Help, Quit key.Binding
+	PgUp, PgDown, Home, End                                                              key.Binding // ? only
+	Model                                                                                key.Binding
+	mouseOn                                                                              bool // what the m entry says
 }
 
 func newTopKeys() topKeys {
@@ -178,6 +179,7 @@ func newTopKeys() topKeys {
 		Pane:    b([]string{"t"}, "t", "overview/tail"),
 		Close:   b([]string{"esc"}, "esc", "back"),
 		Events:  b([]string{"e"}, "e", "events"),
+		Notices: b([]string{"n"}, "n", "notices"),
 		Mouse:   b([]string{"m"}, "m", "mouse"),
 		Kill:    b([]string{"x"}, "x", "kill worker"),
 		Model:   b([]string{"M"}, "M", "model"),
@@ -204,7 +206,7 @@ func (k topKeys) act() []key.Binding {
 	mouse := key.NewBinding(key.WithKeys("m"), key.WithHelp("m", fmt.Sprintf("%-9s", "mouse "+onOff(k.mouseOn))))
 	all := key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "all keys"))
 	kill := key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "kill"))
-	return []key.Binding{kill, k.Model, k.Events, mouse, all, k.Quit} // M next to x: the footer drops entries from the end, and these two are the actions on a worker
+	return []key.Binding{kill, k.Model, k.Events, k.Notices, mouse, all, k.Quit} // M next to x: the footer drops entries from the end, and these two are the actions on a worker
 }
 
 func onOff(on bool) string {
@@ -216,7 +218,7 @@ func onOff(on bool) string {
 
 func (k topKeys) FullHelp() [][]key.Binding {
 	k.Mouse.SetHelp("m", "mouse "+onOff(k.mouseOn)+" (off: select text)")
-	return [][]key.Binding{{k.Next, k.Prev}, {k.Down, k.PgUp, k.Home}, {k.Preview, k.Pane, k.Close}, {k.Events, k.Mouse, k.Kill, k.Model, k.Help, k.Quit}}
+	return [][]key.Binding{{k.Next, k.Prev}, {k.Down, k.PgUp, k.Home}, {k.Preview, k.Pane, k.Close}, {k.Events, k.Notices, k.Mouse, k.Kill, k.Model, k.Help, k.Quit}}
 }
 
 // tailState follows one log incrementally: a worker's run log or a session's transcript.
@@ -390,6 +392,10 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, k.Events):
 			m.events = !m.events
 			m.fold.Events = m.events // remembered when opened: the default is folded
+			saveTopState(m.dir, m.fold, teamIDs(m.ps))
+		case key.Matches(msg, k.Notices):
+			m.notices = !m.notices
+			m.fold.Notices = m.notices // remembered when opened, like the events
 			saveTopState(m.dir, m.fold, teamIDs(m.ps))
 		case key.Matches(msg, k.Mouse):
 			m.mouse = !m.mouse

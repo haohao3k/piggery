@@ -16,6 +16,7 @@ import (
 
 	"github.com/sting8k/piggery/internal/cli"
 	"github.com/sting8k/piggery/internal/core"
+	"github.com/sting8k/piggery/internal/driver/local"
 	"github.com/sting8k/piggery/internal/proto"
 	"github.com/sting8k/piggery/internal/server"
 	"github.com/sting8k/piggery/internal/store"
@@ -141,6 +142,37 @@ func TestServerAuth(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Body != "hi bob" || !strings.HasPrefix(got[0].FromLabel, "alice") {
 		t.Fatalf("bob inbox = %+v", got)
+	}
+}
+
+func TestSessionSupportProbeIsReadOnly(t *testing.T) {
+	dir := startServer(t)
+	snapshot := func() [3]int {
+		t.Helper()
+		db, err := store.Open(server.DBPath(dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		var counts [3]int
+		for i, table := range []string{"participants", "messages", "events"} {
+			if err := db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&counts[i]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return counts
+	}
+	before := snapshot()
+	c := dial(t, dir)
+	var got proto.SessionSupportResult
+	if _, err := c.CallInto(proto.VerbSessionSupport, nil, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.ThreadAuth {
+		t.Fatalf("session support = %+v; want thread_auth", got)
+	}
+	if after := snapshot(); after != before {
+		t.Fatalf("session support changed state: before=%v after=%v", before, after)
 	}
 }
 
@@ -520,42 +552,70 @@ func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
 	}
 }
 
-// Mail to notify runs ~/.piggery/hooks/notify with the message as one JSON line; with no hook
-// nothing happens.
-func TestNotifyHookGetsTheMessage(t *testing.T) {
+// A notice the engine writes to notify (here: a team left with no live member) runs every
+// executable file of ~/.piggery/hooks/notify.d with the message as one JSON line, in parallel: a hook
+// that outlives the timeout is killed with its children and does not hold the other back; a file in
+// the old hooks/notify is not run; with no hook nothing happens.
+func TestNotifyHooksRunInParallel(t *testing.T) {
+	defer server.SetHookTimeout(time.Second)()
 	dir := startServer(t)
-	_, alice, _ := p2pTeam(t, dir)
-	a := dial(t, dir)
-	a.AsParticipant(alice.ID, alice.Token)
-	if _, err := a.Call(proto.VerbSend, core.SendArgs{To: core.AddrNotify, Body: "before the hook"}); err != nil {
-		t.Fatal(err)
+	// leaveTeam: a solo founds a team and founds another: the first has nobody live left.
+	leaveTeam := func(ref string) {
+		t.Helper()
+		c := dial(t, dir)
+		var solo core.JoinResult
+		if _, err := c.CallInto(proto.VerbJoinAuto, core.JoinAutoArgs{Cwd: t.TempDir(), Harness: "pi", Mode: "rpc", HarnessRef: ref}, &solo); err != nil {
+			t.Fatal(err)
+		}
+		c.AsParticipant(solo.ID, solo.Token)
+		for range 2 {
+			if _, err := c.Call(proto.VerbAgent, core.AgentArgs{Action: core.AgentFound}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
-	hook := server.NotifyHookPath(dir)
-	out := hook + ".out"
-	if err := os.MkdirAll(filepath.Dir(hook), 0o700); err != nil {
-		t.Fatal(err)
+	leaveTeam("sess-1") // before any hook exists: runs nothing
+	out, slowDone, legacyOut := filepath.Join(dir, "fast.out"), filepath.Join(dir, "slow.done"), filepath.Join(dir, "legacy.out")
+	put := func(path, text string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\ncat >> '"+out+"'\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	var sent core.SendResult
-	if _, err := a.CallInto(proto.VerbSend, core.SendArgs{To: core.AddrNotify, Body: "need a decision", Kind: "ask"}, &sent); err != nil {
-		t.Fatal(err)
-	}
+	hooks := server.NotifyHooksDir(dir)
+	put(filepath.Join(hooks, "a-slow"), "#!/bin/sh\nsleep 30\ntouch '"+slowDone+"'\n")
+	put(filepath.Join(hooks, "b-fast"), "#!/bin/sh\ncat >> '"+out+"'\n")
+	put(filepath.Join(hooks, "c-not-executable"), "#!/bin/sh\ntouch '"+legacyOut+"'\n")
+	os.Chmod(filepath.Join(hooks, "c-not-executable"), 0o600)
+	put(filepath.Join(dir, "hooks", "notify"), "#!/bin/sh\ntouch '"+legacyOut+"'\n")
+	leaveTeam("sess-2")
 	var b []byte
+	start := time.Now()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if b, _ = os.ReadFile(out); len(b) > 0 && b[len(b)-1] == '\n' {
 			break
 		}
 	}
+	if since := time.Since(start); since > 900*time.Millisecond {
+		t.Fatalf("the fast hook ran after %v: it waited for the slow one (timeout 1s)", since)
+	}
 	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
 	var got core.NotifyMail
 	if len(lines) != 1 || json.Unmarshal([]byte(lines[0]), &got) != nil {
-		t.Fatalf("hook stdin = %q; want exactly one JSON line (the mail sent before the hook existed runs nothing)", b)
+		t.Fatalf("hook stdin = %q; want exactly one JSON line (the notice written before the hooks existed runs nothing)", b)
 	}
-	if got.ID != sent.ID || got.FromLabel != "alice (peer)" || got.Team != "p2p" || got.Kind != "ask" ||
-		got.Body != "need a decision" || got.CreatedAt == 0 {
+	if got.ID == "" || got.FromLabel != "engine" || got.Team == "" || got.Dir == "" || got.Kind != "gate_lost" || got.Gate != "" ||
+		!strings.Contains(got.Body, "no live member") || got.CreatedAt == 0 {
 		t.Fatalf("hook got %+v", got)
+	}
+	time.Sleep(1500 * time.Millisecond) // past the timeout: the slow hook's children are gone, so it never gets to touch its file
+	for _, f := range []string{slowDone, legacyOut} {
+		if _, err := os.Stat(f); err == nil {
+			t.Fatalf("%s exists: the slow hook outlived its timeout, or hooks/notify or a non-executable file ran", filepath.Base(f))
+		}
 	}
 }
 
@@ -647,18 +707,34 @@ func TestIdentifyAgainKeepsTheTurn(t *testing.T) {
 	}
 }
 
-// A wake goes to the participant's newest identified connection only, naming its session id (Codex
-// runs the old MCP server ~30 s after /clear; two nudges would be two turns).
-func TestWakeGoesToTheNewestConnection(t *testing.T) {
+// Claude's MCP connection survives /clear while hooks advance session_ref. Its host-based wake
+// channel remains current and receives one nudge on the newest identified connection.
+func TestClaudeMCPClearKeepsWakeChannel(t *testing.T) {
 	dir := startServer(t)
 	_, alice, bob := p2pTeam(t, dir)
+	start := local.ProcessStartTime(os.Getpid())
+	if start == 0 {
+		t.Skip("OS process start time unavailable")
+	}
+	host := fmt.Sprintf("claude:%d:%d", os.Getpid(), start)
+	db, err := store.Open(server.DBPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE participants SET host=?, harness='claude', harness_ref='s-1', session_ref='s-1' WHERE id=?`, host, bob.ID); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
 	old, cur := rawDial(t, dir, bob), rawDial(t, dir, bob)
+	old.auth = &proto.Auth{Host: host, HarnessRef: "s-1", Cwd: dir}
+	cur.auth = &proto.Auth{Host: host, HarnessRef: "s-1", Cwd: dir}
 	var id core.IdentifyResult
-	r := old.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "claude"})
+	r := old.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "claude", HarnessRef: "s-1"})
 	if !r.OK || json.Unmarshal(r.Result, &id) != nil {
 		t.Fatalf("identify: %+v", r)
 	}
-	if r := cur.call(proto.VerbIdentify, core.IdentifyArgs{RunID: id.RunID}); !r.OK {
+	if r := cur.call(proto.VerbIdentify, core.IdentifyArgs{RunID: id.RunID, HarnessRef: "s-2"}); !r.OK {
 		t.Fatalf("identify again: %+v", r)
 	}
 	if r := cur.call(proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionStart, HarnessRef: "s-2"}); !r.OK {
@@ -677,6 +753,76 @@ func TestWakeGoesToTheNewestConnection(t *testing.T) {
 	old.c.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
 	if err := old.dec.Decode(&push); err == nil {
 		t.Fatalf("older connection got %+v; want nothing", push)
+	}
+}
+
+// A Codex session auth carries the same thread id that identify and harness.event report. The
+// server rejects a frame that tries to name a different thread before it reaches core.
+func TestCodexSessionAuthRejectsRefRetarget(t *testing.T) {
+	dir := startServer(t)
+	cwd := t.TempDir()
+	start := local.ProcessStartTime(os.Getpid())
+	if start == 0 {
+		t.Skip("OS process start time unavailable")
+	}
+	host := fmt.Sprintf("codex:%d:%d", os.Getpid(), start)
+	join := dial(t, dir)
+	var j core.JoinResult
+	if _, err := join.CallInto(proto.VerbJoinAuto, core.JoinAutoArgs{
+		Harness: "codex", Mode: "interactive", Host: host, HarnessRef: "thread-a", Cwd: cwd,
+	}, &j); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := net.Dial("unix", server.SocketPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	enc, dec := json.NewEncoder(raw), json.NewDecoder(raw)
+	auth := &proto.Auth{Host: host, HarnessRef: "thread-a", Cwd: cwd}
+	call := func(auth *proto.Auth, verb string, args any) proto.Response {
+		t.Helper()
+		body, _ := json.Marshal(args)
+		if err := enc.Encode(proto.Request{ID: verb, Verb: verb, Auth: auth, Args: body}); err != nil {
+			t.Fatal(err)
+		}
+		var resp proto.Response
+		if err := dec.Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	bad := call(auth, proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "codex", HarnessRef: "thread-b"})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("retargeted identify = %+v; want session.ref", bad)
+	}
+	bad = call(auth, proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "codex"})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("identify without ref = %+v; want session.ref", bad)
+	}
+	good := call(auth, proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "codex", HarnessRef: "thread-a"})
+	if !good.OK {
+		t.Fatalf("identify for authenticated thread: %+v", good)
+	}
+	badAuth := call(&proto.Auth{Host: host, HarnessRef: "thread-b", Cwd: cwd}, proto.VerbWho, nil)
+	if badAuth.OK || badAuth.Error == nil || badAuth.Error.RuleID != "session.ref" {
+		t.Fatalf("retargeted auth = %+v; want session.ref", badAuth)
+	}
+	bad = call(auth, proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionStart})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("session_start without ref = %+v; want session.ref", bad)
+	}
+	bad = call(auth, proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionStart, HarnessRef: "thread-b"})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("retargeted harness event = %+v; want session.ref", bad)
+	}
+	ordinary := call(auth, proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessModelChanged})
+	if !ordinary.OK {
+		t.Fatalf("ordinary event without ref = %+v; want allowed", ordinary)
+	}
+	bad = call(auth, proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionEnd})
+	if bad.OK || bad.Error == nil || bad.Error.RuleID != "session.ref" {
+		t.Fatalf("session_end without ref = %+v; want session.ref", bad)
 	}
 }
 

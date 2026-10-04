@@ -150,7 +150,7 @@ func (e *env) root() *cobra.Command {
 		"piggery archive show ~/.piggery/archive/demo-1790000000.jsonl --table messages", authLocal, e.archiveShow))
 
 	root.AddCommand(
-		e.cmd("setup [--outdated|--refresh] | setup <pi|claude|codex|omp|dsh|paseo> | setup remove <harness> [--ext PATH] [--force]", "Add or remove a harness integration; --outdated updates older versions; --refresh refreshes installed local assets", grpStart,
+		e.cmd("setup [--outdated|--refresh] | setup <pi|claude|codex|omp|dsh|paseo> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <harness> [--ext PATH] [--force]", "Add or remove a harness integration; --outdated updates older versions; --refresh refreshes installed local assets", grpStart,
 			"piggery setup", authLocal, e.setup),
 		e.cmd("skills [three-review]", "Print the agent guide or three-arm review playbook", grpStart,
 			"piggery skills\npiggery skills three-review", authLocal, e.skills),
@@ -184,6 +184,8 @@ func (e *env) root() *cobra.Command {
 		archive,
 		e.cmd("doctor", "Findings about the daemon's state (exit 1 when any)", grpMaintain,
 			"piggery doctor", authAdmin, e.doctor),
+		e.cmd("check", "Errors and ignored lines in config.yaml, harness profiles, templates and prompts (local; exit 1 when any error)", grpMaintain,
+			"piggery check", authLocal, e.check),
 		e.cmd("update [--check] [--force] [--caller SOLO_ID]", "Release builds: install the latest fork release; local builds: run the owning checkout's guarded local-dev workflow", grpMaintain,
 			"piggery update --check\npiggery update [--caller SOLO_ID]", authLocal, e.update),
 		e.cmd("stop", "", "", "", authLocal, func([]string) error {

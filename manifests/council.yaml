@@ -32,7 +32,6 @@ roles:
 routing:
   - {from: chair, to: member, allow: true, cc: []}
   - {from: member, to: chair, allow: true, cc: []}
-  - {from: chair, to: notify, allow: true, cc: []}
 timers:
   - {on: member, notify: reports_to, silent_for: 20m}
 limits:                  # none: no limit
