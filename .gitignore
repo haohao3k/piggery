@@ -20,3 +20,4 @@
 !/scripts/local-dev.py
 !/scripts/test_local_dev.py
 !/docs/local-development.md
+!/docs/session-isolation.md

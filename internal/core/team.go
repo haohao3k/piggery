@@ -187,6 +187,10 @@ func (e *Engine) Join(ctx context.Context, a JoinArgs) (JoinResult, error) {
 // opened (not gone, not headless) is found; its current run is the caller's. Local trust, as
 // join.auto (the socket is 0600).
 func (e *Engine) AuthenticateHost(ctx context.Context, host string) (Caller, error) {
+	if strings.HasPrefix(host, "codex:") {
+		return Caller{}, &Error{Code: CodeUnauthorized, RuleID: "session.required", Layer: "token",
+			Message: "Codex requires a thread id and cwd; reconnect with the current Piggery integration"}
+	}
 	var c Caller
 	err := e.readOnly(ctx, func(t *txn) error {
 		var closed sql.NullInt64
@@ -209,14 +213,58 @@ func (e *Engine) AuthenticateHost(ctx context.Context, host string) (Caller, err
 	return c, err
 }
 
+// AuthenticateSession binds a Codex request to its exact thread and canonical directory.
+// The server separately validates the socket peer's ancestry. Neither a shared process nor
+// a project directory is a conversation identity.
+func (e *Engine) AuthenticateSession(ctx context.Context, host, ref, cwd string) (Caller, error) {
+	if !strings.HasPrefix(host, "codex:") || ref == "" || cwd == "" {
+		return Caller{}, &Error{Code: CodeUnauthorized, RuleID: "session.required", Layer: "token", Message: "Codex host, thread id and cwd are required"}
+	}
+	root, err := normalizeCwd(cwd)
+	if err != nil {
+		return Caller{}, sessionRootMismatch()
+	}
+	var c Caller
+	err = e.readOnly(ctx, func(t *txn) error {
+		var closed sql.NullInt64
+		var storedCwd string
+		p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`,
+			(SELECT closed_at FROM teams WHERE id=participants.team_id), cwd FROM participants
+			WHERE host=? AND session_ref=? AND binding_quarantined=0 AND state<>'gone'
+			AND left_at IS NULL AND COALESCE(mode,'')<>'headless'
+			ORDER BY created_at DESC, rowid DESC LIMIT 1`, host, ref), &closed, &storedCwd)
+		if errors.Is(err, sql.ErrNoRows) {
+			return &Error{Code: CodeUnauthorized, RuleID: "host.unknown", Layer: "token", Message: "no live participant for this Codex thread"}
+		}
+		if err != nil {
+			return internal(err)
+		}
+		if storedCwd != root {
+			return sessionRootMismatch()
+		}
+		if closed.Valid {
+			return &Error{Code: CodeUnauthorized, RuleID: "team.closed", Layer: "token", Message: "the team is closed"}
+		}
+		c = Caller{ParticipantID: p.id, RunID: p.run, TeamID: p.team, Role: p.role, Name: p.name, ByHost: true}
+		return nil
+	})
+	return c, err
+}
+
+func sessionRootMismatch() error {
+	return &Error{Code: CodeUnauthorized, RuleID: "session.cwd", Layer: "token",
+		Message: "the request directory does not match this session's bound directory; open a separate session for the other project"}
+}
+
 func (e *Engine) Authenticate(ctx context.Context, id, token string) (Caller, error) {
 	var c Caller
 	err := e.inTx(ctx, func(t *txn) error {
 		var hash, mode string
+		var quarantined bool
 		var closed sql.NullInt64
 		p, err := scanParticipant(t.QueryRowContext(t.ctx,
 			`SELECT `+participantCols+`, token_hash, (SELECT closed_at FROM teams WHERE id=participants.team_id),
-			COALESCE(mode,'') FROM participants WHERE id=?`, id), &hash, &closed, &mode)
+			COALESCE(mode,''), binding_quarantined FROM participants WHERE id=?`, id), &hash, &closed, &mode, &quarantined)
 		if errors.Is(err, sql.ErrNoRows) {
 			return deny(nil, "authenticate", "token", "token.invalid", "unknown participant", nil,
 				map[string]any{"claimed_id": id})
@@ -226,6 +274,10 @@ func (e *Engine) Authenticate(ctx context.Context, id, token string) (Caller, er
 		}
 		if subtle.ConstantTimeCompare([]byte(hash), []byte(hashToken(token))) != 1 {
 			return deny(&p, "authenticate", "token", "token.invalid", "token does not match", nil, nil)
+		}
+		if quarantined {
+			return &Error{Code: CodeUnauthorized, RuleID: "session.quarantined", Layer: "token",
+				Message: "this legacy Codex binding mixed thread identities; reconnect to create an isolated participant; history is preserved"}
 		}
 		if closed.Valid { // team down: every verb of its participants is refused here
 			if mode == modeHeadless {

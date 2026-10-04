@@ -26,7 +26,7 @@ test("who: own team in full, one line per other team and per solo, admittable ma
 	).split("\n");
 	assert.deepEqual(out, [
 		"Your team web:",
-		"  lead (peer) idle [gate] (you)",
+		"  lead (peer) idle [gate] (you) id=1",
 		"  w1 (peer) working",
 		"Other teams (write to the team name; it reaches the gate):",
 		"  api (root /r/api) gate api-lead",
@@ -41,4 +41,3 @@ test("after team down an interactive session becomes solo; a worker or any other
 	assert.equal(afterRetire({ rule_id: "run.stale" }, false), "stale");
 	assert.equal(afterRetire({ code: "unauthorized", rule_id: "token.invalid" }, false), "stale");
 });
-

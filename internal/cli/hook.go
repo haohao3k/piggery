@@ -25,9 +25,8 @@ import (
 //
 // Two identities: a worker's hooks carry PIGGERY_ID/TOKEN (errors go to stderr, which the harness
 // only logs); a session the Human opened (tier 2, installed by `piggery setup claude|codex`) has
-// none and is its harness process (host, shared with its MCP server): SessionStart places it with
-// join.auto, every other hook authenticates by host. That one is silent on any error: no daemon,
-// no piggery.
+// no token and is authenticated by its exact harness session id, with the process host retained
+// only as a lineage check. That one is silent on any error: no daemon, no piggery.
 
 // claudeHookInput is the part of a hook's stdin the adapters read (Claude's fields, and Codex's
 // where they differ: turn_id).
@@ -180,7 +179,11 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 	var in claudeHookInput
 	raw, _ := io.ReadAll(stdin)
 	_ = json.Unmarshal(raw, &in)
-	session := id == "" || tok == ""
+	if (id == "") != (tok == "") {
+		fmt.Fprintln(stderr, "piggery hook: PIGGERY_ID and PIGGERY_TOKEN must be set together")
+		return
+	}
+	session := id == "" && tok == ""
 	if session && os.Getenv("PIGGERY_DISABLED") == "1" {
 		return // started from inside a piggery session's tool (pi sets this): not a member
 	}
@@ -197,6 +200,9 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 	}
 	if session {
 		stderr = io.Discard
+		if in.SessionID == "" {
+			return // never fall back to a host-only identity
+		}
 	}
 	c, err := Dial(e.dir, false)
 	if err != nil {
@@ -204,6 +210,14 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 		return
 	}
 	defer c.Close()
+	if session && harness == "codex" {
+		// Hooks register the exact thread and cwd. Probe before SessionStart's
+		// join.auto or any event so an old daemon cannot silently collapse this
+		// session back to its shared Codex app-server host.
+		if err := requireSessionAuth(c); err != nil {
+			return // session hooks are intentionally silent on daemon failures
+		}
+	}
 	var join func(source string) error
 	if session {
 		host := sessionHost(harness)
@@ -225,7 +239,7 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 		if hook == "SessionStart" && join(in.Source) != nil {
 			return // e.g. this session is a headless worker's: not ours to drive
 		}
-		c.AsHost(host)
+		c.AsSession(host, in.SessionID, in.Cwd)
 	} else {
 		c.AsParticipant(id, tok)
 	}

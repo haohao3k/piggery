@@ -33,7 +33,8 @@ func (e *env) skills(args []string) error {
 	}
 	_, err := fmt.Fprintf(e.stdout, "# Piggery three-arm review — build %s\n\n"+
 		"This is a printed playbook, not a launched review. Use the user's scope text.\n"+
-		"Tool placeholders {tool:X} mean piggery_X in Pi, or mcp__piggery__X in Codex/Claude.\n\n%s",
+		"Tool placeholders {tool:X} mean piggery_X in Pi, or mcp__piggery__X in Codex/Claude.\n"+
+		"Bind each launch reply to the exact participant id and message number from the current assignment; never use a hardcoded recipient.\n\n%s",
 		Version, manifests.TripleReviewInstructions())
 	return err
 }

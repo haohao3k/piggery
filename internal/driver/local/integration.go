@@ -9,10 +9,10 @@ import "strings"
 // carries its integer as PIGGERY_INTEGRATION_VERSION=N.
 var integrationVersions = map[string]int{
 	"pi":     4,
-	"omp":    3,
-	"dsh":    4,
-	"claude": 2,
-	"codex":  2,
+	"omp":    4,
+	"dsh":    5,
+	"claude": 4,
+	"codex":  4,
 	"paseo":  3,
 }
 

@@ -72,9 +72,12 @@ func UpdateAvailable(dir string, set Settings, current string) string {
 	return ""
 }
 
-// DevBuild reports whether version v is a build from source, not a release: none, "dev", or
-// "dev-<sha>" (a local deploy). It never checks for, says or installs a release.
-func DevBuild(v string) bool { return v == "" || v == "dev" || strings.HasPrefix(v, "dev-") }
+// DevBuild reports whether version v is a build from source, not a release: none, "dev", a
+// "dev-<sha>" build, or a "local-<fingerprint>" managed checkout build. It never checks for, says
+// or installs a release.
+func DevBuild(v string) bool {
+	return v == "" || v == "dev" || strings.HasPrefix(v, "dev-") || strings.HasPrefix(v, "local-")
+}
 
 // Newer reports whether release tag latest is newer than current: both vX.Y.Z (a pre-release
 // suffix is ignored); a tag that is not that counts as newer when it differs.

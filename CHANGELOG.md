@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Rebase the local fork on upstream v0.7.0 while retaining local build/update ownership and
+  native three-review entry points. Review templates follow the engine-owned notify flow.
+- Isolate interactive Codex chats by thread and canonical directory instead of the shared
+  app-server PID. Refuse missing or mismatched bindings before tools and mail; bind wakes
+  to the identified connection's thread.
+- Quarantine ambiguous legacy Codex aliases in schema 23 without deleting or redirecting
+  history. `doctor` exposes recovery candidates; review handbacks pin a fresh per-launch
+  participant ID. See [session isolation](docs/session-isolation.md).
+
 - Make local `piggery update` rebuild and activate assets from its owning checkout through the
   guarded local workflow. Bind the source path to the binary and receipt, keep `--check` read-only,
   and prevent `--force` or the calling directory from redirecting it to a release installation.

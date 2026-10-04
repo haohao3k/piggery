@@ -263,7 +263,7 @@ func (e *Engine) RuntimeTurnFailed(ctx context.Context, participantID, runID, ke
 // SessionRef is the session id participantID runs now ("" unknown), for a wake that names it.
 func (e *Engine) SessionRef(ctx context.Context, participantID string) string {
 	var ref sql.NullString
-	e.db.QueryRowContext(ctx, `SELECT COALESCE(session_ref, harness_ref) FROM participants WHERE id=?`, participantID).Scan(&ref)
+	e.db.QueryRowContext(ctx, `SELECT COALESCE(session_ref, harness_ref) FROM participants WHERE id=? AND binding_quarantined=0`, participantID).Scan(&ref)
 	return ref.String
 }
 

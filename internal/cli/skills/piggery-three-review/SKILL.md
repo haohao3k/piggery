@@ -25,3 +25,12 @@ handbacks and evidence-based adjudication. If already in an unrelated developmen
 the scope handoff for a separate solo review session; do not leave or replace that team.
 Review authorization does not authorize candidate edits, merges, releases, production execution,
 unrelated messages or changes to the Human's decisions.
+
+Every review launch must pass the playbook's session-root and candidate-identity preflight.
+Record the current participant id, participant cwd, team root and run id, and keep that session
+binding separate from the candidate Git root or detached worktree. Bind each reply to the exact
+`return_to` participant id plus `#N` from the current assignment or follow-up. Carry the
+`return_team`, `return_root` (the coordinator session/team root), `review_run` and `candidate_head`
+fields with that binding; `return_root` need not equal the candidate root. Do not re-resolve names
+or use a hardcoded `coordinator`, `lead`, `notify`, board, or previous-run recipient; an unknown
+or gone endpoint leaves the report `BLOCKED`.

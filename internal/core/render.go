@@ -92,7 +92,9 @@ func RenderWho(ps []Presence, selfID string) string {
 		}
 	}
 	id := func(p Presence) string {
-		if seen[p.Name] > 1 {
+		// A launch can pin its return address to the invoking participant, rather
+		// than a reusable display name. Duplicate names still need disambiguation.
+		if p.ID == selfID || seen[p.Name] > 1 {
 			return " id=" + p.ID
 		}
 		return ""

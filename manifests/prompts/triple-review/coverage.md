@@ -13,14 +13,31 @@ is BLOCKED, not an automatic fallback. You are already the CLI-hosted reviewer: 
 
 The first assignment is readiness-only. Verify the exact candidate/mode, your actual
 harness/provider/model/effort from runtime metadata, access to its immutable source/context,
-and `ocr --version`. Send `{tool:send}` to the coordinator, kind `ready`, `reply_to` the
-assignment, with these observations, or kind `blocked` with the concrete missing dependency,
-route or identity. Do not install or upgrade dependencies as part of review. End your turn;
-wait for kind `review` before selecting files or analysing them.
+and `ocr --version`. Before running OCR, use read-only `piggery ps --json` to verify this
+participant's `cwd` and team root, and ensure `pwd -P` matches that cwd and Piggery authorizes it.
+Separately run `git -C <candidate-root> rev-parse --show-toplevel` and `git -C <candidate-root>
+rev-parse HEAD`; the Git root must match the assigned candidate worktree and HEAD must match the
+candidate SHA. Use `{tool:who}` to capture this session's `(you) id=...`; use read-only
+`piggery ps --json` to capture its current `run_id`, team and root. Verify that the assignment's
+`return_to`, `return_team`, `return_root`, `review_run` and `candidate_head` match the current
+launch, including the return participant's current run id. `return_root` is the coordinator
+session/team root and need not equal this candidate Git root or worker cwd. If the return endpoint is present and
+another check fails, send `{tool:send}` kind `blocked` to that exact id with the concrete path,
+id, run id or SHA mismatch.
+
+Bind the return path to the exact `return_to` participant id in this launch's assignment and the
+assignment's `#N` as `reply_to`. Do not re-resolve a sender name after the binding is made. The
+word `coordinator` describes a role; it is not a recipient value. Never hardcode `coordinator`,
+`lead`, `notify`, a board, or a name remembered from another launch. If `return_to` is missing,
+unknown or gone, retain the report and finish `BLOCKED`; do not send it to a substitute. Send kind
+`ready` with these observations, or kind `blocked` with the concrete missing dependency, route or
+identity. Do not install or upgrade dependencies as part of review. End your turn; wait for kind
+`review` before selecting files or analysing them.
 
 ## Select and resolve
 
-Work from the clean candidate checkout supplied in the brief. Use exactly its review mode:
+Work from the clean candidate checkout supplied in the brief. Recheck its root and HEAD before
+each OCR invocation; use exactly its review mode:
 
 ```sh
 # One commit versus its parent:
@@ -66,7 +83,9 @@ private and communicate only with the coordinator.
 
 ## Hand back
 
-Send `{tool:send}` to the coordinator, kind `handback`, `reply_to` the review assignment:
+Send `{tool:send}` to the exact `return_to` participant id bound by the current review assignment,
+with `reply_to` set to that assignment's `#N`; if the id is unknown or gone, retain the report and
+finish `BLOCKED` rather than re-resolving its name:
 
 - candidate, contract, actual route, OCR version/mode, commands and checks;
 - findings ordered by severity, each with path/lines, mechanism, impact and observed evidence;
@@ -75,8 +94,13 @@ Send `{tool:send}` to the coordinator, kind `handback`, `reply_to` the review as
 - `total_files`, `reviewed_files`, `skipped_files` (counts of selected entries), with
   `total_files = reviewed_files + skipped_files`, and `coverage_rate = reviewed_files /
   total_files`; for an empty selection report N/A and explain what was excluded;
-- uncertainty and an end-of-pass identity check. A mismatch is STALE and incomplete.
+- uncertainty and an end-of-pass identity check containing this session's participant id and run
+  id, the bound `return_to` id and `review_run`, verified team/root and candidate SHA. A mismatch
+  is STALE and incomplete.
 
-End your turn. For a later kind `follow` contradiction packet, reply with kind `answer`,
-`reply_to` the packet: CONCEDE, MAINTAIN, NARROW or REVERSE, what would falsify your claim,
-and the smallest decisive check and its evidence. Coverage alone grants no acceptance.
+End your turn. For a later kind `follow` contradiction packet, reuse the exact bound coordinator
+participant id and set `reply_to` to that packet's message number; verify its current team/root/run
+before sending. If it is unknown or gone, retain the answer and finish `BLOCKED` rather than
+re-resolving a name. Do not reuse a recipient from another launch. Reply with kind `answer` to the
+packet: CONCEDE, MAINTAIN, NARROW or REVERSE, what would falsify your claim, and the smallest
+decisive check and its evidence. Coverage alone grants no acceptance.
