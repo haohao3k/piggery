@@ -150,7 +150,7 @@ func (e *env) root() *cobra.Command {
 		"piggery archive show ~/.piggery/archive/demo-1790000000.jsonl --table messages", authLocal, e.archiveShow))
 
 	root.AddCommand(
-		e.cmd("setup [--outdated] | setup <pi|claude|codex|omp|dsh|paseo> | setup remove <harness> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] [--ext PATH] [--force]", "Add piggery to a harness or take it out; alone: profiles, templates, and where each harness stands; --outdated: update every installed integration that is outdated", grpStart,
+		e.cmd("setup [--outdated] | setup <pi|claude|codex|omp|dsh|opencode|paseo> | setup remove <harness> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] [--ext PATH] [--force]", "Add piggery to a harness or take it out; alone: profiles, templates, and where each harness stands; --outdated: update every installed integration that is outdated", grpStart,
 			"piggery setup", authLocal, e.setup),
 		e.cmd("skills", "Print the guide for agents (a SKILL.md)", grpStart,
 			"piggery skills", authLocal, func(args []string) error {

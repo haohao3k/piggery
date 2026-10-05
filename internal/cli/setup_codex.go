@@ -72,7 +72,7 @@ func codexHome() string {
 // codexHarness: hooks and piggery mcp; an idle session is woken by a queued prompt.
 var codexHarness = harnessProfile{
 	setupTarget: setupTarget{name: "codex", cmd: "codex",
-		install: func(o setupOpts) (string, error) { return installCodex(codexHome(), o.self) },
+		install: func(o setupOpts) (string, error) { return installCodex(o.dir, codexHome(), o.self) },
 		remove:  func(setupOpts) (string, error) { return removeCodex(codexHome()) },
 		status:  func(o setupOpts) harnessState { return codexStatus(codexHome(), o.self) },
 	},
@@ -82,7 +82,8 @@ var codexHarness = harnessProfile{
 	channel: codexChannel,
 }
 
-func installCodex(home, self string) (string, error) {
+func installCodex(dir, home, self string) (string, error) {
+	var backups []string
 	hooksPath := filepath.Join(home, "hooks.json")
 	oldHooks, err := readOptional(hooksPath)
 	if err != nil {
@@ -94,6 +95,11 @@ func installCodex(home, self string) (string, error) {
 	}
 	changedHooks := !bytes.Equal(oldHooks, newHooks)
 	if changedHooks {
+		msg, err := backupHumanConfig(dir, "codex", hooksPath, contains(" hook codex ")) // what isPiggeryCodexGroup looks for
+		if err != nil {
+			return "", err
+		}
+		backups = append(backups, msg)
 		if err := writeFileAtomic(hooksPath, newHooks); err != nil {
 			return "", err
 		}
@@ -116,6 +122,11 @@ func installCodex(home, self string) (string, error) {
 		return fmt.Sprintf("piggery is already set up in %s (hooks trusted)", home), nil
 	}
 	if !bytes.Equal(oldCfg, newCfg) {
+		msg, err := backupHumanConfig(dir, "codex", cfgPath, contains(codexBlockBegin))
+		if err != nil {
+			return "", err
+		}
+		backups = append(backups, msg)
 		if err := writeFileAtomic(cfgPath, newCfg); err != nil {
 			return "", err
 		}
@@ -126,8 +137,8 @@ func installCodex(home, self string) (string, error) {
 	if bad := untrustedPiggeryHooks(metas, keys); len(bad) > 0 {
 		return "", fmt.Errorf("Codex does not trust piggery's hooks after setup: %s", strings.Join(bad, ", "))
 	}
-	return fmt.Sprintf("wrote piggery's hooks to %s and its MCP server and hook trust to %s (%d hooks trusted)\n"+
-		"Codex sessions started from now on join piggery; restart any that are open.", hooksPath, cfgPath, len(keys)), nil
+	return fmt.Sprintf("wrote piggery's hooks to %s and its MCP server and hook trust to %s (%d hooks trusted)\n%s"+
+		"Codex sessions started from now on join piggery; restart any that are open.", hooksPath, cfgPath, len(keys), backupLines(backups)), nil
 }
 
 // codexHookGroups walks hooks.json (order and the Human's groups kept): fn gets each event's

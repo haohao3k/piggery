@@ -1,0 +1,67 @@
+## auth: OPENCODE_SERVER_PASSWORD=pw (username default), then OPENCODE_SERVER_USERNAME=bob
+serve pid=64332 port=4096 start_ms=894
+opencode server listening on http://127.0.0.1:4096
+GET /global/health  -> 401
+GET /global/health -u wrong:pw -> 401
+GET /global/health -u opencode:wrong -> 401
+GET /global/health -u opencode:pw -> 200
+GET /event without auth -> 401
+username=bob: GET /global/health -u opencode:pw -> 401
+username=bob: GET /global/health -u bob:pw -> 200
+
+## SIGTERM to serve
+serve=64414 port=4096 start_ms=802 session=ses_ef5588913ffeOsmMvzpWCLCeGj mcp_pid=65304 shell_pid=64491 sleep_pid=64979
+descendants of serve:
+64491 ppid=64414 pgid=64491 /bin/zsh -l -c \012        [[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 
+65304 ppid=64414 pgid=64309 /opt/local/Library/Frameworks/Python.framework/Versions/3.10/Resources/Python.app/
+64979 ppid=64491 pgid=64491 sleep 771
+mcp status: {"fake":{"status":"connected"}}
+./02-lifecycle.sh: line 47: 64414 Terminated: 15          ( cd "$W" && exec python3 -c 'import os,signal,sys;signal.signal(signal.SIGINT,signal.SIG_DFL);os.execvp("opencode",["opencode","serve"]+sys.argv[1:])' "$@" > "$pre.out" 2> "$pre.err" < /dev/null )
+serve gone after 218 ms (100 polls of 100 ms max)
+after: serve=dead mcp=dead shell(zsh)=alive sleep=alive
+mcp log: stdin EOF;
+  leftover 64979 killed (-9)
+  leftover 64491 killed (-9)
+
+## SIGINT to serve
+serve=65821 port=60711 start_ms=828 session=ses_ef558645dffewnvuWP9p17SiOK mcp_pid=66672 shell_pid=65924 sleep_pid=66469
+descendants of serve:
+65924 ppid=65821 pgid=65924 /bin/zsh -l -c \012        [[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 
+66672 ppid=65821 pgid=64309 /opt/local/Library/Frameworks/Python.framework/Versions/3.10/Resources/Python.app/
+66469 ppid=65924 pgid=65924 sleep 772
+mcp status: {"fake":{"status":"connected"}}
+serve gone after 165 ms (100 polls of 100 ms max)
+after: serve=dead mcp=dead shell(zsh)=alive sleep=alive
+mcp log: stdin EOF;
+  leftover 66469 killed (-9)
+  leftover 65924 killed (-9)
+
+## SIGHUP to serve
+serve=67218 port=4096 start_ms=759 session=ses_ef5584030ffeM5w0cZpedhmLtE mcp_pid=67785 shell_pid=67288 sleep_pid=67778
+descendants of serve:
+67288 ppid=67218 pgid=67288 /bin/zsh -l -c \012        [[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 
+67785 ppid=67218 pgid=64309 /opt/local/Library/Frameworks/Python.framework/Versions/3.10/Resources/Python.app/
+67778 ppid=67288 pgid=67288 sleep 773
+mcp status: {"fake":{"status":"connected"}}
+./02-lifecycle.sh: line 47: 67218 Hangup: 1               ( cd "$W" && exec python3 -c 'import os,signal,sys;signal.signal(signal.SIGINT,signal.SIG_DFL);os.execvp("opencode",["opencode","serve"]+sys.argv[1:])' "$@" > "$pre.out" 2> "$pre.err" < /dev/null )
+serve gone after 140 ms (100 polls of 100 ms max)
+after: serve=dead mcp=dead shell(zsh)=alive sleep=alive
+mcp log: stdin EOF;
+  leftover 67778 killed (-9)
+  leftover 67288 killed (-9)
+
+## SIGKILL to serve
+serve=68221 port=4096 start_ms=664 session=ses_ef5581be7ffeNmDuWKCc5uIXxV mcp_pid=69071 shell_pid=68503 sleep_pid=69066
+descendants of serve:
+68503 ppid=68221 pgid=68503 /bin/zsh -l -c \012        [[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 
+69071 ppid=68221 pgid=64309 /opt/local/Library/Frameworks/Python.framework/Versions/3.10/Resources/Python.app/
+69066 ppid=68503 pgid=68503 sleep 774
+mcp status: {"fake":{"status":"connected"}}
+./02-lifecycle.sh: line 41: 68221 Killed: 9               ( cd "$W" && exec python3 -c 'import os,signal,sys;signal.signal(signal.SIGINT,signal.SIG_DFL);os.execvp("opencode",["opencode","serve"]+sys.argv[1:])' "$@" > "$pre.out" 2> "$pre.err" < /dev/null )
+after: serve=dead mcp=dead shell(zsh)=alive sleep=alive
+mcp log: stdin EOF;
+  leftover 69066 killed (-9)
+  leftover 68503 killed (-9)
+
+## pids left from this script (from the pid file):
+end

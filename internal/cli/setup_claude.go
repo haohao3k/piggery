@@ -41,6 +41,16 @@ type claudeState struct {
 	pluginPath  string // the installed plugin's directory (Claude's copy)
 }
 
+// claudeSettingsPath is Claude's user settings.json (CLAUDE_CONFIG_DIR, else ~/.claude): piggery never
+// writes it (the claude commands do); setup only copies it.
+func claudeSettingsPath() string {
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		return filepath.Join(d, "settings.json")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".claude", "settings.json")
+}
+
 func claudeRun(args ...string) ([]byte, error) {
 	out, err := exec.Command(claudeBin, args...).CombinedOutput()
 	if err != nil {
@@ -192,7 +202,7 @@ func samePath(a, b string) bool {
 // claudeHarness: hooks and piggery mcp; an idle session is woken through its messaging socket.
 var claudeHarness = harnessProfile{
 	setupTarget: setupTarget{name: "claude", cmd: "claude",
-		install: func(o setupOpts) (string, error) { return installClaude(filepath.Join(o.dir, "claude"), o.self) },
+		install: func(o setupOpts) (string, error) { return installClaude(o.dir, o.self) },
 		remove:  func(o setupOpts) (string, error) { return removeClaude(filepath.Join(o.dir, "claude")) },
 		status:  func(o setupOpts) harnessState { return claudeStatus(filepath.Join(o.dir, "claude"), o.self) },
 	},
@@ -202,7 +212,8 @@ var claudeHarness = harnessProfile{
 	channel: local.ClaudeChannel,
 }
 
-func installClaude(root, self string) (string, error) {
+func installClaude(dir, self string) (string, error) {
+	root := filepath.Join(dir, "claude")
 	if _, err := exec.LookPath(claudeBin); err != nil {
 		return "", errors.New("claude: `claude` is not on PATH; install Claude Code first")
 	}
@@ -214,7 +225,15 @@ func installClaude(root, self string) (string, error) {
 		return "", err
 	}
 	var did []string
+	backed, backup := false, ""
 	run := func(args ...string) error {
+		if !backed { // the first command that changes Claude: its settings.json is read and copied before
+			backed = true
+			var err error
+			if backup, err = backupHumanConfig(dir, "claude", claudeSettingsPath(), contains(local.ClaudePlugin)); err != nil {
+				return err
+			}
+		}
 		if _, err := claudeRun(args...); err != nil {
 			return err
 		}
@@ -265,7 +284,7 @@ func installClaude(root, self string) (string, error) {
 	if len(did) == 0 {
 		return "claude: piggery is already set up (MCP server and plugin)", nil
 	}
-	return "claude: ran\n  " + strings.Join(did, "\n  ") +
+	return backupLines([]string{backup}) + "claude: ran\n  " + strings.Join(did, "\n  ") +
 		"\nclaude: sessions started from now on join piggery; restart any that are open.", nil
 }
 

@@ -1,0 +1,1 @@
+{"command":{},"plugin":[],"model":"hp/glm-5.3-flash","username":"user","mode":{},"agent":{},"provider":{"hp":{"name":"HP","npm":"@ai-sdk/openai-compatible","options":{"apiKey":"<HP_KEY>","baseURL":"https://llm.example/v1"},"models":{"glm-5.3-flash":{"name":"glm-5.3-flash","limit":{"context":500000,"output":128000}}}}},"permission":{"*":"allow"}}

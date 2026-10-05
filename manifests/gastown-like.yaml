@@ -1,0 +1,61 @@
+# gastown-like: a mayor splits the work into tasks, each done by a polecat on its own branch and git
+# worktree, and one refinery merges the finished branches one at a time, after Gas Town's mayor,
+# polecats and refinery (its merge queue). There is no witness: piggery's timers tell the mayor
+# when a member goes silent. Every role talks with `send`; routing is the fence: polecats cannot
+# reach each other, and a polecat's merge request goes to the refinery with a copy to the mayor.
+# The merges land on an integration branch; the Human's branch moves only when the Human asks.
+template: gastown-like
+summary: A mayor splits the work into tasks, polecats do each on its own branch and worktree, and one refinery merges the finished branches one at a time.
+auto_join_role: mayor   # the founder's role when a session founds a team from this template
+roles:
+  mayor:
+    description: Splits the goal into independent tasks, gives each a polecat on its own branch and worktree, keeps one refinery, and tells the Human when the work has landed.
+    instructions_file: prompts/gastown-like/mayor.md
+    tools: [send, inbox, who, agent]
+    can_spawn: [polecat, refinery]
+    can_pin: false
+    can_set_cwd: true
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  polecat:
+    description: Does one task on its own branch and worktree, commits and checks it, and asks the refinery to merge it.
+    instructions_file: prompts/gastown-like/polecat.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:
+      harness: inherit
+      model: inherit
+      thinking: inherit
+      allow_tools: []
+  refinery:
+    description: Merges finished branches into the integration branch one at a time, runs the check after each, and sends a conflict or failure back to its polecat.
+    instructions_file: prompts/gastown-like/refinery.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:
+      harness: inherit
+      model: inherit
+      thinking: inherit
+      allow_tools: []
+routing:
+  - {from: mayor, to: polecat, allow: true, cc: []}
+  - {from: mayor, to: refinery, allow: true, cc: []}
+  - {from: polecat, to: refinery, allow: true, cc: [mayor]}
+  - {from: polecat, to: mayor, allow: true, cc: []}
+  - {from: refinery, to: polecat, allow: true, cc: [mayor]}
+  - {from: refinery, to: mayor, allow: true, cc: []}
+timers:
+  - {on: polecat, notify: reports_to, silent_for: 20m}
+  - {on: refinery, notify: reports_to, silent_for: 20m}
+limits:                  # none: no limit
+  depth: 2                 # how deep spawned_by chains may go
+  concurrency: 10           # live workers at once
+  messages_per_participant_per_minute: 30
+  max_respawn_per_hour: none

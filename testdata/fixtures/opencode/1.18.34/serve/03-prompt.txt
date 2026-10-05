@@ -1,0 +1,146 @@
+serve pid=65377 port=4096 start_ms=775
+## create a session (body may carry id? -> try)
+{"id":"ses_ef558709cffeUAyUM1YrfJDLSu","slug":"lucky-cabin","projectID":"global","directory":"/tmp/oc/work","path":"private/tmp/oc/work","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"title":"A","version":"1.18.34","time":{"created":1791180115812,"updated":1791180115812}}
+session=ses_ef558707affegxdmJnmsEmmcGt
+{"id":"ses_ef558707affegxdmJnmsEmmcGt","slug":"tidy-cabin","projectID":"global","directory":"/tmp/oc/work","path":"private/tmp/oc/work","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"title":"A","version":"1.18.34","time":{"created":1791180115845,"updated":1791180115845}}
+## status before any prompt: {}
+## A: prompt_async -> 1791180115
+prompt_async http=204 time=0.008765s
+status during: {"ses_ef558707affegxdmJnmsEmmcGt":{"type":"busy"}}
+turn took 2713 ms until absent from /session/status
+status after: {}
+A messages: [('user', ['text']), ('assistant', ['step-start', 'reasoning', 'text', 'step-finish'])]
+## B: sync POST /message (waits for the answer)
+sync /message took 1382 ms, keys: ['info', 'parts'] ['step-start', 'reasoning', 'text', 'step-finish'] stop {'total': 28084, 'input': 159, 'output': 4, 'reasoning': 17, 'cache': {'write': 0, 'read': 27904}}
+status after sync: {}
+## SSE event types in order:
+14922 server.connected 
+15820 session.created 
+15848 session.created 
+16004 session.updated 
+16382 message.updated 
+16382 message.part.updated 
+16382 session.updated 
+16417 session.status {'type': 'busy'}
+16417 message.updated 
+16417 session.updated 
+16417 session.diff 
+16417 message.updated 
+16464 plugin.added 
+16464 plugin.added 
+16464 plugin.added 
+16464 plugin.added 
+16464 plugin.added 
+16465 plugin.added 
+16465 plugin.added 
+16465 plugin.added 
+16465 plugin.added 
+16465 plugin.added 
+16465 plugin.added 
+16465 plugin.added 
+16478 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16479 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16569 plugin.added 
+16576 catalog.updated 
+16576 plugin.added 
+16576 plugin.added 
+16576 plugin.added 
+16576 plugin.added 
+16576 plugin.added 
+16576 plugin.added 
+16576 plugin.added 
+16576 plugin.added 
+16576 plugin.added 
+16576 reference.updated 
+16671 integration.updated 
+16671 catalog.updated 
+16714 session.status {'type': 'busy'}
+18750 message.part.updated 
+18750 message.part.updated 
+18750 message.part.delta 
+18750 message.part.delta 
+18751 message.part.delta 
+18766 message.part.delta 
+18776 message.part.delta 
+18795 message.part.delta 
+18810 message.part.delta 
+18814 message.part.delta 
+18834 message.part.delta 
+18837 message.part.delta 
+18849 message.part.delta 
+18864 message.part.delta 
+18884 message.part.delta 
+19064 message.part.delta 
+19066 message.part.delta 
+19070 message.part.delta 
+19070 message.part.delta 
+19072 message.part.delta 
+19072 message.part.delta 
+19083 message.part.updated 
+19083 message.part.updated 
+19083 message.part.delta 
+19138 message.part.updated 
+19138 message.part.updated 
+19138 message.updated 
+19138 message.updated 
+19138 session.status {'type': 'busy'}
+19138 session.status {'type': 'idle'}
+19138 session.idle 
+19147 session.updated 
+19147 session.diff 
+19147 message.updated 
+19458 message.updated 
+19458 message.part.updated 
+19458 session.updated 
+19469 session.status {'type': 'busy'}
+19469 message.updated 
+19469 session.updated 
+19469 session.diff 
+19469 message.updated 
+19471 session.status {'type': 'busy'}
+20629 message.part.updated 
+20629 message.part.updated 
+20629 message.part.delta 
+20629 message.part.delta 
+20629 message.part.delta 
+20629 message.part.delta 
+20664 message.part.delta 
+20664 message.part.delta 
+20664 message.part.delta 
+20700 message.part.delta 
+20700 message.part.delta 
+20700 message.part.updated 
+20700 message.part.updated 
+20700 message.part.delta 
+20777 message.part.updated 
+20777 message.part.updated 
+20777 message.updated 
+20777 message.updated 
+20777 session.status {'type': 'busy'}
+20777 session.status {'type': 'idle'}
+20777 session.idle 
+20777 session.updated 
+20777 session.diff 
+20777 message.updated 
+## stop the server

@@ -18,10 +18,10 @@ import (
 )
 
 // setup:
-//   - `piggery setup` writes the worker profiles (~/.piggery/harness/{pi,claude,codex,omp,dsh}.json, an
+//   - `piggery setup` writes the worker profiles (~/.piggery/harness/{pi,claude,codex,omp,dsh,opencode}.json, an
 //     existing one kept unless --force), the templates and the daemon's config.yaml (only its
 //     missing keys, with their defaults), then shows where each harness and the config stand;
-//   - `piggery setup <pi|claude|codex|omp|dsh|paseo>` adds piggery to that harness, or its plugin to
+//   - `piggery setup <pi|claude|codex|omp|dsh|opencode|paseo>` adds piggery to that harness, or its plugin to
 //     Paseo (a second run changes nothing);
 //   - `piggery setup remove <name>` takes out what setup added;
 //   - `piggery setup notify [add|remove <target>]` writes or removes a notify hook in hooks/notify.d.
@@ -38,7 +38,7 @@ func (e *env) setup(args []string) error {
 	if *outdated && len(pos) != 0 {
 		return fmt.Errorf("%w: setup --outdated takes no argument (only --paseo-home)", errUsage)
 	}
-	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|paseo] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
+	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode|paseo] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
 	self, err := selfPath()
 	if err != nil {
 		return err
@@ -88,6 +88,7 @@ func (e *env) setup(args []string) error {
 		{local.CodexProfilePath(e.dir), "Codex workers", local.DefaultCodexProfile},
 		{local.OmpProfilePath(e.dir), "omp workers", local.DefaultOmpProfile},
 		{local.DshProfilePath(e.dir), "dsh workers", local.DefaultDshProfile},
+		{local.OpencodeProfilePath(e.dir), "opencode workers", local.DefaultOpencodeProfile},
 	} {
 		if w, err := writeJSON(p.path, p.def, *force); err != nil {
 			return err

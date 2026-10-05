@@ -1,0 +1,52 @@
+## serve 1: a turn that completes, then a turn killed in the middle of a bash tool call
+serve1 pid=96478 port=4096
+session=ses_ef55278ddffeIwRyrB0Ho3q9Pi
+prompt_async(one) http=204
+turn: 5298 ms
+prompt_async(two) http=204
+status: {"ses_ef55278ddffeIwRyrB0Ho3q9Pi":{"type":"busy"}}
+SIGKILL serve1 (96478) mid-tool; its shell child  / sleep 97269 are left: alive alive dead
+## serve 2 (new process, new port), same XDG data dir
+serve2 pid=97637 port=4096
+GET /session/$SID -> {"id":"ses_ef55278ddffeIwRyrB0Ho3q9Pi","slug":"playful-star","projectID":"global","directory":"/tmp/oc/work","path":"private/tmp/oc/work","summary":
+status of the interrupted session on serve2: {}
+## history as serve2 sees it (before any prompt)
+user build id=..wrXSFX parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Remember the secret word PLUM42. Reply with exactly: OK1'
+assistant build id=..a429Q6 parent=..wrXSFX +272ms done=4975 finish=stop model=glm-5.3-flash tokens={'total': 28042, 'input': 119, 'output': 4, 'reasoning': 15, 'cache': {'read': 27904, 'write': 0}} e
+    part step-start 
+    part reasoning 
+    part text 'OK1'
+    part step-finish 
+user build id=..abLSc2 parent=.. +5327ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Use the bash tool to run exactly: sleep 891 . Then reply with exactly: OK2'
+assistant build id=..IKpADa parent=..abLSc2 +5333ms done=None finish=None model=glm-5.3-flash tokens={'input': 0, 'output': 0, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}} err=None
+    part step-start 
+    part reasoning 
+    part tool bash running {"command": "sleep 891", "timeout": 900000}
+tool part state of the killed call: {"status": "running", "input": {"command": "sleep 891", "timeout": 900000}, "metadata": {"output": ""}, "time": {"start": 1791180514024}}
+prompt_async(three) http=204
+turn: 2660 ms
+## history after the new prompt
+user build id=..wrXSFX parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Remember the secret word PLUM42. Reply with exactly: OK1'
+assistant build id=..a429Q6 parent=..wrXSFX +272ms done=4975 finish=stop model=glm-5.3-flash tokens={'total': 28042, 'input': 119, 'output': 4, 'reasoning': 15, 'cache': {'read': 27904, 'write': 0}} e
+    part step-start 
+    part reasoning 
+    part text 'OK1'
+    part step-finish 
+user build id=..abLSc2 parent=.. +5327ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Use the bash tool to run exactly: sleep 891 . Then reply with exactly: OK2'
+assistant build id=..IKpADa parent=..abLSc2 +5333ms done=None finish=None model=glm-5.3-flash tokens={'input': 0, 'output': 0, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}} err=None
+    part step-start 
+    part reasoning 
+    part tool bash running {"command": "sleep 891", "timeout": 900000}
+user build id=..zczzEI parent=.. +13787ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'What was the secret word I told you earlier? Answer with the word only.'
+assistant build id=..oDyyRl parent=..zczzEI +14091ms done=16147 finish=stop model=glm-5.3-flash tokens={'total': 28229, 'input': 280, 'output': 5, 'reasoning': 40, 'cache': {'read': 27904, 'write': 0}
+    part step-start 
+    part reasoning 
+    part text 'PLUM42'
+    part step-finish 
+## stop serve2
+alive: dead

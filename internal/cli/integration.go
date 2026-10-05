@@ -37,7 +37,7 @@ func (i integration) detail() string { return i.proto().Detail() }
 
 // manualIntegrations are the ones the daemon does not bring up by itself (`piggery setup
 // --outdated` does): their files sit in the harness's own config or in an app that has to reload
-// them. The others (pi, omp, dsh) are brought up by the daemon at its start.
+// them. The others (pi, omp, dsh, opencode) are brought up by the daemon at its start.
 var manualIntegrations = map[string]bool{"claude": true, "codex": true, "paseo": true}
 
 // installedIntegrations is every integration of dir (and the Codex home) that is installed, with
@@ -60,6 +60,9 @@ func installedIntegrations(dir string) []integration {
 		case "dsh":
 			have, managed := local.DshExtVersion(local.DshExtDir(dir))
 			add("dsh", have, managed, "")
+		case "opencode":
+			have, managed := local.OpencodeExtVersion(local.OpencodeExtDir(dir))
+			add("opencode", have, managed, "")
 		case "claude":
 			have, installed := claudeIntegration(filepath.Join(dir, "claude"))
 			add("claude", have, installed, "")

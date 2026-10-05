@@ -1,0 +1,22 @@
+
+
+## parent death: a python parent (stdin/stdout/stderr pipes to serve, like the runner) is SIGKILLed
+parent=76449 serve=76451 port=4096 health={"healthy":true,"version":"1.18.34"}
+mcp=77621 shell=76811 sleep=77298
+./02b-parent.sh: line 22: 76449 Killed: 9               python3 parent.py /tmp/oc/parent.info $W
+serve after the parent was killed: alive ppid=1  health={"healthy":true,"version":"1.18.34"}
+still works (session list count): 20
+create session -> {"id":"ses_ef5565ad2ffeKdZ2Xg20OqOUnd","slug":"proud-tiger","projectID":"global"
+after: serve=alive mcp=alive shell(zsh)=alive sleep=alive
+  leftover 77298 killed (-9)
+  leftover 76811 killed (-9)
+  leftover 77621 killed (-9)
+  leftover 76451 killed (-9)
+
+## stdin EOF: serve's stdin is a pipe that closes after 2 s
+serve 78003 (port 4096) 5 s after stdin EOF: alive, health={"healthy":true,"version":"1.18.34"}
+./02b-parent.sh: line 30: 78002 Done                    sleep 2
+     78003 Terminated: 15          | python3 -c 'import os,signal,sys;os.execvp("opencode",["opencode","serve","--port","0"])' > $S/$O-eof.out 2> $S/$O-eof.err
+
+## pids left from this script (from the pid file):
+end

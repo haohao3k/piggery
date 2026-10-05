@@ -1,0 +1,45 @@
+## B1-config-deny: serve pid=3255
+  config permission: {"task": "deny", "question": "deny", "*": "allow"}
+  /experimental/tool/ids: ["invalid","question","bash","read","glob","grep","edit","write","task","webfetch","todowrite","websearch","skill","apply_patch"]
+  session=ses_ef5512afdffe9OqVhSJmwDBviS
+  prompt_async http=204
+  turn: 3229 ms
+  requests so far: 1; last request tools (9): ['bash', 'edit', 'glob', 'grep', 'read', 'skill', 'todowrite', 'webfetch', 'write']
+## B2-session-deny: serve pid=3759
+  config permission: {"*": "allow"}
+  /experimental/tool/ids: ["invalid","question","bash","read","glob","grep","edit","write","task","webfetch","todowrite","websearch","skill","apply_patch"]
+  session=ses_ef5511a65ffeJ7ArSq9cpHW3pM
+  prompt_async http=204
+  turn: 3485 ms
+  requests so far: 2; last request tools (8): ['bash', 'edit', 'glob', 'grep', 'read', 'skill', 'todowrite', 'write']
+
+## B3: default permissions + a bash call outside the project dir (external_directory defaults to ask)
+  prompt_async http=204
+  status after 8 s: {}
+  GET /permission: []
+  request id: 
+  reply once -> [... the SPA index.html that the server returns for an unknown route, elided ...]
+  turn after reply: 11335 ms
+  SSE types around the ask:
+    session.status {"sessionID": "ses_ef55104c7ffeHa9lubM265IuVy", "status": {"type": "busy"}}
+    session.status {"sessionID": "ses_ef55104c7ffeHa9lubM265IuVy", "status": {"type": "busy"}}
+    session.status {"sessionID": "ses_ef55104c7ffeHa9lubM265IuVy", "status": {"type": "busy"}}
+    session.status {"sessionID": "ses_ef55104c7ffeHa9lubM265IuVy", "status": {"type": "busy"}}
+    session.status {"sessionID": "ses_ef55104c7ffeHa9lubM265IuVy", "status": {"type": "busy"}}
+    session.status {"sessionID": "ses_ef55104c7ffeHa9lubM265IuVy", "status": {"type": "idle"}}
+    session.idle {"sessionID": "ses_ef55104c7ffeHa9lubM265IuVy"}
+
+## B3b: the same prompt with permission allow (no ask expected)
+  prompt_async http=204
+  turn: 4146 ms; pending permissions: []
+user build id=..Bv9tDE parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Use the bash tool to run exactly: ls /etc/ssl . Then reply with exactly: LS-DONE'
+assistant build id=..iZtxec parent=..Bv9tDE +402ms done=2322 finish=tool-calls model=glm-5.3-flash tokens={'total': 28046, 'input': 127, 'output': 15, 'reasoning': 0, 'cache': {'read': 27904, 'write':
+    part step-start 
+    part tool bash completed {"command": "ls /etc/ssl"}
+    part step-finish 
+assistant build id=..orA6xD parent=..Bv9tDE +2323ms done=3966 finish=stop model=glm-5.3-flash tokens={'total': 28087, 'input': 164, 'output': 5, 'reasoning': 14, 'cache': {'read': 27904, 'write': 0}} 
+    part step-start 
+    part reasoning 
+    part text 'LS-DONE'
+    part step-finish 

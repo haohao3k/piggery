@@ -1,0 +1,17 @@
+serve (only to read the sessions afterwards) pid=89061 port=4096
+## 1: abort a run in a long tool call: SIGINT after 7 s
+before SIGINT: 89429 ppid=89100 pgid=89429 sleep 889
+run exit=130 after 156 ms; run alive=dead; sleep child alive=alive
+last events: {"type":"step_start","timestamp":1791180403908,"sessionID":"ses_ef5541312ffer6qL6czvdWedEt","part":{"id":"prt_10aabf4af0014yKRT0fmvrf0xW","messageID":"msg_10aabee3f001BBGNmAQuY3V7B5","sessionID":"ses_
+stderr: 
+run-abort session=ses_ef5541312ffer6qL6czvdWedEt; its status/last assistant error via the serve:
+user build id=..62bHVT parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text '"Use the bash tool to run exactly: sleep 889 . Then reply with exactly: DONE"'
+assistant build id=..Y3V7B5 parent=..62bHVT +278ms done=None finish=None model=glm-5.3-flash tokens={'input': 0, 'output': 0, 'reasoning': 0, 'cache': {'read': 0, 'write'
+    part step-start 
+    part reasoning 
+    part tool bash running {"command": "sleep 889", "timeout": 900000}
+## 2: abort a run with SIGTERM after 7 s
+before SIGTERM: run=89479 sleep=89829
+./06b-run-abort.sh: line 24: 89479 Terminated: 15          ( cd $W; exec opencode run --format json -m $MODEL --title run-term "Use the bash tool to run exactly: sleep 890 . Then reply with exactly: DONE" > $S/$O.r5.jsonl 2> $S/$O.r5.err < /dev/null )
+run exit=143 alive=dead; sleep child alive=alive

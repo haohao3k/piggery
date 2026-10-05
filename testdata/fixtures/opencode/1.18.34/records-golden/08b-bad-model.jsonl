@@ -1,0 +1,9 @@
+{"message":{"content":[{"text":"hi","type":"text"}],"role":"user"},"type":"message_end"}
+{"message":{"errorMessage":"Model not found: hp/nonexistent.","role":"assistant","stopReason":"error"},"type":"message_end"}
+{"type":"agent_end"}
+{"message":{"content":[{"text":"hi","type":"text"}],"role":"user"},"type":"message_end"}
+{"message":{"errorMessage":"Model not found: nope/x. Did you mean: standardcompute?","role":"assistant","stopReason":"error"},"type":"message_end"}
+{"type":"agent_end"}
+{"message":{"content":[{"text":"hi","type":"text"}],"role":"user"},"type":"message_end"}
+{"message":{"errorMessage":"Model not found: hp/nonexistent.","role":"assistant","stopReason":"error"},"type":"message_end"}
+{"type":"agent_end"}

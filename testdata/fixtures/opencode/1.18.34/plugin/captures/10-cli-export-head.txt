@@ -1,0 +1,74 @@
+{
+  "info": {
+    "id": "ses_ef55fd31effeCkb59uWm2Iqwr3",
+    "slug": "neon-meadow",
+    "projectID": "global",
+    "directory": "/tmp/oc/work",
+    "path": "",
+    "title": "PONG reply test",
+    "agent": "build",
+    "model": {
+      "id": "glm-5.3-flash",
+      "providerID": "hp",
+      "variant": "default"
+    },
+    "version": "1.18.34",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 27647,
+      "output": 4,
+      "reasoning": 12,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "permission": [
+      {
+        "permission": "question",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "plan_enter",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "plan_exit",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1791179631841,
+      "updated": 1791179636555
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1791179631899
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "hp",
+          "modelID": "glm-5.3-flash"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "msg_10aa02d1b0016Xu76dKsjppZgH",
+        "sessionID": "ses_ef55fd31effeCkb59uWm2Iqwr3"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "te

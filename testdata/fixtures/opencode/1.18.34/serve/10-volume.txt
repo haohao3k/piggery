@@ -1,0 +1,82 @@
+== 03-prompt.sse.jsonl: 129 events, 31787 bytes
+  plugin.added                         45 events    4520 bytes
+  message.part.delta                   30 events    7883 bytes
+  message.updated                      12 events    5914 bytes
+  session.status                        8 events    1256 bytes
+  session.updated                       7 events    4418 bytes
+  message.part.updated:text             6 events    2220 bytes
+  session.diff                          4 events     556 bytes
+  message.part.updated:reasoning        4 events    1773 bytes
+  session.created                       2 events     987 bytes
+  catalog.updated                       2 events     170 bytes
+  message.part.updated:step-start       2 events     648 bytes
+  message.part.updated:step-finish      2 events     926 bytes
+  session.idle                          2 events     254 bytes
+  server.connected                      1 events      86 bytes
+  reference.updated                     1 events      87 bytes
+  integration.updated                   1 events      89 bytes
+== 04-steer.sse.jsonl: 139 events, 35912 bytes
+  plugin.added                         45 events    4520 bytes
+  message.part.delta                   43 events   11486 bytes
+  message.updated                      11 events    5550 bytes
+  session.updated                       6 events    3797 bytes
+  session.status                        6 events     942 bytes
+  message.part.updated:tool             5 events    2803 bytes
+  message.part.updated:text             4 events    1602 bytes
+  message.part.updated:reasoning        4 events    2069 bytes
+  session.diff                          3 events     417 bytes
+  catalog.updated                       2 events     170 bytes
+  message.part.updated:step-start       2 events     648 bytes
+  message.part.updated:step-finish      2 events     935 bytes
+  server.connected                      1 events      86 bytes
+  session.created                       1 events     498 bytes
+  reference.updated                     1 events      87 bytes
+  integration.updated                   1 events      89 bytes
+  server.heartbeat                      1 events      86 bytes
+  session.idle                          1 events     127 bytes
+== 05-abort.sse.jsonl: 249 events, 65453 bytes
+  message.part.delta                  146 events   38946 bytes
+  plugin.added                         45 events    4520 bytes
+  message.updated                      11 events    5289 bytes
+  session.status                        9 events    1413 bytes
+  session.updated                       7 events    4450 bytes
+  message.part.updated:text             5 events    1913 bytes
+  message.part.updated:reasoning        4 events    3371 bytes
+  message.part.updated:tool             4 events    2294 bytes
+  session.idle                          4 events     508 bytes
+  session.diff                          3 events     417 bytes
+  catalog.updated                       2 events     170 bytes
+  message.part.updated:step-start       2 events     648 bytes
+  server.connected                      1 events      86 bytes
+  session.created                       1 events     500 bytes
+  reference.updated                     1 events      87 bytes
+  integration.updated                   1 events      89 bytes
+  session.error                         1 events     202 bytes
+  server.heartbeat                      1 events      86 bytes
+  message.part.updated:step-finish      1 events     464 bytes
+
+== the events a compact log needs (all fields below are in the capture; field paths in properties.*)
+   assistant text, final:   message.part.updated  part.type=text   part.time.end set  (part.text is the full text; deltas are redundant)
+   reasoning (optional):    message.part.updated  part.type=reasoning part.time.end set
+   tool call:               message.part.updated  part.type=tool  part.tool, part.state.status pending|running|completed|error, part.state.input (+ .output / .error when done)
+   usage/ctx per step:      message.part.updated  part.type=step-finish  part.tokens {total,input,output,reasoning,cache{read,write}}, part.cost, part.reason
+   usage per assistant msg: message.updated       info.role=assistant info.tokens (same shape), info.finish, info.time.completed, info.modelID/providerID, info.error
+   turn start/end:          session.status properties.status.type busy|idle (a busy is repeated; take the last), session.idle (alias)
+   abort/failure:           session.error properties.error.name (MessageAbortedError, ...)
+   a steered-in user msg:   message.updated info.role=user (+ message.part.updated part.type=text) while the session is busy
+   skip: message.part.delta (one per token), plugin.added / catalog.updated / reference.updated / integration.updated (instance boot), session.updated, session.diff, server.heartbeat (every 10 s)
+
+== compact records derived from 04-steer.sse.jsonl (t = ms after the first event):
+    1424 ('status', 'busy')
+    1699 ('status', 'busy')
+    3782 ('tool', 'bash', 'running', '{"command": "sleep 12 && echo FIRST-DONE", "timeout": 30000}')
+    3819 ('tool', 'bash', 'running', '{"command": "sleep 12 && echo FIRST-DONE", "timeout": 30000}')
+   15914 ('tool', 'bash', 'running', '{"command": "sleep 12 && echo FIRST-DONE", "timeout": 30000}')
+   15972 ('tool', 'bash', 'completed', '{"command": "sleep 12 && echo FIRST-DONE", "timeout": 30000}')
+   15972 ('usage', {'total': 28137, 'input': 131, 'output': 25, 'reasoning': 77, 'cache': {'write': 0, 'read': 27904}}, 'tool-calls')
+   15972 ('status', 'busy')
+   15976 ('status', 'busy')
+   17525 ('assistant_text', 'ONE TWO-STEERED')
+   17525 ('usage', {'total': 28227, 'input': 258, 'output': 8, 'reasoning': 57, 'cache': {'write': 0, 'read': 27904}}, 'stop')
+   17525 ('status', 'busy')
+   17525 ('status', 'idle')

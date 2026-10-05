@@ -10,7 +10,7 @@ import (
 	"github.com/sting8k/piggery/internal/jsonobj"
 )
 
-// The worker profiles ~/.piggery/harness/{pi,claude,codex,omp}.json: each harness's default profile
+// The worker profiles ~/.piggery/harness/{pi,claude,codex,omp,dsh,opencode}.json: each harness's default profile
 // below is what setup writes and what a missing key is filled with. Every field is written (no
 // omitempty), so the file shows every key the driver reads.
 
@@ -70,6 +70,7 @@ func DefaultProfiles(dir string) []struct {
 		{CodexProfilePath(dir), DefaultCodexProfile},
 		{OmpProfilePath(dir), DefaultOmpProfile},
 		{DshProfilePath(dir), DefaultDshProfile},
+		{OpencodeProfilePath(dir), DefaultOpencodeProfile},
 	}
 }
 
@@ -129,6 +130,7 @@ func CheckProfiles(dir string) (errs []error) {
 		{CodexProfilePath(dir), func() error { _, err := (&codexCodec{dir: dir}).profile(); return err }},
 		{OmpProfilePath(dir), func() error { _, err := ompCodec{piCodec{dir: dir}}.profile(); return err }},
 		{DshProfilePath(dir), func() error { _, err := (&dshCodec{dir: dir}).profile(); return err }},
+		{OpencodeProfilePath(dir), func() error { _, err := (&opencodeCodec{dir: dir}).profile(); return err }},
 	} {
 		if _, err := os.Stat(p.path); err != nil {
 			continue

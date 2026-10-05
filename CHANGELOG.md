@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.8.0 - 2026-10-05
+
+opencode joins the farm, and two new team templates come built in: `amp-like` and `gastown-like`.
+
+After upgrading, run `piggery restart`: the daemon then knows opencode and refreshes the built-in
+templates you never edited. No existing integration changed, so `setup --outdated` has nothing to
+do. To use opencode, run `piggery setup opencode`.
+
+- opencode 1.x (tested with 1.18.34): an opencode session you open joins piggery through a plugin,
+  and a team can start opencode workers (`opencode serve`, one per worker). Mail wakes an idle
+  session and reaches a busy one at its next step; `abort`, `stop`, `resume` and `model` work on
+  its workers. `setup opencode` adds one `plugin` entry to your `opencode.json` and refuses an
+  `opencode.jsonc` (it prints the line to add by hand). Workers keep your opencode setup, except
+  the `question` and `task` tools (`disabled_tools` in `harness/opencode.json`; a role gets one
+  back with `spawn.allow_tools`).
+- Template `amp-like`, after [Amp](https://ampcode.com)'s oracle and code review: a lead does the
+  work and calls an oracle (hard reasoning) or a reviewer (one diff), each answering once. It pays
+  off when they run another model family than the lead.
+- Template `gastown-like`, after [Gas Town](https://github.com/gastownhall/gastown): a mayor splits
+  the work, polecats do each task on their own branch and worktree, and a refinery merges the
+  branches one at a time into an integration branch. Your own branch moves only when you say.
+- `council`: the chair stops at the verdict and starts agents for other work, such as carrying out
+  the decision, only when you ask.
+- [manifests/README.md](manifests/README.md) draws every built-in template, with when to pick it.
+- Forks get an `AGENTS.md` with the rules that keep the design intact, for people and coding agents.
+- `setup <harness>` keeps one copy of each of your config files it is about to change for the first
+  time, in `~/.piggery/backups/setup/<harness>/`. `setup remove` still takes out only piggery's part
+  and never restores the copy; it is there if something goes wrong.
+- Fix: `setup pi --ext` then `setup remove pi` left a `settings.json` of `{}` where there was none,
+  and could re-indent other values in it (such as `packages`).
+
 ## v0.7.1 - 2026-10-05
 
 Codex threads that share one app-server are no longer mixed up.

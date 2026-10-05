@@ -1,0 +1,117 @@
+serve pid=70671 port=4096 start_ms=715
+session=ses_ef557cd24ffep0Hh01aL1hQede
+prompt_async(first) http=204 at=1791180157721
+status at +6s: {"ses_ef557cd24ffep0Hh01aL1hQede":{"type":"busy"}}
+prompt_async(second) http=204 at=1791180163803
+turn took 10537 ms after the second prompt (total 16708 ms)
+## messages
+user build id=..pb0b0G parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Use the bash tool to run exactly: sleep 12 && echo FIRST-DONE . When it returns, reply wit'
+assistant build id=..DPCbe0 parent=..pb0b0G +332ms done=14899 finish=tool-calls model=glm-5.3-flash tokens={'total': 28137, 'input': 131, 'output': 25, 'reasoning': 77, 'cache': {'read': 27904, 'write': 0}} err=None
+    part step-start 
+    part reasoning 
+    part tool bash completed {"command": "sleep 12 && echo FIRST-DONE", "timeout": 30000}
+    part step-finish 
+user build id=..SaMosv parent=.. +6043ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Additional instruction: in your final reply also say the word TWO-STEERED'
+assistant build id=..pt8fh2 parent=..SaMosv +14903ms done=16476 finish=stop model=glm-5.3-flash tokens={'total': 28227, 'input': 258, 'output': 8, 'reasoning': 57, 'cache': {'read': 27904, 'write': 0}} err=None
+    part step-start 
+    part reasoning 
+    part text 'ONE TWO-STEERED'
+    part step-finish 
+## SSE (session-level event types, time since first prompt):
+  -959 server.connected 
+   -29 session.created 
+    91 session.updated 
+   426 message.updated user
+   426 message.part.updated text
+   426 session.updated 
+   465 session.status {'type': 'busy'}
+   466 message.updated assistant
+   467 session.updated 
+   468 session.diff 
+   468 message.updated user
+   521 plugin.added 
+   521 plugin.added 
+   521 plugin.added 
+   521 plugin.added 
+   521 plugin.added 
+   521 plugin.added 
+   521 plugin.added 
+   521 plugin.added 
+   521 plugin.added 
+   522 plugin.added 
+   522 plugin.added 
+   522 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   533 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   620 plugin.added 
+   625 catalog.updated 
+   625 plugin.added 
+   625 plugin.added 
+   625 plugin.added 
+   625 plugin.added 
+   625 plugin.added 
+   625 plugin.added 
+   625 plugin.added 
+   625 plugin.added 
+   625 plugin.added 
+   625 reference.updated 
+   711 integration.updated 
+   711 catalog.updated 
+   740 session.status {'type': 'busy'}
+  2153 message.part.updated step-start
+  2153 message.part.updated reasoning
+  2823 message.part.updated reasoning
+  2823 message.part.updated tool
+  2823 message.part.updated tool
+  2860 message.part.updated tool
+  6127 message.updated user
+  6127 message.part.updated text
+  6127 session.updated 
+ 14955 message.part.updated tool
+ 15013 message.part.updated tool
+ 15013 message.part.updated step-finish
+ 15013 message.updated assistant
+ 15013 message.updated assistant
+ 15013 session.status {'type': 'busy'}
+ 15013 message.updated assistant
+ 15013 session.updated 
+ 15013 session.diff 
+ 15013 message.updated user
+ 15017 session.status {'type': 'busy'}
+ 16398 message.part.updated step-start
+ 16398 message.part.updated reasoning
+ 16518 message.part.updated reasoning
+ 16519 message.part.updated text
+ 16566 message.part.updated text
+ 16566 message.part.updated step-finish
+ 16566 message.updated assistant
+ 16566 message.updated assistant
+ 16566 session.status {'type': 'busy'}
+ 16566 session.status {'type': 'idle'}
+ 16566 session.idle 
+ 16566 session.updated 
+ 16566 session.diff 
+ 16566 message.updated user

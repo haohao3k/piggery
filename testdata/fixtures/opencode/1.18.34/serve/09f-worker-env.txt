@@ -1,0 +1,18 @@
+config permission: {"read": "allow", "bash": "ask", "task": "deny", "question": "deny", "skill": "deny", "*": "allow"}
+GET /skill: 11 skills
+prompt_async http=204
+turn: 3424 ms
+permission events: []
+request 0 model glm-5.3-flash tools ['bash', 'edit', 'glob', 'grep', 'read', 'todowrite', 'webfetch', 'write'] system chars [9063] tail: ['c-b/cfg-fixtures/user-instructions.md\nuser instruction file\n']
+request 1 model glm-5.3-flash tools ['bash', 'edit', 'glob', 'grep', 'read', 'todowrite', 'webfetch', 'write'] system chars [9063] tail: ['c-b/cfg-fixtures/user-instructions.md\nuser instruction file\n']
+user build id=..GgN0Pi parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'You must call the bash tool now with the command: echo piggery . Do not answer before the '
+assistant build id=..zjxPqM parent=..GgN0Pi +293ms done=2385 finish=tool-calls model=glm-5.3-flash tokens={'total': 6029, 'input': 5950, 'output': 14, 'reasoning': 65, 'cache': {'read': 0, 'write': 0}
+    part step-start 
+    part reasoning 
+    part tool bash completed {"command": "echo piggery"}
+    part step-finish 
+assistant build id=..rxyqMy parent=..GgN0Pi +2388ms done=3411 finish=stop model=glm-5.3-flash tokens={'total': 6043, 'input': 6037, 'output': 6, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}} err=N
+    part step-start 
+    part text 'WORKER-DONE'
+    part step-finish 

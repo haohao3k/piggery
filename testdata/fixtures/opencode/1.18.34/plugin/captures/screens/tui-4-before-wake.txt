@@ -1,0 +1,50 @@
+
+     ▣  Build · glm-b (alias of glm-5.3-flash) · 8.8s                                                                                                           PINEAPPLE-ANJbNb
+
+  ┃                                                                                                                                                             Context
+  ┃  Call the probe_sleep tool with seconds 15, then say: steer-ctl first.                                                                                      28,686 tokens
+  ┃                                                                                                                                                             6% used
+                                                                                                                                                                $0.00 spent
+     + Thought: 41ms
+                                                                                                                                                                LSP
+     ⚙ probe_sleep [seconds=15]                                                                                                                                 LSPs are disabled
+
+  ┃
+  ┃  STEERCTL: add the word MANGO at the end of your final answer.
+  ┃
+
+  ┃
+  ┃  STEERCTL: add the word MANGO at the end of your final answer.
+  ┃
+
+     + Thought: 314ms
+
+     steer-ctl first. MANGO
+
+     ▣  Build · glm-b (alias of glm-5.3-flash) · 13.1s
+
+  ┃
+  ┃  Call the probe_sleep tool with seconds 12, then say: np first.
+  ┃
+
+     + Thought: 57ms
+
+     ⚙ probe_sleep [seconds=12]
+
+  ┃
+  ┃  STEERCTL: add the word MANGO at the end of your final answer.
+  ┃
+
+     + Thought: 209ms
+
+     np first. MANGO
+
+     ▣  Build · glm-b (alias of glm-5.3-flash) · 14.0s
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · glm-b (alias of glm-5.3-flash) HP                                                                                                                  /tmp/oc/work:main
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /tmp/oc/work                                                                                                        28.7K (6%)  ctrl+p commands    • OpenCode 1.18.34
+

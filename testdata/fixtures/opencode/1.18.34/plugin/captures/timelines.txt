@@ -1,0 +1,740 @@
+# columns: n, ms since the capture's first line, kind (event|hook|tool|ctl|client), name, session (last 6), detail
+
+##### Q2 plain turn  [tui-1-port-turns-steer.jsonl lines 60-171]
+60	4736	event	session.created	grqcEU	session grqcEU
+61	4747	hook	chat.message	grqcEU	
+63	4750	event	message.updated	grqcEU	user ezD5Zw
+64	4752	event	message.part.updated	grqcEU	text
+65	4756	event	session.updated	grqcEU	session grqcEU
+66	4760	event	session.status	grqcEU	busy
+67	4763	event	message.updated	grqcEU	assistant LDRre6 parent=ezD5Zw
+68	4774	hook	experimental.chat.system.transform	grqcEU	
+69	4775	hook	chat.params	grqcEU	
+71	4775	hook	chat.headers	grqcEU	
+86	5007	hook	experimental.chat.messages.transform	-	
+87	5027	event	session.updated	grqcEU	session grqcEU
+88	5027	event	session.diff	grqcEU	
+89	5029	event	message.updated	grqcEU	user ezD5Zw
+127	5366	event	catalog.updated	-	
+136	5368	event	reference.updated	-	
+137	5386	event	integration.updated	-	
+138	5466	event	catalog.updated	-	
+139	6302	event	session.status	grqcEU	busy
+140	6303	hook	experimental.chat.system.transform	grqcEU	
+141	6304	hook	chat.params	grqcEU	
+143	6304	hook	chat.headers	grqcEU	
+144	6552	event	session.updated	grqcEU	session grqcEU
+145	8546	event	message.part.updated	grqcEU	step-start
+146	8555	event	message.part.updated	grqcEU	reasoning
+158	8663	event	message.part.updated	grqcEU	reasoning
+159	8665	event	message.part.updated	grqcEU	text
+161	8694	hook	experimental.text.complete	grqcEU	
+162	8696	event	message.part.updated	grqcEU	text
+163	8892	event	message.part.updated	grqcEU	step-finish
+164	8893	event	message.updated	grqcEU	assistant LDRre6 parent=ezD5Zw finish=stop
+165	9072	event	message.updated	grqcEU	assistant LDRre6 parent=ezD5Zw finish=stop
+166	9072	event	session.status	grqcEU	busy
+167	9074	event	session.status	grqcEU	idle
+168	9074	event	session.idle	grqcEU	
+169	9076	event	session.updated	grqcEU	session grqcEU
+170	9076	event	session.diff	grqcEU	
+171	9196	event	message.updated	grqcEU	user ezD5Zw
+
+##### Q2 turn with tool calls (bash + plugin tool)  [tui-1-port-turns-steer.jsonl lines 172-284]
+172	25857	hook	chat.message	grqcEU	
+174	25860	event	message.updated	grqcEU	user ogPTwi
+175	25862	event	message.part.updated	grqcEU	text
+176	25864	event	session.updated	grqcEU	session grqcEU
+177	25865	event	session.status	grqcEU	busy
+178	25867	event	message.updated	grqcEU	assistant lXbLmW parent=ogPTwi
+193	26070	hook	experimental.chat.messages.transform	-	
+194	26087	event	session.updated	grqcEU	session grqcEU
+195	26087	event	session.diff	grqcEU	
+196	26089	event	message.updated	grqcEU	user ogPTwi
+197	26091	event	session.status	grqcEU	busy
+198	26093	hook	experimental.chat.system.transform	grqcEU	
+199	26093	hook	chat.params	grqcEU	
+201	26093	hook	chat.headers	grqcEU	
+202	27578	event	message.part.updated	grqcEU	step-start
+203	27580	event	message.part.updated	grqcEU	reasoning
+223	27881	event	message.part.updated	grqcEU	reasoning
+224	27883	event	message.part.updated	grqcEU	tool bash pending
+225	27905	hook	tool.execute.before	grqcEU	
+227	27910	event	message.part.updated	grqcEU	tool bash running
+228	27917	event	message.part.updated	grqcEU	tool probe_whoami pending
+229	27930	hook	shell.env	grqcEU	
+231	27932	event	message.part.updated	grqcEU	tool bash running
+232	27934	hook	tool.execute.before	grqcEU	
+234	27935	tool	probe_whoami.execute	grqcEU	
+235	27935	hook	tool.execute.after	grqcEU	
+237	27937	event	message.part.updated	grqcEU	tool probe_whoami running
+238	27940	event	message.part.updated	grqcEU	tool probe_whoami completed
+239	27982	event	message.part.updated	grqcEU	tool bash running
+240	27983	hook	tool.execute.after	grqcEU	
+242	27985	event	message.part.updated	grqcEU	tool bash completed
+243	28193	event	message.part.updated	grqcEU	step-finish
+244	28194	event	message.updated	grqcEU	assistant lXbLmW parent=ogPTwi finish=tool-calls
+245	28386	event	message.updated	grqcEU	assistant lXbLmW parent=ogPTwi finish=tool-calls
+246	28386	event	session.status	grqcEU	busy
+247	28387	event	message.updated	grqcEU	assistant EmAXwv parent=ogPTwi
+248	28389	event	session.updated	grqcEU	session grqcEU
+249	28389	event	session.diff	grqcEU	
+264	28567	hook	experimental.chat.messages.transform	-	
+265	28589	event	session.status	grqcEU	busy
+266	28589	hook	experimental.chat.system.transform	grqcEU	
+267	28589	hook	chat.params	grqcEU	
+269	28590	hook	chat.headers	grqcEU	
+270	28709	event	message.updated	grqcEU	user ogPTwi
+271	29759	event	message.part.updated	grqcEU	step-start
+272	29761	event	message.part.updated	grqcEU	text
+274	29762	hook	experimental.text.complete	grqcEU	
+275	29763	event	message.part.updated	grqcEU	text
+276	29959	event	message.part.updated	grqcEU	step-finish
+277	29960	event	message.updated	grqcEU	assistant EmAXwv parent=ogPTwi finish=stop
+278	30139	event	message.updated	grqcEU	assistant EmAXwv parent=ogPTwi finish=stop
+279	30140	event	session.status	grqcEU	busy
+280	30141	event	session.status	grqcEU	idle
+281	30141	event	session.idle	grqcEU	
+282	30142	event	session.updated	grqcEU	session grqcEU
+283	30143	event	session.diff	grqcEU	
+284	30288	event	message.updated	grqcEU	user ogPTwi
+
+##### Q2 steer: a prompt typed while busy (TUI)  [tui-1-port-turns-steer.jsonl lines 285-391]
+285	54169	hook	chat.message	grqcEU	
+287	54171	event	message.updated	grqcEU	user Sc0WvS
+288	54172	event	message.part.updated	grqcEU	text
+289	54174	event	session.updated	grqcEU	session grqcEU
+290	54175	event	session.status	grqcEU	busy
+291	54178	event	message.updated	grqcEU	assistant IReRez parent=Sc0WvS
+306	54388	hook	experimental.chat.messages.transform	-	
+307	54407	event	session.updated	grqcEU	session grqcEU
+308	54407	event	session.diff	grqcEU	
+309	54408	event	message.updated	grqcEU	user Sc0WvS
+310	54414	event	session.status	grqcEU	busy
+311	54415	hook	experimental.chat.system.transform	grqcEU	
+312	54416	hook	chat.params	grqcEU	
+314	54416	hook	chat.headers	grqcEU	
+315	56317	event	message.part.updated	grqcEU	step-start
+316	56324	event	message.part.updated	grqcEU	tool probe_sleep pending
+317	56333	hook	tool.execute.before	grqcEU	
+319	56335	tool	probe_sleep.start	-	
+320	56338	event	message.part.updated	grqcEU	tool probe_sleep running
+321	61281	hook	chat.message	grqcEU	
+323	61283	event	message.updated	grqcEU	user z7rpL1
+324	61284	event	message.part.updated	grqcEU	text
+325	61285	event	session.updated	grqcEU	session grqcEU
+326	81336	tool	probe_sleep.end	-	
+327	81337	hook	tool.execute.after	grqcEU	
+329	81343	event	message.part.updated	grqcEU	tool probe_sleep completed
+330	81557	event	message.part.updated	grqcEU	step-finish
+331	81558	event	message.updated	grqcEU	assistant IReRez parent=Sc0WvS finish=tool-calls
+332	81731	event	message.updated	grqcEU	assistant IReRez parent=Sc0WvS finish=tool-calls
+333	81732	event	session.status	grqcEU	busy
+334	81733	event	message.updated	grqcEU	assistant T379Cc parent=z7rpL1
+335	81735	event	session.updated	grqcEU	session grqcEU
+336	81735	event	session.diff	grqcEU	
+351	81912	hook	experimental.chat.messages.transform	-	
+352	81929	event	session.status	grqcEU	busy
+353	81936	hook	experimental.chat.system.transform	grqcEU	
+354	81936	hook	chat.params	grqcEU	
+356	81936	hook	chat.headers	grqcEU	
+357	82045	event	message.updated	grqcEU	user Sc0WvS
+358	83270	event	message.part.updated	grqcEU	step-start
+359	83281	event	message.part.updated	grqcEU	reasoning
+377	83468	event	message.part.updated	grqcEU	reasoning
+378	83469	event	message.part.updated	grqcEU	text
+381	83510	hook	experimental.text.complete	grqcEU	
+382	83512	event	message.part.updated	grqcEU	text
+383	83702	event	message.part.updated	grqcEU	step-finish
+384	83702	event	message.updated	grqcEU	assistant T379Cc parent=z7rpL1 finish=stop
+385	83880	event	message.updated	grqcEU	assistant T379Cc parent=z7rpL1 finish=stop
+386	83881	event	session.status	grqcEU	busy
+387	83882	event	session.status	grqcEU	idle
+388	83882	event	session.idle	grqcEU	
+389	83884	event	session.updated	grqcEU	session grqcEU
+390	83885	event	session.diff	grqcEU	
+391	84004	event	message.updated	grqcEU	user z7rpL1
+
+##### Q5 wake: promptAsync into an idle session  [tui-2-port-wake-abort.jsonl lines 60-169]
+60	14678	hook	chat.message	grqcEU	
+62	14682	event	message.updated	grqcEU	user Zd6oEo
+63	14685	event	message.part.updated	grqcEU	text
+64	14689	event	session.updated	grqcEU	session grqcEU
+65	14690	ctl	result	-	
+66	14692	event	session.status	grqcEU	busy
+67	14695	event	message.updated	grqcEU	assistant J0Lx5G parent=Zd6oEo
+82	14882	hook	experimental.chat.messages.transform	-	
+83	14900	event	session.updated	grqcEU	session grqcEU
+84	14901	event	session.diff	grqcEU	
+85	14903	event	message.updated	grqcEU	user Zd6oEo
+123	15213	event	catalog.updated	-	
+132	15215	event	reference.updated	-	
+133	15231	event	integration.updated	-	
+134	15311	event	catalog.updated	-	
+135	15901	event	session.status	grqcEU	busy
+136	15908	hook	experimental.chat.system.transform	grqcEU	
+137	15908	hook	chat.params	grqcEU	
+139	15909	hook	chat.headers	grqcEU	
+140	17963	event	message.part.updated	grqcEU	step-start
+141	17966	event	message.part.updated	grqcEU	reasoning
+156	18225	event	message.part.updated	grqcEU	reasoning
+157	18226	event	message.part.updated	grqcEU	text
+159	18257	hook	experimental.text.complete	grqcEU	
+160	18260	event	message.part.updated	grqcEU	text
+161	18457	event	message.part.updated	grqcEU	step-finish
+162	18458	event	message.updated	grqcEU	assistant J0Lx5G parent=Zd6oEo finish=stop
+163	18635	event	message.updated	grqcEU	assistant J0Lx5G parent=Zd6oEo finish=stop
+164	18635	event	session.status	grqcEU	busy
+165	18637	event	session.status	grqcEU	idle
+166	18637	event	session.idle	grqcEU	
+167	18638	event	session.updated	grqcEU	session grqcEU
+168	18639	event	session.diff	grqcEU	
+169	18755	event	message.updated	grqcEU	user Zd6oEo
+
+##### Q5 prompt noReply into an idle session  [tui-2-port-wake-abort.jsonl lines 170-175]
+170	37982	hook	chat.message	grqcEU	
+172	37984	event	message.updated	grqcEU	user 6OgvUj
+173	37985	event	message.part.updated	grqcEU	text
+174	37987	event	session.updated	grqcEU	session grqcEU
+175	37993	ctl	result	-	
+
+##### Q7 abort: Esc Esc in the TUI, steer message pending  [tui-2-port-wake-abort.jsonl lines 176-251]
+176	53060	hook	chat.message	grqcEU	
+178	53063	event	message.updated	grqcEU	user 0m2XP9
+179	53067	event	message.part.updated	grqcEU	text
+180	53069	event	session.updated	grqcEU	session grqcEU
+181	53071	event	session.status	grqcEU	busy
+182	53074	event	message.updated	grqcEU	assistant Hygmws parent=0m2XP9
+197	53281	hook	experimental.chat.messages.transform	-	
+198	53349	event	session.updated	grqcEU	session grqcEU
+199	53349	event	session.diff	grqcEU	
+200	53351	event	message.updated	grqcEU	user 0m2XP9
+201	53375	event	session.status	grqcEU	busy
+202	53376	hook	experimental.chat.system.transform	grqcEU	
+203	53376	hook	chat.params	grqcEU	
+205	53377	hook	chat.headers	grqcEU	
+206	54542	event	message.part.updated	grqcEU	step-start
+207	54547	event	message.part.updated	grqcEU	reasoning
+231	54940	event	message.part.updated	grqcEU	reasoning
+232	54945	event	message.part.updated	grqcEU	tool probe_sleep pending
+233	54962	hook	tool.execute.before	grqcEU	
+235	54964	tool	probe_sleep.start	-	
+236	54968	event	message.part.updated	grqcEU	tool probe_sleep running
+237	59115	hook	chat.message	grqcEU	
+239	59116	event	message.updated	grqcEU	user ZikXiM
+240	59117	event	message.part.updated	grqcEU	text
+241	59119	event	session.updated	grqcEU	session grqcEU
+242	62993	event	session.error	grqcEU	MessageAbortedError
+243	62993	event	session.status	grqcEU	idle
+244	62994	event	session.idle	grqcEU	
+245	62994	tool	probe_sleep.end	-	
+246	62994	hook	tool.execute.after	grqcEU	
+248	62997	event	message.part.updated	grqcEU	tool probe_sleep completed
+249	63189	event	message.updated	grqcEU	assistant Hygmws parent=0m2XP9 error=MessageAbortedError
+250	63192	event	session.status	grqcEU	idle
+251	63192	event	session.idle	grqcEU	
+
+##### Q7 abort: POST /session/:id/abort while busy, then again while idle  [tui-2-port-wake-abort.jsonl lines 252-342]
+252	86667	hook	chat.message	grqcEU	
+254	86669	event	message.updated	grqcEU	user o9tZdx
+255	86670	event	message.part.updated	grqcEU	text
+256	86673	event	session.updated	grqcEU	session grqcEU
+257	86674	event	session.status	grqcEU	busy
+258	86676	event	message.updated	grqcEU	assistant Aj2M0a parent=o9tZdx
+273	86870	hook	experimental.chat.messages.transform	-	
+274	86886	event	session.updated	grqcEU	session grqcEU
+275	86886	event	session.diff	grqcEU	
+276	86887	event	message.updated	grqcEU	user o9tZdx
+277	86889	event	session.status	grqcEU	busy
+278	86890	hook	experimental.chat.system.transform	grqcEU	
+279	86890	hook	chat.params	grqcEU	
+281	86891	hook	chat.headers	grqcEU	
+282	88197	event	message.part.updated	grqcEU	step-start
+283	88199	event	message.part.updated	grqcEU	reasoning
+325	88880	event	message.part.updated	grqcEU	reasoning
+326	88884	event	message.part.updated	grqcEU	tool probe_sleep pending
+327	88887	hook	tool.execute.before	grqcEU	
+329	88888	tool	probe_sleep.start	-	
+330	88891	event	message.part.updated	grqcEU	tool probe_sleep running
+331	92665	event	session.error	grqcEU	MessageAbortedError
+332	92665	event	session.status	grqcEU	idle
+333	92666	event	session.idle	grqcEU	
+334	92666	tool	probe_sleep.end	-	
+335	92666	hook	tool.execute.after	grqcEU	
+337	92669	event	message.part.updated	grqcEU	tool probe_sleep completed
+338	92866	event	message.updated	grqcEU	assistant Aj2M0a parent=o9tZdx error=MessageAbortedError
+339	92867	event	session.status	grqcEU	idle
+340	92867	event	session.idle	grqcEU	
+341	95981	event	session.status	grqcEU	idle
+342	95982	event	session.idle	grqcEU	
+
+##### Q7 the next prompt after an abort  [tui-2-port-wake-abort.jsonl lines 343-423]
+343	106689	hook	chat.message	grqcEU	
+345	106692	event	message.updated	grqcEU	user 5Caf4P
+346	106693	event	message.part.updated	grqcEU	text
+347	106694	event	session.updated	grqcEU	session grqcEU
+348	106695	ctl	result	-	
+349	106695	event	session.status	grqcEU	busy
+350	106697	event	message.updated	grqcEU	assistant M9TdGF parent=5Caf4P
+365	106873	hook	experimental.chat.messages.transform	-	
+366	106889	event	session.updated	grqcEU	session grqcEU
+367	106889	event	session.diff	grqcEU	
+368	106891	event	message.updated	grqcEU	user 5Caf4P
+369	106892	event	session.status	grqcEU	busy
+370	106893	hook	experimental.chat.system.transform	grqcEU	
+371	106893	hook	chat.params	grqcEU	
+373	106893	hook	chat.headers	grqcEU	
+374	108267	event	message.part.updated	grqcEU	step-start
+375	108276	event	message.part.updated	grqcEU	reasoning
+410	108639	event	message.part.updated	grqcEU	reasoning
+411	108642	event	message.part.updated	grqcEU	text
+413	108667	hook	experimental.text.complete	grqcEU	
+414	108669	event	message.part.updated	grqcEU	text
+415	108865	event	message.part.updated	grqcEU	step-finish
+416	108865	event	message.updated	grqcEU	assistant M9TdGF parent=5Caf4P finish=stop
+417	109040	event	message.updated	grqcEU	assistant M9TdGF parent=5Caf4P finish=stop
+418	109041	event	session.status	grqcEU	busy
+419	109042	event	session.status	grqcEU	idle
+420	109042	event	session.idle	grqcEU	
+421	109043	event	session.updated	grqcEU	session grqcEU
+422	109043	event	session.diff	grqcEU	
+423	109166	event	message.updated	grqcEU	user 5Caf4P
+
+##### Q8 permission edit=ask  [tui-3-port-permission-model-sessions.jsonl lines 60-201]
+60	5792	hook	chat.message	grqcEU	
+62	5796	event	message.updated	grqcEU	user TpAqny
+63	5798	event	message.part.updated	grqcEU	text
+64	5800	event	session.updated	grqcEU	session grqcEU
+65	5803	event	session.status	grqcEU	busy
+66	5805	event	message.updated	grqcEU	assistant mgv1V6 parent=TpAqny
+81	5991	hook	experimental.chat.messages.transform	-	
+82	6010	event	session.updated	grqcEU	session grqcEU
+83	6010	event	session.diff	grqcEU	
+84	6012	event	message.updated	grqcEU	user TpAqny
+122	6313	event	catalog.updated	-	
+131	6315	event	reference.updated	-	
+132	6331	event	integration.updated	-	
+133	6405	event	catalog.updated	-	
+134	7000	event	session.status	grqcEU	busy
+135	7006	hook	experimental.chat.system.transform	grqcEU	
+136	7006	hook	chat.params	grqcEU	
+138	7007	hook	chat.headers	grqcEU	
+139	8635	event	message.part.updated	grqcEU	step-start
+140	8637	event	message.part.updated	grqcEU	reasoning
+147	8724	event	message.part.updated	grqcEU	reasoning
+148	8725	event	message.part.updated	grqcEU	tool write pending
+149	8784	hook	tool.execute.before	grqcEU	
+151	8788	event	message.part.updated	grqcEU	tool write running
+152	8790	event	permission.asked	grqcEU	
+153	21930	event	permission.replied	grqcEU	once
+154	21932	event	file.edited	-	
+155	21932	event	file.watcher.updated	-	
+156	21933	hook	tool.execute.after	grqcEU	
+158	21936	event	message.part.updated	grqcEU	tool write completed
+159	22312	event	message.part.updated	grqcEU	step-finish
+160	22313	event	message.updated	grqcEU	assistant mgv1V6 parent=TpAqny finish=tool-calls
+161	22563	event	message.part.updated	grqcEU	patch
+162	22566	event	message.updated	grqcEU	assistant mgv1V6 parent=TpAqny finish=tool-calls
+163	22566	event	session.status	grqcEU	busy
+164	22568	event	message.updated	grqcEU	assistant pfg0rc parent=TpAqny
+165	22570	event	session.updated	grqcEU	session grqcEU
+166	22570	event	session.diff	grqcEU	
+181	22843	hook	experimental.chat.messages.transform	-	
+182	22862	event	session.status	grqcEU	busy
+183	22863	hook	experimental.chat.system.transform	grqcEU	
+184	22864	hook	chat.params	grqcEU	
+186	22864	hook	chat.headers	grqcEU	
+187	23109	event	message.updated	grqcEU	user TpAqny
+188	24010	event	message.part.updated	grqcEU	step-start
+189	24016	event	message.part.updated	grqcEU	text
+191	24019	hook	experimental.text.complete	grqcEU	
+192	24023	event	message.part.updated	grqcEU	text
+193	24230	event	message.part.updated	grqcEU	step-finish
+194	24231	event	message.updated	grqcEU	assistant pfg0rc parent=TpAqny finish=stop
+195	24406	event	message.updated	grqcEU	assistant pfg0rc parent=TpAqny finish=stop
+196	24406	event	session.status	grqcEU	busy
+197	24408	event	session.status	grqcEU	idle
+198	24408	event	session.idle	grqcEU	
+199	24410	event	session.updated	grqcEU	session grqcEU
+200	24411	event	session.diff	grqcEU	
+201	24661	event	message.updated	grqcEU	user TpAqny
+
+##### Q9 model glm-b + variant low  [tui-3-port-permission-model-sessions.jsonl lines 203-251]
+203	153478	hook	chat.message	grqcEU	
+205	153480	event	message.updated	grqcEU	user cJAmEr
+206	153482	event	message.part.updated	grqcEU	text
+207	153484	event	session.updated	grqcEU	session grqcEU
+208	153485	event	session.status	grqcEU	busy
+209	153488	event	message.updated	grqcEU	assistant bxb8eO parent=cJAmEr
+224	153714	hook	experimental.chat.messages.transform	-	
+225	153733	event	session.updated	grqcEU	session grqcEU
+226	153733	event	session.diff	grqcEU	
+227	153735	event	message.updated	grqcEU	user cJAmEr
+228	153742	event	session.status	grqcEU	busy
+229	153744	hook	experimental.chat.system.transform	grqcEU	
+230	153745	hook	chat.params	grqcEU	
+232	153745	hook	chat.headers	grqcEU	
+233	155615	event	message.part.updated	grqcEU	step-start
+234	155617	event	message.part.updated	grqcEU	reasoning
+238	155828	event	message.part.updated	grqcEU	reasoning
+239	155829	event	message.part.updated	grqcEU	text
+241	155840	hook	experimental.text.complete	grqcEU	
+242	155841	event	message.part.updated	grqcEU	text
+243	156058	event	message.part.updated	grqcEU	step-finish
+244	156059	event	message.updated	grqcEU	assistant bxb8eO parent=cJAmEr finish=stop
+245	156283	event	message.updated	grqcEU	assistant bxb8eO parent=cJAmEr finish=stop
+246	156284	event	session.status	grqcEU	busy
+247	156286	event	session.status	grqcEU	idle
+248	156286	event	session.idle	grqcEU	
+249	156290	event	session.updated	grqcEU	session grqcEU
+250	156290	event	session.diff	grqcEU	
+251	156435	event	message.updated	grqcEU	user cJAmEr
+
+##### Q6 /new: second root session  [tui-3-port-permission-model-sessions.jsonl lines 252-329]
+252	176931	event	session.created	ANJbNb	session ANJbNb
+253	176935	hook	chat.message	ANJbNb	
+255	176936	event	message.updated	ANJbNb	user k99nOc
+256	176937	event	message.part.updated	ANJbNb	text
+257	176938	event	session.updated	ANJbNb	session ANJbNb
+258	176939	event	session.status	ANJbNb	busy
+259	176940	event	message.updated	ANJbNb	assistant 0AkCB2 parent=k99nOc
+260	176943	hook	experimental.chat.system.transform	ANJbNb	
+261	176943	hook	chat.params	ANJbNb	
+263	176943	hook	chat.headers	ANJbNb	
+278	177143	hook	experimental.chat.messages.transform	-	
+279	177161	event	session.updated	ANJbNb	session ANJbNb
+280	177161	event	session.diff	ANJbNb	
+281	177162	event	message.updated	ANJbNb	user k99nOc
+282	177163	event	session.status	ANJbNb	busy
+283	177163	hook	experimental.chat.system.transform	ANJbNb	
+284	177163	hook	chat.params	ANJbNb	
+286	177164	hook	chat.headers	ANJbNb	
+287	177941	event	session.updated	ANJbNb	session ANJbNb
+288	178837	event	message.part.updated	ANJbNb	step-start
+289	178845	event	message.part.updated	ANJbNb	reasoning
+315	179231	event	message.part.updated	ANJbNb	reasoning
+316	179233	event	message.part.updated	ANJbNb	text
+319	179407	hook	experimental.text.complete	ANJbNb	
+320	179410	event	message.part.updated	ANJbNb	text
+321	179610	event	message.part.updated	ANJbNb	step-finish
+322	179611	event	message.updated	ANJbNb	assistant 0AkCB2 parent=k99nOc finish=stop
+323	179791	event	message.updated	ANJbNb	assistant 0AkCB2 parent=k99nOc finish=stop
+324	179792	event	session.status	ANJbNb	busy
+325	179793	event	session.status	ANJbNb	idle
+326	179793	event	session.idle	ANJbNb	
+327	179794	event	session.updated	ANJbNb	session ANJbNb
+328	179794	event	session.diff	ANJbNb	
+329	179910	event	message.updated	ANJbNb	user k99nOc
+
+##### Q6 served second session (POST /session + prompt_async)  [tui-3-port-permission-model-sessions.jsonl lines 330-386]
+330	191027	event	session.created	mj3Dgz	session mj3Dgz
+331	191055	event	session.updated	mj3Dgz	session mj3Dgz
+332	191055	hook	chat.message	mj3Dgz	
+334	191056	event	message.updated	mj3Dgz	user n24KHH
+335	191058	event	message.part.updated	mj3Dgz	text
+336	191059	event	session.updated	mj3Dgz	session mj3Dgz
+337	191059	event	session.status	mj3Dgz	busy
+338	191061	event	message.updated	mj3Dgz	assistant BFDygn parent=n24KHH
+353	191252	hook	experimental.chat.messages.transform	-	
+354	191269	event	session.updated	mj3Dgz	session mj3Dgz
+355	191269	event	session.diff	mj3Dgz	
+356	191271	event	message.updated	mj3Dgz	user n24KHH
+357	191277	event	session.status	mj3Dgz	busy
+358	191278	hook	experimental.chat.system.transform	mj3Dgz	
+359	191278	hook	chat.params	mj3Dgz	
+361	191279	hook	chat.headers	mj3Dgz	
+362	192755	event	message.part.updated	mj3Dgz	step-start
+363	192756	event	message.part.updated	mj3Dgz	reasoning
+373	192898	event	message.part.updated	mj3Dgz	reasoning
+374	192899	event	message.part.updated	mj3Dgz	text
+376	192930	hook	experimental.text.complete	mj3Dgz	
+377	192931	event	message.part.updated	mj3Dgz	text
+378	193130	event	message.part.updated	mj3Dgz	step-finish
+379	193131	event	message.updated	mj3Dgz	assistant BFDygn parent=n24KHH finish=stop
+380	193334	event	message.updated	mj3Dgz	assistant BFDygn parent=n24KHH finish=stop
+381	193334	event	session.status	mj3Dgz	busy
+382	193335	event	session.status	mj3Dgz	idle
+383	193335	event	session.idle	mj3Dgz	
+384	193337	event	session.updated	mj3Dgz	session mj3Dgz
+385	193337	event	session.diff	mj3Dgz	
+386	193465	event	message.updated	mj3Dgz	user n24KHH
+
+##### Q6 task tool: child session  [tui-3-port-permission-model-sessions.jsonl lines 387-563]
+387	206623	hook	chat.message	ANJbNb	
+389	206625	event	message.updated	ANJbNb	user Iw5cM3
+390	206626	event	message.part.updated	ANJbNb	text
+391	206627	event	session.updated	ANJbNb	session ANJbNb
+392	206627	event	session.status	ANJbNb	busy
+393	206629	event	message.updated	ANJbNb	assistant W85r6u parent=Iw5cM3
+408	206827	hook	experimental.chat.messages.transform	-	
+409	206844	event	session.updated	ANJbNb	session ANJbNb
+410	206844	event	session.diff	ANJbNb	
+411	206845	event	message.updated	ANJbNb	user Iw5cM3
+412	206846	event	session.status	ANJbNb	busy
+413	206847	hook	experimental.chat.system.transform	ANJbNb	
+414	206847	hook	chat.params	ANJbNb	
+416	206847	hook	chat.headers	ANJbNb	
+417	208083	event	message.part.updated	ANJbNb	step-start
+418	208089	event	message.part.updated	ANJbNb	reasoning
+423	208111	event	message.part.updated	ANJbNb	reasoning
+424	208113	event	message.part.updated	ANJbNb	tool task pending
+425	208269	hook	tool.execute.before	ANJbNb	
+427	208277	event	session.created	b87Hy4	session b87Hy4 parent=ANJbNb
+428	208280	event	message.part.updated	ANJbNb	tool task running
+429	208287	event	session.updated	b87Hy4	session b87Hy4 parent=ANJbNb
+430	208288	hook	chat.message	b87Hy4	
+432	208291	event	message.updated	b87Hy4	user puQDmX
+433	208292	event	message.part.updated	b87Hy4	text
+434	208294	event	session.updated	b87Hy4	session b87Hy4 parent=ANJbNb
+435	208296	event	message.part.updated	ANJbNb	tool task running
+436	208298	event	session.status	b87Hy4	busy
+437	208299	event	message.updated	b87Hy4	assistant vLDiI1 parent=puQDmX
+452	208490	hook	experimental.chat.messages.transform	-	
+453	208507	event	session.updated	b87Hy4	session b87Hy4 parent=ANJbNb
+454	208507	event	session.diff	b87Hy4	
+455	208508	event	message.updated	b87Hy4	user puQDmX
+456	208509	event	session.status	b87Hy4	busy
+457	208510	hook	experimental.chat.system.transform	b87Hy4	
+458	208510	hook	chat.params	b87Hy4	
+460	208510	hook	chat.headers	b87Hy4	
+461	210310	event	message.part.updated	b87Hy4	step-start
+462	210315	event	message.part.updated	b87Hy4	tool probe_whoami pending
+463	210317	hook	tool.execute.before	b87Hy4	
+465	210319	tool	probe_whoami.execute	b87Hy4	
+466	210319	hook	tool.execute.after	b87Hy4	
+468	210322	event	message.part.updated	b87Hy4	tool probe_whoami running
+469	210325	event	message.part.updated	b87Hy4	tool probe_whoami completed
+470	210533	event	message.part.updated	b87Hy4	step-finish
+471	210535	event	message.updated	b87Hy4	assistant vLDiI1 parent=puQDmX finish=tool-calls
+472	210708	event	message.updated	b87Hy4	assistant vLDiI1 parent=puQDmX finish=tool-calls
+473	210708	event	session.status	b87Hy4	busy
+474	210709	event	message.updated	b87Hy4	assistant xpDbbj parent=puQDmX
+475	210711	event	session.updated	b87Hy4	session b87Hy4 parent=ANJbNb
+476	210711	event	session.diff	b87Hy4	
+491	210880	hook	experimental.chat.messages.transform	-	
+492	210902	event	session.status	b87Hy4	busy
+493	210903	hook	experimental.chat.system.transform	b87Hy4	
+494	210903	hook	chat.params	b87Hy4	
+496	210903	hook	chat.headers	b87Hy4	
+497	211018	event	message.updated	b87Hy4	user puQDmX
+498	212548	event	message.part.updated	b87Hy4	step-start
+499	212550	event	message.part.updated	b87Hy4	text
+503	212621	hook	experimental.text.complete	b87Hy4	
+504	212623	event	message.part.updated	b87Hy4	text
+505	212806	event	message.part.updated	b87Hy4	step-finish
+506	212807	event	message.updated	b87Hy4	assistant xpDbbj parent=puQDmX finish=stop
+507	212990	event	message.updated	b87Hy4	assistant xpDbbj parent=puQDmX finish=stop
+508	212990	event	session.status	b87Hy4	busy
+509	212991	event	session.status	b87Hy4	idle
+510	212991	event	session.idle	b87Hy4	
+511	212992	hook	tool.execute.after	ANJbNb	
+513	212994	event	message.part.updated	ANJbNb	tool task completed
+514	212995	event	session.updated	b87Hy4	session b87Hy4 parent=ANJbNb
+515	212995	event	session.diff	b87Hy4	
+516	213188	event	message.part.updated	ANJbNb	step-finish
+517	213189	event	message.updated	ANJbNb	assistant W85r6u parent=Iw5cM3 finish=tool-calls
+518	213389	event	message.updated	ANJbNb	assistant W85r6u parent=Iw5cM3 finish=tool-calls
+519	213390	event	session.status	ANJbNb	busy
+520	213392	event	message.updated	ANJbNb	assistant omUKYs parent=Iw5cM3
+521	213394	event	session.updated	ANJbNb	session ANJbNb
+522	213394	event	session.diff	ANJbNb	
+537	213636	hook	experimental.chat.messages.transform	-	
+538	213657	event	session.status	ANJbNb	busy
+539	213658	hook	experimental.chat.system.transform	ANJbNb	
+540	213658	hook	chat.params	ANJbNb	
+542	213659	hook	chat.headers	ANJbNb	
+543	213802	event	message.updated	b87Hy4	user puQDmX
+544	213948	event	message.updated	ANJbNb	user Iw5cM3
+545	215053	event	message.part.updated	ANJbNb	step-start
+546	215056	event	message.part.updated	ANJbNb	text
+549	215057	hook	experimental.text.complete	ANJbNb	
+550	215059	event	message.part.updated	ANJbNb	text
+551	215266	event	message.part.updated	ANJbNb	step-finish
+552	215266	event	message.updated	ANJbNb	assistant omUKYs parent=Iw5cM3 finish=stop
+553	215457	event	message.updated	ANJbNb	assistant omUKYs parent=Iw5cM3 finish=stop
+554	215457	event	session.status	ANJbNb	busy
+555	215458	event	session.status	ANJbNb	idle
+556	215459	event	session.idle	ANJbNb	
+557	215460	event	session.updated	ANJbNb	session ANJbNb
+558	215460	event	session.diff	ANJbNb	
+559	215588	event	message.updated	ANJbNb	user Iw5cM3
+560	236880	ctl	result	-	
+561	236883	ctl	result	-	
+562	236886	ctl	result	-	
+563	236887	ctl	result	-	
+
+##### Q6 another directory: a third plugin instance  [tui-3-port-permission-model-sessions.jsonl lines 564-569]
+564	255331	load	plugin	-	
+565	255331	client	shape	-	
+566	255331	hook	config	-	
+567	255334	event	session.created	bLPBaB	session bLPBaB
+568	256838	client	session.list	-	
+569	256841	client	path.get	-	
+
+##### Q2/Q5 steer through the plugin client, --port TUI (the command ran twice: see README)  [tui-3-port-permission-model-sessions.jsonl lines 570-698]
+570	317913	hook	chat.message	ANJbNb	
+572	317917	event	message.updated	ANJbNb	user Ee4vwl
+573	317919	event	message.part.updated	ANJbNb	text
+574	317921	event	session.updated	ANJbNb	session ANJbNb
+575	317923	event	session.status	ANJbNb	busy
+576	317926	event	message.updated	ANJbNb	assistant AkjTV7 parent=Ee4vwl
+591	318123	hook	experimental.chat.messages.transform	-	
+592	318140	event	session.updated	ANJbNb	session ANJbNb
+593	318141	event	session.diff	ANJbNb	
+594	318142	event	message.updated	ANJbNb	user Ee4vwl
+595	318144	event	session.status	ANJbNb	busy
+596	318145	hook	experimental.chat.system.transform	ANJbNb	
+597	318146	hook	chat.params	ANJbNb	
+599	318146	hook	chat.headers	ANJbNb	
+600	319355	event	message.part.updated	ANJbNb	step-start
+601	319359	event	message.part.updated	ANJbNb	reasoning
+608	319399	event	message.part.updated	ANJbNb	reasoning
+609	319401	event	message.part.updated	ANJbNb	tool probe_sleep pending
+610	319403	hook	tool.execute.before	ANJbNb	
+612	319404	tool	probe_sleep.start	-	
+613	319407	event	message.part.updated	ANJbNb	tool probe_sleep running
+614	324000	event	session.updated	ANJbNb	session ANJbNb
+615	324001	hook	chat.message	ANJbNb	
+617	324003	event	message.updated	ANJbNb	user kcX0dh
+618	324004	event	message.part.updated	ANJbNb	text
+619	324006	event	session.updated	ANJbNb	session ANJbNb
+620	324006	ctl	result	-	
+621	324009	hook	chat.message	ANJbNb	
+623	324011	event	message.updated	ANJbNb	user Cu1pAY
+624	324012	event	message.part.updated	ANJbNb	text
+625	324013	event	session.updated	ANJbNb	session ANJbNb
+626	324014	ctl	result	-	
+627	334404	tool	probe_sleep.end	-	
+628	334405	hook	tool.execute.after	ANJbNb	
+630	334407	event	message.part.updated	ANJbNb	tool probe_sleep completed
+631	334599	event	message.part.updated	ANJbNb	step-finish
+632	334600	event	message.updated	ANJbNb	assistant AkjTV7 parent=Ee4vwl finish=tool-calls
+633	334775	event	message.updated	ANJbNb	assistant AkjTV7 parent=Ee4vwl finish=tool-calls
+634	334776	event	session.status	ANJbNb	busy
+635	334777	event	message.updated	ANJbNb	assistant Tuw1qU parent=Cu1pAY
+636	334778	event	session.updated	ANJbNb	session ANJbNb
+637	334778	event	session.diff	ANJbNb	
+652	334962	hook	experimental.chat.messages.transform	-	
+653	334980	event	session.status	ANJbNb	busy
+654	334981	hook	experimental.chat.system.transform	ANJbNb	
+655	334981	hook	chat.params	ANJbNb	
+657	334982	hook	chat.headers	ANJbNb	
+658	335096	event	message.updated	ANJbNb	user Ee4vwl
+659	336280	event	message.part.updated	ANJbNb	step-start
+660	336281	event	message.part.updated	ANJbNb	reasoning
+684	336596	event	message.part.updated	ANJbNb	reasoning
+685	336598	event	message.part.updated	ANJbNb	text
+688	336626	hook	experimental.text.complete	ANJbNb	
+689	336628	event	message.part.updated	ANJbNb	text
+690	336821	event	message.part.updated	ANJbNb	step-finish
+691	336822	event	message.updated	ANJbNb	assistant Tuw1qU parent=Cu1pAY finish=stop
+692	337113	event	message.updated	ANJbNb	assistant Tuw1qU parent=Cu1pAY finish=stop
+693	337113	event	session.status	ANJbNb	busy
+694	337114	event	session.status	ANJbNb	idle
+695	337114	event	session.idle	ANJbNb	
+696	337116	event	session.updated	ANJbNb	session ANJbNb
+697	337117	event	session.diff	ANJbNb	
+698	337248	event	message.updated	ANJbNb	user Cu1pAY
+
+##### Q2/Q5 steer through the plugin client, no-port TUI  [tui-4-noport-config-content.jsonl lines 55-219]
+55	16953	hook	chat.message	ANJbNb	
+57	16957	event	message.updated	ANJbNb	user 35DlME
+58	16959	event	message.part.updated	ANJbNb	text
+59	16963	event	session.updated	ANJbNb	session ANJbNb
+60	16965	event	session.status	ANJbNb	busy
+61	16968	event	message.updated	ANJbNb	assistant GSuWgN parent=35DlME
+76	17168	hook	experimental.chat.messages.transform	-	
+77	17187	event	session.updated	ANJbNb	session ANJbNb
+78	17187	event	session.diff	ANJbNb	
+79	17189	event	message.updated	ANJbNb	user 35DlME
+117	17504	event	catalog.updated	-	
+126	17506	event	reference.updated	-	
+127	17866	event	integration.updated	-	
+128	17965	event	catalog.updated	-	
+129	18480	event	session.status	ANJbNb	busy
+130	18486	hook	experimental.chat.system.transform	ANJbNb	
+131	18487	hook	chat.params	ANJbNb	
+133	18487	hook	chat.headers	ANJbNb	
+134	21295	event	message.part.updated	ANJbNb	step-start
+135	21297	event	message.part.updated	ANJbNb	reasoning
+141	21355	event	message.part.updated	ANJbNb	reasoning
+142	21358	event	message.part.updated	ANJbNb	tool probe_sleep pending
+143	21363	hook	tool.execute.before	ANJbNb	
+145	21365	tool	probe_sleep.start	-	
+146	21367	event	message.part.updated	ANJbNb	tool probe_sleep running
+147	21980	hook	chat.message	ANJbNb	
+149	21984	event	message.updated	ANJbNb	user GtYXIZ
+150	21986	event	message.part.updated	ANJbNb	text
+151	21988	event	session.updated	ANJbNb	session ANJbNb
+152	21988	ctl	result	-	
+153	33370	tool	probe_sleep.end	-	
+154	33371	hook	tool.execute.after	ANJbNb	
+156	33375	event	message.part.updated	ANJbNb	tool probe_sleep completed
+157	33581	event	message.part.updated	ANJbNb	step-finish
+158	33582	event	message.updated	ANJbNb	assistant GSuWgN parent=35DlME finish=tool-calls
+159	33786	event	message.updated	ANJbNb	assistant GSuWgN parent=35DlME finish=tool-calls
+160	33787	event	session.status	ANJbNb	busy
+161	33789	event	message.updated	ANJbNb	assistant RNEG07 parent=GtYXIZ
+162	33791	event	session.updated	ANJbNb	session ANJbNb
+163	33791	event	session.diff	ANJbNb	
+178	34117	hook	experimental.chat.messages.transform	-	
+179	34140	event	session.status	ANJbNb	busy
+180	34141	hook	experimental.chat.system.transform	ANJbNb	
+181	34141	hook	chat.params	ANJbNb	
+183	34141	hook	chat.headers	ANJbNb	
+184	34275	event	message.updated	ANJbNb	user 35DlME
+185	35341	event	message.part.updated	ANJbNb	step-start
+186	35343	event	message.part.updated	ANJbNb	reasoning
+206	35555	event	message.part.updated	ANJbNb	reasoning
+207	35558	event	message.part.updated	ANJbNb	text
+209	35580	hook	experimental.text.complete	ANJbNb	
+210	35583	event	message.part.updated	ANJbNb	text
+211	35780	event	message.part.updated	ANJbNb	step-finish
+212	35781	event	message.updated	ANJbNb	assistant RNEG07 parent=GtYXIZ finish=stop
+213	35974	event	message.updated	ANJbNb	assistant RNEG07 parent=GtYXIZ finish=stop
+214	35974	event	session.status	ANJbNb	busy
+215	35976	event	session.status	ANJbNb	idle
+216	35976	event	session.idle	ANJbNb	
+217	35980	event	session.updated	ANJbNb	session ANJbNb
+218	35980	event	session.diff	ANJbNb	
+219	36129	event	message.updated	ANJbNb	user GtYXIZ
+
+##### Q5 wake, no-port TUI  [tui-4-noport-config-content.jsonl lines 220-284]
+220	64510	hook	chat.message	ANJbNb	
+222	64513	event	message.updated	ANJbNb	user 673QNh
+223	64515	event	message.part.updated	ANJbNb	text
+224	64518	event	session.updated	ANJbNb	session ANJbNb
+225	64518	ctl	result	-	
+226	64519	event	session.status	ANJbNb	busy
+227	64522	event	message.updated	ANJbNb	assistant CxaTCc parent=673QNh
+242	64701	hook	experimental.chat.messages.transform	-	
+243	64719	event	session.updated	ANJbNb	session ANJbNb
+244	64719	event	session.diff	ANJbNb	
+245	64721	event	message.updated	ANJbNb	user 673QNh
+246	64722	event	session.status	ANJbNb	busy
+247	64723	hook	experimental.chat.system.transform	ANJbNb	
+248	64724	hook	chat.params	ANJbNb	
+250	64724	hook	chat.headers	ANJbNb	
+251	66427	event	message.part.updated	ANJbNb	step-start
+252	66436	event	message.part.updated	ANJbNb	reasoning
+271	66486	event	message.part.updated	ANJbNb	reasoning
+272	66489	event	message.part.updated	ANJbNb	text
+274	66575	hook	experimental.text.complete	ANJbNb	
+275	66577	event	message.part.updated	ANJbNb	text
+276	66779	event	message.part.updated	ANJbNb	step-finish
+277	66780	event	message.updated	ANJbNb	assistant CxaTCc parent=673QNh finish=stop
+278	66958	event	message.updated	ANJbNb	assistant CxaTCc parent=673QNh finish=stop
+279	66958	event	session.status	ANJbNb	busy
+280	66960	event	session.status	ANJbNb	idle
+281	66960	event	session.idle	ANJbNb	
+282	66961	event	session.updated	ANJbNb	session ANJbNb
+283	66961	event	session.diff	ANJbNb	
+284	67079	event	message.updated	ANJbNb	user 673QNh
+
+##### Q5 noReply, no-port TUI  [tui-4-noport-config-content.jsonl lines 285-291]
+285	68287	hook	chat.message	ANJbNb	
+287	68289	event	message.updated	ANJbNb	user vMJfQD
+288	68290	event	message.part.updated	ANJbNb	text
+289	68292	event	session.updated	ANJbNb	session ANJbNb
+290	68293	ctl	result	-	
+291	77501	dispose	plugin	-	

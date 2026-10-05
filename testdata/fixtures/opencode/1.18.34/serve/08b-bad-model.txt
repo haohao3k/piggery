@@ -1,0 +1,35 @@
+session=ses_ef54f9431ffedAbvuqm4grRBcU
+prompt_async {"model":{"providerID":"hp","modelID":"nonexistent"},"parts":[{"type":"text","text":"hi"}]} ->  http=204
+  status: {}
+prompt_async {"model":{"providerID":"nope","modelID":"x"},"parts":[{"type":"text","text":"hi"}]} ->  http=204
+  status: {}
+sync /message with the bad model -> {"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_2f682c89"}}
+## SSE (no plugin.added/delta)
+  server.connected {}
+  session.created {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "info": {"id": "ses_ef54f9431ffedAbvuqm4grRBcU", "slug": "kind-squid", "version": "1.18.34", "projectID": "global", "directory": "/tmp/oc/work", "path": "private/tmp/oc/work", "title": "bad", "cost": 0, "tokens": {"input": 0, "output": 0, "
+  message.updated {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "info": {"id": "msg_10ab06c78001xYggSaUK320WRq", "role": "user", "sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "time": {"created": 1791180696696}, "agent": "build", "model": {"providerID": "hp", "modelID": "nonexistent"}}}
+  message.part.updated {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "part": {"type": "text", "text": "hi", "messageID": "msg_10ab06c78001xYggSaUK320WRq", "sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "id": "prt_10ab06c7f0018LMEW2WrBp9cCC"}, "time": 1791180697205}
+  session.status {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "status": {"type": "busy"}}
+  session.error {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "error": {"name": "UnknownError", "data": {"message": "Model not found: hp/nonexistent."}}}
+  session.status {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "status": {"type": "idle"}}
+  session.idle {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU"}
+  session.error {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "error": {"name": "UnknownError", "data": {"message": "ProviderModelNotFoundError: Model not found: hp/nonexistent.\n    at <anonymous> (/$bunfs/root/chunk-v28k8t0c.js:439:94601)\n    at SessionPrompt.getModel (/$bunfs/root/chunk-evdhym6h.js:1142:11505
+  message.updated {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "info": {"id": "msg_10ab0786c001XFuohghSbcMyGD", "role": "user", "sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "time": {"created": 1791180699756}, "agent": "build", "model": {"providerID": "nope", "modelID": "x"}}}
+  message.part.updated {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "part": {"type": "text", "text": "hi", "messageID": "msg_10ab0786c001XFuohghSbcMyGD", "sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "id": "prt_10ab0786f00120mDVE2vZONDkV"}, "time": 1791180699762}
+  session.status {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "status": {"type": "busy"}}
+  session.error {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "error": {"name": "UnknownError", "data": {"message": "Model not found: nope/x. Did you mean: standardcompute?"}}}
+  session.status {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "status": {"type": "idle"}}
+  session.idle {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU"}
+  session.error {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "error": {"name": "UnknownError", "data": {"message": "ProviderModelNotFoundError: Model not found: nope/x. Did you mean: standardcompute?\n    at <anonymous> (/$bunfs/root/chunk-v28k8t0c.js:439:94416)\n    at SessionPrompt.getModel (/$bunfs/root/chunk
+  message.updated {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "info": {"id": "msg_10ab084970017Cu17vSyjXfHjL", "role": "user", "sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "time": {"created": 1791180702871}, "agent": "build", "model": {"providerID": "hp", "modelID": "nonexistent"}}}
+  message.part.updated {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "part": {"type": "text", "text": "hi", "messageID": "msg_10ab084970017Cu17vSyjXfHjL", "sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "id": "prt_10ab08498001LeQ8zZLP6SIFfs"}, "time": 1791180702874}
+  session.status {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "status": {"type": "busy"}}
+  session.error {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "error": {"name": "UnknownError", "data": {"message": "Model not found: hp/nonexistent."}}}
+  session.status {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU", "status": {"type": "idle"}}
+  session.idle {"sessionID": "ses_ef54f9431ffedAbvuqm4grRBcU"}
+user build id=..320WRq parent=.. +0ms done=None finish=None model=nonexistent tokens=None err=None
+    part text 'hi'
+user build id=..bcMyGD parent=.. +3060ms done=None finish=None model=x tokens=None err=None
+    part text 'hi'
+user build id=..jXfHjL parent=.. +6175ms done=None finish=None model=nonexistent tokens=None err=None
+    part text 'hi'

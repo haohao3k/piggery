@@ -34,7 +34,7 @@ jobs:
           node-version: 22
       - run: go vet ./...
       - run: go test -race ./...
-      - run: node --test extensions/pi/*.test.mjs
+      - run: node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
       - name: Paseo plugin
         working-directory: extensions/paseo
         run: npm ci --ignore-scripts && npm run typecheck && npm test

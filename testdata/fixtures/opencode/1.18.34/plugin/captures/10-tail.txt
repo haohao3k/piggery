@@ -1,0 +1,14 @@
+session_id                      type  text                                                                 
+------------------------------  ----  ---------------------------------------------------------------------
+ses_ef54fb398ffewItPiGyAANJbNb  text  NOREPLY note (no-port TUI): nothing to answer.                       
+ses_ef54fb398ffewItPiGyAANJbNb  text  woke                                                                 
+ses_ef54fb398ffewItPiGyAANJbNb  text  WAKE from plugin promptAsync (no-port TUI): reply with exactly: woke 
+ses_ef54fb398ffewItPiGyAANJbNb  text  np first. MANGO                                                      
+ses_ef54fb398ffewItPiGyAANJbNb  text  STEERCTL: add the word MANGO at the end of your final answer.        
+ses_ef54fb398ffewItPiGyAANJbNb  tool  probe_sleep                                                          
+ses_ef54fb398ffewItPiGyAANJbNb  text  Call the probe_sleep tool with seconds 12, then say: np first.       
+ses_ef54fb398ffewItPiGyAANJbNb  text  steer-ctl first. MANGO                                               
+ses_ef54fb398ffewItPiGyAANJbNb  text  STEERCTL: add the word MANGO at the end of your final answer.        
+ses_ef54fb398ffewItPiGyAANJbNb  text  STEERCTL: add the word MANGO at the end of your final answer.        
+ses_ef54fb398ffewItPiGyAANJbNb  tool  probe_sleep                                                          
+ses_ef54fb398ffewItPiGyAANJbNb  text  Call the probe_sleep tool with seconds 15, then say: steer-ctl first.

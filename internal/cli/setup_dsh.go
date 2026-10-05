@@ -150,7 +150,11 @@ func installDsh(dir string) (string, error) {
 		return "", err
 	}
 	changed := doc != string(cur)
+	backup := ""
 	if changed {
+		if backup, err = backupHumanConfig(dir, "dsh", patch, func(b []byte) bool { _, _, ok := blockSpan(string(b)); return ok }); err != nil {
+			return "", err
+		}
 		if err := writeAtomic(patch, doc); err != nil {
 			return "", err
 		}
@@ -158,7 +162,7 @@ func installDsh(dir string) (string, error) {
 	if !wrote && !changed {
 		return "dsh: piggery's plugin is already installed", nil
 	}
-	return fmt.Sprintf("dsh: installed piggery's plugin (v%d) in %s and its row in %s\ndsh: sessions started from now on join piggery; restart a dsh that is open.", local.IntegrationVersion("dsh"), ext, patch), nil
+	return fmt.Sprintf("dsh: installed piggery's plugin (v%d) in %s and its row in %s\n%sdsh: sessions started from now on join piggery; restart a dsh that is open.", local.IntegrationVersion("dsh"), ext, patch, backupLines([]string{backup})), nil
 }
 
 func removeDsh(dir string) (string, error) {

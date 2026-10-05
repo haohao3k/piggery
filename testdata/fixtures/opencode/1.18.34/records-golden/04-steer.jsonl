@@ -1,0 +1,10 @@
+{"message":{"content":[{"text":"Use the bash tool to run exactly: sleep 12 && echo FIRST-DONE . When it returns, reply with exactly: ONE","type":"text"}],"role":"user"},"type":"message_end"}
+{"args":{"command":"sleep 12 && echo FIRST-DONE","timeout":30000},"toolName":"bash","type":"tool_execution_start"}
+{"message":{"content":[{"text":"Additional instruction: in your final reply also say the word TWO-STEERED","type":"text"}],"role":"user"},"type":"message_end"}
+{"isError":false,"result":{"content":[{"text":"FIRST-DONE\n","type":"text"}]},"toolName":"bash","type":"tool_execution_end"}
+{"message":{"content":[],"role":"assistant","usage":{"cacheRead":27904,"cacheWrite":0,"input":131,"output":25,"totalTokens":28137}},"type":"message_end"}
+{"type":"turn_end"}
+{"message":{"content":[{"text":"ONE TWO-STEERED","type":"text"}],"role":"assistant"},"type":"message_end"}
+{"message":{"content":[],"role":"assistant","usage":{"cacheRead":27904,"cacheWrite":0,"input":258,"output":8,"totalTokens":28227}},"type":"message_end"}
+{"type":"turn_end"}
+{"type":"agent_end"}

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": { "bash": "ask", "read": "allow" },
+  "mcp": { "userm": { "type": "local", "command": ["true"], "enabled": false } },
+  "plugin": ["file:///tmp/oc/cfg-fixtures/noop-plugin.js"],
+  "agent": { "useragent": { "description": "from the user's global config", "mode": "subagent" } },
+  "instructions": ["/tmp/oc/cfg-fixtures/user-instructions.md"]
+}

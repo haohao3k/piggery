@@ -134,13 +134,15 @@ type worker struct {
 	pendMu  sync.Mutex
 	pending map[string]chan []byte // requests waiting for the stdout line that answers them, by id
 
+	logMu sync.Mutex // serializes appendLog
+
 	done chan struct{} // closed when the process has been reaped
 	exit core.Exit
 }
 
 // Builtin is every built-in runtime driver over dir, one per harness.
 func Builtin(dir string, opts Options) []*Driver {
-	return []*Driver{New(dir, opts), NewClaude(dir, "", opts), NewCodex(dir, "", opts), NewOmp(dir, opts), NewDsh(dir, opts)}
+	return []*Driver{New(dir, opts), NewClaude(dir, "", opts), NewCodex(dir, "", opts), NewOmp(dir, opts), NewDsh(dir, opts), NewOpencode(dir, opts)}
 }
 
 // Harnesses names the harness of each built-in driver, in Builtin's order.
@@ -217,6 +219,14 @@ func (d *Driver) Deliver(participantID string, dl core.Delivery) error {
 // stdout (it may run on the stdout reader's goroutine's behalf).
 type deliverer interface {
 	deliver(w *worker, d core.Delivery) error
+}
+
+// stopper is a codec whose harness needs something done before its process is ended (opencode: abort
+// its session, which is the only thing that ends a tool's shell), and may ignore the closing of its
+// stdin (opencode does): beforeStop returns whether the process ends by itself on stdin EOF, and
+// when it does not Stop signals it at once instead of waiting StopWait.
+type stopper interface {
+	beforeStop(w *worker) (eofEnds bool)
 }
 
 // modelLister is a codec that can list the models its harness offers (core.CapListModels): each
@@ -365,10 +375,16 @@ func (d *Driver) Stop(_ context.Context, participantID string) (core.Exit, error
 	}
 	// The tree is read while the leader lives: its children reparent to init once it is gone.
 	tree := treeBelow(w.pgid, true, nil)
+	eofEnds := true
+	if s, ok := d.codec.(stopper); ok {
+		eofEnds = s.beforeStop(w)
+	}
 	w.inMu.Lock()
 	w.stdin.Close()
 	w.inMu.Unlock()
-	w.wait(d.opts.StopWait)
+	if eofEnds {
+		w.wait(d.opts.StopWait)
+	}
 	d.terminate(w, d.opts.TermWait, tree)
 	return w.exit, nil
 }
@@ -552,6 +568,26 @@ func (d *Driver) normalize(w *worker, r io.ReadCloser) {
 			return
 		}
 	}
+}
+
+// appendLog adds standard records to the run's log from outside the stdout reader (a codec that
+// reads its harness's events from elsewhere: opencode's SSE).
+func (w *worker) appendLog(lines ...[]byte) {
+	if len(lines) == 0 {
+		return
+	}
+	w.logMu.Lock()
+	defer w.logMu.Unlock()
+	f, err := os.OpenFile(w.logPth, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	var b []byte
+	for _, l := range lines {
+		b = append(append(b, l...), '\n')
+	}
+	f.Write(b)
 }
 
 // send writes one JSON line to w's stdin. Stop closes stdin under the same lock, so a write

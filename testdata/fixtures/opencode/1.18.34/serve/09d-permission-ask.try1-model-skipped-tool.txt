@@ -1,0 +1,19 @@
+session=ses_ef54f256bffe2JpeYWw5qdL1Td
+prompt_async http=204
+status after 9 s (still busy = waiting for a reply): {}
+GET /permission: []
+request id: 
+turn after reply: 11565 ms
+## SSE around the ask
+  session.status {"sessionID": "ses_ef54f256bffe2JpeYWw5qdL1Td", "status": {"type": "busy"}}
+  session.status {"sessionID": "ses_ef54f256bffe2JpeYWw5qdL1Td", "status": {"type": "busy"}}
+  session.status {"sessionID": "ses_ef54f256bffe2JpeYWw5qdL1Td", "status": {"type": "busy"}}
+  session.status {"sessionID": "ses_ef54f256bffe2JpeYWw5qdL1Td", "status": {"type": "idle"}}
+  session.idle {"sessionID": "ses_ef54f256bffe2JpeYWw5qdL1Td"}
+user build id=..qUdjp9 parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Use the bash tool to run exactly: echo ASKED . Then reply with exactly: ASK-DONE'
+assistant build id=..C6DQwT parent=..qUdjp9 +331ms done=2451 finish=stop model=glm-5.3-flash tokens={'total': 28082, 'input': 127, 'output': 5, 'reasoning': 46, 'cache': {'read': 27904, 'write': 0}} e
+    part step-start 
+    part reasoning 
+    part text 'ASK-DONE'
+    part step-finish 

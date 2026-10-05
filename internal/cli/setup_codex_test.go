@@ -51,7 +51,7 @@ func TestInstallCodex(t *testing.T) {
 	os.WriteFile(filepath.Join(home, "hooks.json"), []byte(`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]},"description":"mine"}`), 0o600)
 	os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = \"x\"\n\n[mcp_servers.piggery]\ncommand = \"old\"\n\n[mcp_servers.other]\ncommand = \"o\"\n"), 0o600)
 
-	if _, err := installCodex(home, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	cfg, _ := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -63,10 +63,10 @@ func TestInstallCodex(t *testing.T) {
 		!strings.Contains(string(hooks), "say done") || !strings.Contains(string(hooks), "\"mine\"") {
 		t.Fatalf("config:\n%s\nhooks:\n%s", cfg, hooks)
 	}
-	if msg, err := installCodex(home, "/bin/piggery"); err != nil || !strings.Contains(msg, "already set up") {
+	if msg, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil || !strings.Contains(msg, "already set up") {
 		t.Fatalf("second run: %q %v", msg, err)
 	}
-	if _, err := installCodex(home, "/opt/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/opt/piggery"); err != nil {
 		t.Fatalf("moved binary: %v", err)
 	}
 	metas, _ := fakeHooksList(home)
@@ -93,7 +93,7 @@ func TestRemoveCodex(t *testing.T) {
 	cfg := "model = \"x\"\n\n[mcp_servers.other]\ncommand = \"o\"\n"
 	os.WriteFile(filepath.Join(home, "hooks.json"), []byte(hooks), 0o600)
 	os.WriteFile(filepath.Join(home, "config.toml"), []byte(cfg), 0o600)
-	if _, err := installCodex(home, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	if st := codexStatus(home, "/bin/piggery"); !st.Installed || len(st.Problems) > 0 {
@@ -114,7 +114,7 @@ func TestRemoveCodex(t *testing.T) {
 		t.Fatalf("second remove: %q", msg)
 	}
 	empty := t.TempDir()
-	if _, err := installCodex(empty, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), empty, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	removeCodex(empty)
@@ -132,7 +132,7 @@ func TestCodexHookDriftIsOutdated(t *testing.T) {
 	t.Cleanup(func() { codexHooksList = old })
 	home, dir := t.TempDir(), t.TempDir()
 	t.Setenv("CODEX_HOME", home)
-	if _, err := installCodex(home, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	if i, ok := integrationOf(dir, "codex"); !ok || i.outdated() {
@@ -150,7 +150,7 @@ func TestCodexHookDriftIsOutdated(t *testing.T) {
 	if i, _ := integrationOf(dir, "codex"); !i.outdated() || i.Have != i.Want || !strings.Contains(i.Drift, "6 of 7") {
 		t.Fatalf("a missing hook: %+v", i)
 	}
-	if _, err := installCodex(home, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	cfg, _ := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -158,7 +158,7 @@ func TestCodexHookDriftIsOutdated(t *testing.T) {
 	if i, _ := integrationOf(dir, "codex"); i.Have != 0 || !i.outdated() || i.Drift != "" {
 		t.Fatalf("a block without the marker: %+v", i)
 	}
-	if _, err := installCodex(home, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	if i, _ := integrationOf(dir, "codex"); i.outdated() {
@@ -179,7 +179,7 @@ func TestSetupOutdatedUpdatesWhatIsInstalled(t *testing.T) {
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
-	if _, err := installCodex(codexHome(), "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), codexHome(), "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(codexHome(), "config.toml")

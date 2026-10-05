@@ -1,0 +1,9 @@
+id                              parent_id                       directory                title                                  time_created   time_updated   time_archived
+------------------------------  ------------------------------  -----------------------  -------------------------------------  -------------  -------------  -------------
+ses_ef55fd31effeCkb59uWm2Iqwr3                                  /tmp/oc/work     PONG reply test                        1791179631841  1791179636555               
+ses_ef558ff5affecGQdZpJY9lGuWF                                  /tmp/oc/work   PINEAPPLE-9lGuWF                       1791180079269  1791180084051               
+ses_ef55758b1ffekKdzea44grqcEU                                  /tmp/oc/work   PINEAPPLE-grqcEU                       1791180187471  1791180667846               
+ses_ef54fb398ffewItPiGyAANJbNb                                  /tmp/oc/work   PINEAPPLE-ANJbNb                       1791180688487  1791180951720               
+ses_ef54f7c89ffeWeJCF6EDmj3Dgz                                  /tmp/oc/work   served-2                               1791180702582  1791180704893               
+ses_ef54f3927ffekI8MfMh6b87Hy4  ses_ef54fb398ffewItPiGyAANJbNb  /tmp/oc/work   Probe whoami task (@general subagent)  1791180719833  1791180724552               
+ses_ef54e8155ffeWfmF2FlhbLPBaB                                  /tmp/oc/work2  dir2                                   1791180766890  1791180766890               

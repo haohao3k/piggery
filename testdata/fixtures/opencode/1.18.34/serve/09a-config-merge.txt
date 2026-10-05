@@ -1,0 +1,54 @@
+## S0: the user's config only
+permission: {"read": "allow", "bash": "ask"}
+mcp keys: ['userm']
+plugin: ['file:///tmp/oc/cfg-fixtures/noop-plugin.js']
+agent keys: ['useragent']
+instructions: ['/tmp/oc/cfg-fixtures/user-instructions.md']
+share: disabled  autoupdate: False  lsp: None  snapshot: None  model: hp/glm-5.3-flash
+tool ids: ["invalid","question","bash","read","glob","grep","edit","write","task","webfetch","todowrite","websearch","skill","apply_patch"]
+
+## S1: + OPENCODE_CONFIG_CONTENT
+permission: {"read": "allow", "bash": "ask", "*": "allow"}
+mcp keys: ['fake', 'userm']
+plugin: ['file:///tmp/oc/cfg-fixtures/noop-plugin.js', 'file:///tmp/oc/cfg-fixtures/noop-plugin-b.js']
+agent keys: ['useragent', 'w']
+instructions: ['/tmp/oc/cfg-fixtures/user-instructions.md']
+share: disabled  autoupdate: False  lsp: False  snapshot: False  model: hp/glm-5.3-flash
+tool ids: ["invalid","question","bash","read","glob","grep","edit","write","task","webfetch","todowrite","websearch","skill","apply_patch"]
+
+## S2: CONFIG_CONTENT permission {bash:deny,question:deny} + OPENCODE_PERMISSION {bash:allow,task:deny}
+permission: {"read": "allow", "bash": "allow", "task": "deny", "question": "deny"}
+mcp keys: ['userm']
+plugin: ['file:///tmp/oc/cfg-fixtures/noop-plugin.js']
+agent keys: ['useragent']
+instructions: ['/tmp/oc/cfg-fixtures/user-instructions.md']
+share: disabled  autoupdate: False  lsp: None  snapshot: None  model: hp/glm-5.3-flash
+tool ids: ["invalid","question","bash","read","glob","grep","edit","write","task","webfetch","todowrite","websearch","skill","apply_patch"]
+
+## S3: OPENCODE_CONFIG_DIR (opencode.json + agents/) + CONFIG_CONTENT {permission:{read:allow}}
+permission: {"read": "allow", "bash": "ask"}
+mcp keys: ['dirm', 'userm']
+plugin: ['file:///tmp/oc/cfg-fixtures/noop-plugin.js', 'file:///tmp/oc/cfg-fixtures/noop-plugin-b.js']
+agent keys: ['dirag', 'useragent']
+instructions: ['/tmp/oc/cfg-fixtures/user-instructions.md']
+share: disabled  autoupdate: False  lsp: None  snapshot: None  model: hp/glm-5.3-flash
+tool ids: ["invalid","question","bash","read","glob","grep","edit","write","task","webfetch","todowrite","websearch","skill","apply_patch"]
+
+## S4: OPENCODE_CONFIG_DIR only (is the user's global config still read?)
+permission: {"read": "deny", "bash": "ask"}
+mcp keys: ['dirm', 'userm']
+plugin: ['file:///tmp/oc/cfg-fixtures/noop-plugin.js', 'file:///tmp/oc/cfg-fixtures/noop-plugin-b.js']
+agent keys: ['dirag', 'useragent']
+instructions: ['/tmp/oc/cfg-fixtures/user-instructions.md']
+share: disabled  autoupdate: False  lsp: None  snapshot: None  model: hp/glm-5.3-flash
+tool ids: ["invalid","question","bash","read","glob","grep","edit","write","task","webfetch","todowrite","websearch","skill","apply_patch"]
+
+## S5: a pure worker: XDG_CONFIG_HOME pointed at an empty dir + CONFIG_CONTENT carrying the provider (user config not read at all)
+permission: {"*": "allow"}
+mcp keys: []
+plugin: []
+agent keys: []
+instructions: None
+share: None  autoupdate: None  lsp: None  snapshot: None  model: hp/glm-5.3-flash
+tool ids: ["invalid","question","bash","read","glob","grep","edit","write","task","webfetch","todowrite","websearch","skill","apply_patch"]
+

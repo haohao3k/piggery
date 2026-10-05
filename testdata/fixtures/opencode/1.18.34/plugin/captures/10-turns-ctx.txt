@@ -1,0 +1,9 @@
+id                              turns  assistant_msgs  last_tokens_total  last_model     
+------------------------------  -----  --------------  -----------------  ---------------
+ses_ef55fd31effeCkb59uWm2Iqwr3  1      1               27663              glm-5.3-flash -
+ses_ef558ff5affecGQdZpJY9lGuWF  1      1               28237              glm-5.3-flash -
+ses_ef55758b1ffekKdzea44grqcEU  12     12              29024              glm-b low      
+ses_ef54fb398ffewItPiGyAANJbNb  9      8               28746              glm-b -        
+ses_ef54f7c89ffeWeJCF6EDmj3Dgz  1      1               28215              glm-5.3-flash -
+ses_ef54f3927ffekI8MfMh6b87Hy4  1      2               26396              glm-b low      
+ses_ef54e8155ffeWfmF2FlhbLPBaB  0      0                                                 

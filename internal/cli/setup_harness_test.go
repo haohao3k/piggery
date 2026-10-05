@@ -132,16 +132,17 @@ func TestSetupClaudeInstallRemove(t *testing.T) {
 	log := filepath.Join(home, "argv")
 	t.Setenv("PIGGERY_FAKE_CLAUDE", log)
 	os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"mine":{"command":"x"}}}`), 0o600)
-	root := filepath.Join(home, ".piggery", "claude")
+	dir := filepath.Join(home, ".piggery")
+	root := filepath.Join(dir, "claude")
 
-	if _, err := installClaude(root, "/opt/a/piggery"); err != nil {
+	if _, err := installClaude(dir, "/opt/a/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"mcp add --scope user piggery -- /opt/a/piggery mcp", "plugin marketplace add " + root, "plugin install piggery@piggery"}
 	if got := changes(t, log); !slices.Equal(got, want) {
 		t.Fatalf("install ran %q", got)
 	}
-	if msg, err := installClaude(root, "/opt/a/piggery"); err != nil || len(changes(t, log)) > 0 || !strings.Contains(msg, "already") {
+	if msg, err := installClaude(dir, "/opt/a/piggery"); err != nil || len(changes(t, log)) > 0 || !strings.Contains(msg, "already") {
 		t.Fatalf("second install: %q %v", msg, err)
 	}
 	if st := claudeStatus(root, "/opt/a/piggery"); !st.Installed || len(st.Problems) > 0 {
@@ -151,7 +152,7 @@ func TestSetupClaudeInstallRemove(t *testing.T) {
 		t.Fatalf("status for a moved binary: %+v", st)
 	}
 	changes(t, log)
-	if _, err := installClaude(root, "/opt/b/piggery"); err != nil {
+	if _, err := installClaude(dir, "/opt/b/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	want = []string{"mcp remove --scope user piggery", "mcp add --scope user piggery -- /opt/b/piggery mcp",
@@ -174,7 +175,7 @@ func TestSetupClaudeInstallRemove(t *testing.T) {
 		t.Fatalf("second remove: %q %v", msg, err)
 	}
 	t.Setenv("PATH", t.TempDir())
-	if _, err := installClaude(root, "/opt/a/piggery"); err == nil || !strings.Contains(err.Error(), "not on PATH") {
+	if _, err := installClaude(dir, "/opt/a/piggery"); err == nil || !strings.Contains(err.Error(), "not on PATH") {
 		t.Fatalf("without claude: %v", err)
 	}
 }
@@ -397,5 +398,158 @@ func oldMarker(t *testing.T, file string) {
 	_, rest, _ := strings.Cut(string(b), "\n")
 	if err := os.WriteFile(file, []byte("// managed by piggery v0.3.0: written by `piggery setup`; run it again instead of editing\n"+rest), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// setup keeps one backup of the Human's config file, made from a file that has no piggery part yet
+// and kept (not overwritten) once the file has it; a file that does not exist has nothing to
+// copy; remove neither makes nor restores one.
+func TestSetupBackupOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("DSH_HOME", "")
+	t.Setenv("PATH", t.TempDir())
+	dir := filepath.Join(home, ".piggery")
+	patch := filepath.Join(home, ".dsh", "cordis.patch.yml")
+	backup := setupBackupPath(dir, "dsh", patch)
+	if msg, err := installDsh(dir); err != nil || strings.Contains(msg, "kept a copy") {
+		t.Fatalf("no file yet, nothing to copy: %q %v", msg, err)
+	}
+	removeDsh(dir)
+	before := "- id: ui-skin\n  disabled: true\n"
+	os.WriteFile(patch, []byte(before), 0o644)
+	msg, err := installDsh(dir)
+	got, _ := os.ReadFile(backup)
+	if st, serr := os.Stat(backup); err != nil || serr != nil || string(got) != before || st.Mode().Perm() != 0o600 || !strings.Contains(msg, backup) {
+		t.Fatalf("backup: %q %v %v\n%s", msg, err, serr, got)
+	}
+	// the Human edits the file after piggery came in; a second run and an upgrade keep the backup
+	cur, _ := os.ReadFile(patch)
+	os.WriteFile(patch, append(cur, "- id: later\n"...), 0o644)
+	if msg, err := installDsh(dir); err != nil || strings.Contains(msg, "kept a copy") {
+		t.Fatalf("second run: %q %v", msg, err)
+	}
+	if got, _ := os.ReadFile(backup); string(got) != before {
+		t.Fatalf("the backup was overwritten:\n%s", got)
+	}
+	removeDsh(dir)
+	if got, _ := os.ReadFile(backup); string(got) != before {
+		t.Fatalf("remove touched the backup:\n%s", got)
+	}
+	if cur, _ := os.ReadFile(patch); strings.Contains(string(cur), "piggery") || !strings.Contains(string(cur), "- id: later") {
+		t.Fatalf("remove did not give back only piggery's part:\n%s", cur)
+	}
+}
+
+// pi --ext on a settings.json that has no "extensions" key: setup then remove gives the file back
+// byte for byte (a value on one line stays on one line), and a settings.json that setup made is
+// gone again, not left as `{}`.
+func TestSetupPiExtRoundTrip(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	t.Setenv("PATH", t.TempDir())
+	dir := filepath.Join(home, ".piggery")
+	checkout := filepath.Join(home, "src", "piggery", "extensions", "pi")
+	os.MkdirAll(checkout, 0o700)
+	os.WriteFile(filepath.Join(checkout, "index.ts"), nil, 0o600)
+	os.WriteFile(filepath.Join(checkout, "package.json"), []byte(`{"name":"piggery-pi"}`), 0o600)
+	settings := filepath.Join(home, ".pi", "agent", "settings.json")
+
+	if _, err := installPi(dir, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removePi(dir); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(settings); err == nil {
+		t.Fatalf("settings.json made by setup is left behind: %s", b)
+	}
+
+	orig := "{\n  \"packages\": [\"a\"],\n  \"theme\": \"tokyo\"\n}\n"
+	os.WriteFile(settings, []byte(orig), 0o600)
+	if _, err := installPi(dir, checkout); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removePi(dir); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(settings); string(b) != orig {
+		t.Fatalf("settings.json after setup + remove:\n%s", b)
+	}
+}
+
+// setup opencode unpacks piggery's plugin under ~/.piggery/plugins/opencode and adds one entry to
+// "plugin" of opencode's config after the Human's own, which stay byte for byte (a second run
+// changes nothing); the config is backed up first, and remove gives it back as it was. A config
+// that is not plain JSON (opencode.jsonc) is never written: nothing is, and the line to add is printed.
+func TestSetupOpencodeInstallRemove(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("PATH", t.TempDir())
+	dir := filepath.Join(home, ".piggery")
+	cfgDir := filepath.Join(home, ".config", "opencode")
+	cfg := filepath.Join(cfgDir, "opencode.json")
+	os.MkdirAll(cfgDir, 0o700)
+
+	// opencode.jsonc: refused, nothing written
+	jsonc := filepath.Join(cfgDir, "opencode.jsonc")
+	os.WriteFile(jsonc, []byte("{\n  // mine\n  \"theme\": \"x\"\n}\n"), 0o600)
+	_, err := installOpencode(dir)
+	if err == nil || !strings.Contains(err.Error(), `"`+local.OpencodePluginSpec(local.OpencodeEntry(dir))+`"`) {
+		t.Fatalf("a .jsonc config: %v", err)
+	}
+	if _, serr := os.Stat(dir); serr == nil {
+		t.Fatal("setup wrote into piggery's dir though it refused the config")
+	}
+	os.Remove(jsonc)
+
+	orig := "{\n  \"theme\": \"x\",\n  \"plugin\": [\"other\", [\"file:///opt/mine.js\", {\"a\": 1}]],\n  \"mcp\": {\"m\": {\"type\": \"local\"}}\n}\n"
+	os.WriteFile(cfg, []byte(orig), 0o600)
+	msg, err := installOpencode(dir)
+	if err != nil || !strings.Contains(msg, "kept a copy") {
+		t.Fatalf("install: %q %v", msg, err)
+	}
+	spec := local.OpencodePluginSpec(local.OpencodeEntry(dir))
+	got, _ := os.ReadFile(cfg)
+	if want := strings.Replace(orig, `{"a": 1}]]`, `{"a": 1}], "`+spec+`"]`, 1); string(got) != want {
+		t.Fatalf("config after install:\n%s", got)
+	}
+	if v, ok := local.OpencodeExtVersion(local.OpencodeExtDir(dir)); !ok || v != local.IntegrationVersion("opencode") {
+		t.Fatalf("plugin copy version %d managed %v", v, ok)
+	}
+	if b, _ := os.ReadFile(setupBackupPath(dir, "opencode", cfg)); string(b) != orig {
+		t.Fatalf("backup:\n%s", b)
+	}
+	if st := opencodeStatus(dir, "x"); !st.Installed || slices.ContainsFunc(st.Problems, func(p problem) bool { return strings.Contains(p.Text, "no entry") }) {
+		t.Fatalf("status: %+v", st)
+	}
+	if msg, _ := installOpencode(dir); !strings.Contains(msg, "already") {
+		t.Fatalf("second install: %q", msg)
+	}
+	if _, err := removeOpencode(dir); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(cfg); string(b) != orig {
+		t.Fatalf("config after remove:\n%s", b)
+	}
+	if _, err := os.Stat(local.OpencodeExtDir(dir)); err == nil {
+		t.Fatal("remove kept the plugin copy")
+	}
+	if msg, _ := removeOpencode(dir); !strings.Contains(msg, "not installed") {
+		t.Fatalf("second remove: %q", msg)
+	}
+
+	// no config at all: setup makes one, remove deletes what is left of it
+	os.Remove(cfg)
+	if _, err := installOpencode(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removeOpencode(dir); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(cfg); err == nil {
+		t.Fatalf("a config made by setup is left: %s", b)
 	}
 }

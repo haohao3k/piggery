@@ -6,7 +6,7 @@ shows one. Install and first steps are in the [README](../README.md).
 
 ## Concepts in one screen
 
-- **Session**: an agent you opened yourself (pi, Claude Code, Codex, omp or dsh). Once piggery is
+- **Session**: an agent you opened yourself (pi, Claude Code, Codex, omp, dsh or opencode). Once piggery is
   added to it (`piggery setup <harness>`), every new session starts **solo**: it is on the farm,
   in no team, with a mailbox and four tools (`send`, `inbox`, `who`, `agent`).
 - **Team**: a group of agents that share a shape. A solo session founds one when you ask ("make a
@@ -25,7 +25,7 @@ shows one. Install and first steps are in the [README](../README.md).
 
 **When**: work that splits into tasks, or needs a second opinion.
 
-1. Add piggery once per harness: `piggery setup pi` (or `claude`, `codex`, `omp`, `dsh`), then
+1. Add piggery once per harness: `piggery setup pi` (or `claude`, `codex`, `omp`, `dsh`, `opencode`), then
    restart sessions that were open. `piggery setup` alone shows where each harness stands.
 2. Open the harness in your project and ask: *"found a supervisor-executor team to fix the failing
    tests"*. The session picks the template (`agent action=templates` lists them), founds the team
@@ -36,7 +36,10 @@ shows one. Install and first steps are in the [README](../README.md).
 
 Built-in templates: `supervisor-executor` (a supervisor splits the goal; executors do the tasks),
 `slp` (a supervisor steers a lane: one lead, peers with separate scopes), `council` (a chair asks
-members for independent views on one decision), `p2p` (peers that talk freely and spawn peers).
+members for independent views on one decision), `amp-like` (a lead does the work and calls an oracle
+or a reviewer that answers once), `gastown-like` (a mayor splits the work, polecats do each task on
+its own branch, a refinery merges them one at a time), `p2p` (peers that talk freely and spawn peers). Each one
+is drawn, with when to pick it, in [manifests/README.md](../manifests/README.md).
 
 **Mixing harnesses.** A role can name a harness (`spawn: {harness: claude}` in the template); a
 role that names none uses the harness of the session that founded the team, and a founder with none
@@ -180,7 +183,7 @@ team up, with the reason.
 
 ```yaml
 # config.yaml
-harness: claude        # pi, claude, codex, omp or dsh
+harness: claude        # pi, claude, codex, omp, dsh or opencode
 ```
 
 **Model and thinking for a harness's workers, or for one role.** A worker runs the first of: the
@@ -208,7 +211,7 @@ model is an error at spawn, never a silent downgrade.
 **Keep things out of workers.** A worker runs with your own harness setup (extensions, skills, MCP
 servers) minus the `blacklist` of its profile: names of packages, extensions or MCP servers to leave
 out. A profile can also switch off a harness's own tools that would reach you or start agents
-outside piggery (`disallowed_tools` for Claude, `disabled_tools` for Codex and dsh); a role gets one
+outside piggery (`disallowed_tools` for Claude, `disabled_tools` for Codex, dsh and opencode); a role gets one
 back with `spawn: {allow_tools: [...]}`.
 
 **Rules that follow you** (how you want code written, how to split work), added to the cards of the
@@ -284,7 +287,7 @@ Remove a column to hide it; the name is always shown.
   whether piggery is installed in it and runs this binary, and a fix command at the end of each
   problem line. `piggery doctor` prints the same problems as warnings. Run `piggery setup <harness>`
   again after you move the `piggery` binary, and restart sessions that were open during setup.
-- **Outdated integrations.** After an upgrade the daemon brings the pi, omp and dsh extensions up to date
+- **Outdated integrations.** After an upgrade the daemon brings the pi, omp, dsh and opencode extensions up to date
   itself. Claude Code, Codex and Paseo are only reported: `ps` and `top` show `outdated: codex (v0 < v1):
   piggery setup --outdated`. Run that command: it updates every installed integration that is outdated
   and says what to do next (restart the sessions that were open, reload the Paseo app).
@@ -304,6 +307,6 @@ Remove a column to hide it; the name is always shown.
   process or connection is gone as `gone`, never respawns workers and never acks mail: bring a worker
   back with `piggery resume <name>`, and its unread mail comes again on its next run.
 - **Turn piggery off for one session**, for example to read an old session's history without
-  joining: `PIGGERY_DISABLED=1 pi --resume …` (the pi, omp and dsh adapters honor it).
+  joining: `PIGGERY_DISABLED=1 pi --resume …` (the pi, omp, dsh and opencode adapters honor it).
 - **Two mail systems.** Remove `pi-peer` from pi's packages while using piggery: both give the model a
   `send`-style mailbox.
