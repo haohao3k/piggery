@@ -96,6 +96,13 @@ class UpstreamDatabaseTests(unittest.TestCase):
         with local_dev._restore_upstream_database(self.root, None, None) as again:
             self.assertIsNone(again)
 
+    def test_stopped_wal_database_without_sidecars_can_be_inspected(self):
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.close()
+        self.assertFalse(Path(str(self.path) + '-wal').exists())
+        self.assertFalse(Path(str(self.path) + '-shm').exists())
+        self.assertEqual(local_dev._database_version(self.path), 23)
+
     def test_failed_install_rolls_back_conversion(self):
         before = list(self.db.iterdump())
         with self.assertRaisesRegex(RuntimeError, 'install failed'):
@@ -338,6 +345,10 @@ class ReceiptTests(unittest.TestCase):
                     mock.patch.object(local_dev, "_run", return_value=failed_refresh):
                     with self.assertRaisesRegex(local_dev.LocalDevError, "setup --refresh failed"):
                         local_dev._refresh_and_restart(root, installed, None)
+                pending["database_transition"] = {"from": 23, "to": 22, "backup": "synthetic.db"}
+                local_dev._write_json_atomic(install / local_dev.INSTALLED_RECEIPT_NAME, pending)
+                _, _, retried = local_dev.install_candidate(info)
+                self.assertEqual(retried["database_transition"], pending["database_transition"])
                 result = local_dev.inspect(root)
                 activated = local_dev._activate_receipt(
                     install / local_dev.INSTALLED_RECEIPT_NAME,

@@ -685,9 +685,13 @@ def _atomic_copy(source: Path, target: Path, mode: int = 0o755) -> None:
 
 def install_candidate(info: BuildInfo) -> tuple[Path, Path | None, dict[str, Any]]:
     binary, receipt_path = installed_paths()
+    previous = _read_json(receipt_path) or {}
     backup = _backup_existing(binary, receipt_path)
     _atomic_copy(info.candidate, binary, stat.S_IMODE(info.candidate.stat().st_mode) or 0o755)
     pending = dict(info.receipt)
+    # Keep the one-time database backup discoverable after a failed refresh and retry.
+    if "database_transition" in previous:
+        pending["database_transition"] = previous["database_transition"]
     pending["state"] = "pending"
     pending["activation"] = {"state": "pending"}
     _write_json_atomic(receipt_path, pending)
@@ -889,7 +893,9 @@ def _database_version(path: Path) -> int | None:
     if not path.exists():
         return None
     _require_regular(path, "database")
-    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+    # A stopped WAL database may have no sidecars. SQLite needs writable access to
+    # recreate them even for this SELECT; mode=rw still refuses a missing database.
+    with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)) as db:
         row = db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         if row is None:
             raise LocalDevError("database has no schema version")
