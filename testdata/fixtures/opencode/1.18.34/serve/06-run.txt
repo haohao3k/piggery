@@ -1,0 +1,69 @@
+## 1: first run (new session)
+[r1] wall=3606 ms exit=0 events=3 stderr_bytes=0
+session=ses_ef555d341ffee4q6w9sxUhJR0E
+## 2: --session <id>, a new process: does it remember? latency of a batch
+[r2] wall=3071 ms exit=0 events=3 stderr_bytes=0
+answer: PLUM42
+tokens: {'total': 27736, 'input': 40, 'output': 5, 'reasoning': 43, 'cache': {'write': 0, 'read': 27648}}
+event types in r1: ['step_start', 'text', 'step_finish']
+## 3: the same session store in a serve (no copy): GET /session/$SID and a prompt there
+serve pid=80613 port=4096
+{"id":"ses_ef555d341ffee4q6w9sxUhJR0E","slug":"nimble-nebula","projectID":"global","directory":"/tmp/oc/work","path":"private/tmp/oc/work","summary":{"additions":0,"deletions":0,"files":0}
+
+user build id=..EXQHzy parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text '"Remember the secret word PLUM42. Reply with exactly: R1"'
+assistant build id=..cJ2yOz parent=..EXQHzy +263ms done=2881 finish=stop model=glm-5.3-flash tokens={'total': 27674, 'input': 27650, 'output': 4, 'reasoning': 2
+    part step-start 
+    part reasoning 
+    part text 'R1'
+    part step-finish 
+user build id=..mXMr07 parent=.. +3705ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text '"What was the secret word? Answer with the word only."'
+assistant build id=..lngoJ8 parent=..mXMr07 +3978ms done=6014 finish=stop model=glm-5.3-flash tokens={'total': 27736, 'input': 40, 'output': 5, 'reasoning': 43,
+    part step-start 
+    part reasoning 
+    part text 'PLUM42'
+    part step-finish 
+## 4: run --attach <serve> --session (no process start cost?)
+[r3] wall=2654 ms exit=0 events=1 stderr_bytes=0
+## 5: abort a run in a long tool call: SIGINT after 7 s
+before SIGINT: 81320 ppid=80991 pgid=81320 sleep 889
+run exit=130 after 196 ms; run alive=dead; sleep child alive=alive
+tail: 06-run.r4.jsonl: No such file or directory
+last events: 
+head: 06-run.r4.err: No such file or directory
+stderr: 
+Traceback (most recent call last):
+  File "<string>", line 2, in <module>
+FileNotFoundError: [Errno 2] No such file or directory: '06-run.r4.jsonl'
+run-abort session=; its status/last assistant error via the serve:
+Traceback (most recent call last):
+  File "/work/piggery/testdata/fixtures/opencode/1.18.34/serve/msgs-summary.py", line 5, in <module>
+    t0 = min(m["info"]["time"]["created"] for m in d) if d else 0
+  File "/work/piggery/testdata/fixtures/opencode/1.18.34/serve/msgs-summary.py", line 5, in <genexpr>
+    t0 = min(m["info"]["time"]["created"] for m in d) if d else 0
+TypeError: string indices must be integers
+## 6: abort a run with SIGTERM after 7 s
+before SIGTERM: run=81377 sleep=81770
+./06-run.sh: line 45: 81377 Terminated: 15          ( cd $W; exec opencode run --format json -m $MODEL --title run-term "Use the bash tool to run exactly: sleep 890 . Then reply with exactly: DONE" > $O.r5.jsonl 2> $O.r5.err < /dev/null )
+run exit=143 alive=dead; sleep child alive=alive
+## 7: a second run on the same session while a first run is inside a long tool call (steer by run?)
+session=ses_ef5556c20ffem2iNybHbDQiDM3
+status via serve at +5 s: {}
+[r6b] wall=3395 ms exit=0 events=3 stderr_bytes=0
+first run exit=0
+user build id=..0EuFMG parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text '"Use the bash tool to run exactly: sleep 10 && echo ONE-DONE . Then reply with exactly: FI'
+assistant build id=..wOGfDN parent=..0EuFMG +259ms done=12275 finish=tool-calls model=glm-5.3-flash tokens={'total': 28080, 'input': 130, 'output': 17, 'reasoning': 29, '
+    part step-start 
+    part reasoning 
+    part tool bash completed {"command": "sleep 10 && echo ONE-DONE"}
+    part step-finish 
+user build id=..NOaYzn parent=.. +5129ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text '"Reply with exactly: SECOND"'
+assistant build id=..6jDTDK parent=..NOaYzn +5417ms done=7799 finish=stop model=glm-5.3-flash tokens={'total': 28177, 'input': 195, 'output': 3, 'reasoning': 75, 'cache':
+    part step-start 
+    part reasoning 
+    part text 'SECOND'
+    part step-finish 
+## stop the serve

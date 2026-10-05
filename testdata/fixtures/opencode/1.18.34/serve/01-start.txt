@@ -1,0 +1,19 @@
+## A: opencode serve --port 0 (no password), 4096 free?
+listeners on 4096 before: 0
+A pid=40114 port=4096 start_ms=660
+## B: a second serve --port 0 while A runs
+B pid=40430 port=59684 start_ms=710
+## C: serve --port 47321 (explicit)
+C pid=40455 port=47321 start_ms=705
+## health of each
+http://127.0.0.1:4096 {"healthy":true,"version":"1.18.34"}
+http://127.0.0.1:59684 {"healthy":true,"version":"1.18.34"}
+http://127.0.0.1:47321 {"healthy":true,"version":"1.18.34"}
+## process tree under A
+## stop all by pid (SIGTERM)
+./01-start.sh: line 15: 40114 Terminated: 15          ( cd "$W" && exec opencode serve "$@" > "$pre.out" 2> "$pre.err" < /dev/null )
+./01-start.sh: line 15: 40430 Terminated: 15          ( cd "$W" && exec opencode serve "$@" > "$pre.out" 2> "$pre.err" < /dev/null )
+./01-start.sh: line 15: 40455 Terminated: 15          ( cd "$W" && exec opencode serve "$@" > "$pre.out" 2> "$pre.err" < /dev/null )
+40114 dead
+40430 dead
+40455 dead

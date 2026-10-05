@@ -1,0 +1,10 @@
+id                              role       finish      err  parent                        
+------------------------------  ---------  ----------  ---  ------------------------------
+msg_10ab450a4001OLkn0n6RvMJfQD  user                                                      
+msg_10ab441ee001STHFAEVlCxaTCc  assistant  stop             msg_10ab441e2001qLGYwxNH673QNh
+msg_10ab441e2001qLGYwxNH673QNh  user                                                      
+msg_10ab3c9e1001nowNYjVjRNEG07  assistant  stop             msg_10ab39bc0001q2NywfjjGtYXIZ
+msg_10ab39bc0001q2NywfjjGtYXIZ  user                                                      
+msg_10ab3882c0016HjFOaclGSuWgN  assistant  tool-calls       msg_10ab3881c001jGMq1cxF35DlME
+msg_10ab3881c001jGMq1cxF35DlME  user                                                      
+msg_10ab2b4fe001a6KPOAdKTuw1qU  assistant  stop             msg_10ab28aef001pL9zKQbDCu1pAY

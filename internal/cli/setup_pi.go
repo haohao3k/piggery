@@ -84,6 +84,14 @@ func refreshPi(o setupOpts) (string, error) {
 func installPi(dir, ext string) (string, error) {
 	path := piSettingsPath(dir)
 	var msgs []string
+	// before setup writes settings.json: its backup, unless it already lists piggery's extension
+	before := func() error {
+		msg, err := backupHumanConfig(dir, "pi", path, func(b []byte) bool { return hasPiggeryEntry(b, path) })
+		if msg != "" {
+			msgs = append(msgs, msg)
+		}
+		return err
+	}
 	index := filepath.Join(ext, "index.ts")
 	if ext == "" {
 		dst := local.PiExtDir(dir)
@@ -92,7 +100,7 @@ func installPi(dir, ext string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		old, _, err := setPiEntry(path, "")
+		old, _, err := setPiEntry(path, "", before)
 		if err != nil {
 			return "", err
 		}
@@ -103,7 +111,7 @@ func installPi(dir, ext string) (string, error) {
 			msgs = append(msgs, fmt.Sprintf("pi: removed %s from %s (loaded twice otherwise)", strings.Join(old, ", "), path))
 		}
 	} else {
-		old, changed, err := setPiEntry(path, ext)
+		old, changed, err := setPiEntry(path, ext, before)
 		if err != nil {
 			return "", err
 		}
@@ -130,9 +138,29 @@ func installPi(dir, ext string) (string, error) {
 	return strings.Join(msgs, "\n") + "\npi: sessions started from now on join piggery; restart any that are open.", nil
 }
 
+// hasPiggeryEntry: the settings file b lists a piggery extension.
+func hasPiggeryEntry(b []byte, path string) bool {
+	o, err := jsonobj.Parse(b)
+	if err != nil {
+		return false
+	}
+	raw, _ := o.Get("extensions")
+	var exts []json.RawMessage
+	if json.Unmarshal(raw, &exts) != nil {
+		return false
+	}
+	for _, e := range exts {
+		if _, mine := piggeryEntry(e, path); mine {
+			return true
+		}
+	}
+	return false
+}
+
 // setPiEntry leaves ext as the only piggery entry of pi's settings ("" = none), and returns the
-// piggery entries it took out and whether the file changed.
-func setPiEntry(path, ext string) ([]string, bool, error) {
+// piggery entries it took out and whether the file changed. before (may be nil) runs just before
+// the file is written.
+func setPiEntry(path, ext string, before func() error) ([]string, bool, error) {
 	o, exts, err := piExtensions(path)
 	if err != nil {
 		return nil, false, err
@@ -160,6 +188,11 @@ func setPiEntry(path, ext string) ([]string, bool, error) {
 	if len(old) == 0 && len(out) == len(exts) {
 		return nil, false, nil
 	}
+	if before != nil {
+		if err := before(); err != nil {
+			return nil, false, err
+		}
+	}
 	return old, true, writePiExtensions(path, o, out)
 }
 
@@ -172,7 +205,7 @@ func removePi(dir string) (string, error) {
 		msgs = append(msgs, "pi: removed "+local.PiExtDir(dir))
 	}
 	path := piSettingsPath(dir)
-	if old, _, err := setPiEntry(path, ""); err != nil {
+	if old, _, err := setPiEntry(path, "", nil); err != nil {
 		return "", err
 	} else if len(old) > 0 {
 		msgs = append(msgs, fmt.Sprintf("pi: removed %s from %s", strings.Join(old, ", "), path))
@@ -184,10 +217,14 @@ func removePi(dir string) (string, error) {
 }
 
 // writePiExtensions writes o with exts ("extensions" goes when empty); the file keeps its final
-// newline or its lack of one (pi writes none).
+// newline or its lack of one (pi writes none). A file that is left as `{}` is removed, as setup
+// remove does for codex and dsh: pi reads a missing settings.json as an empty one, and setup cannot
+// tell a `{}` it created from one the Human wrote.
 func writePiExtensions(path string, o jsonobj.Object, exts []json.RawMessage) error {
 	if len(exts) == 0 {
-		o = o.Del("extensions")
+		if o = o.Del("extensions"); len(o) == 0 {
+			return os.Remove(path)
+		}
 	} else {
 		o = o.Set("extensions", rawArray(exts))
 	}

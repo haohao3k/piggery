@@ -33,7 +33,7 @@ type Config struct {
 	// Version is the build version the daemon reports in ps (top shows it); nothing reads it back.
 	Version string
 	// Integrations, when set (the daemon of the real binary; tests leave it nil, since the
-	// harness directories are the user's), makes the start bring the pi, omp and dsh extensions
+	// harness directories are the user's), makes the start bring the pi, omp, dsh and opencode extensions
 	// setup installed up to this binary's integration version, and log one warning for each
 	// outdated part it returns (claude, codex, paseo: only `piggery setup --outdated` changes
 	// them). ps reports the same list, read again on each call (files only).
@@ -187,7 +187,7 @@ func Run(ctx context.Context, cfg Config) error {
 		log.Warn("config file", "err", err)
 	}
 	if cfg.Integrations != nil {
-		// The extensions `piggery setup pi|omp|dsh` installed: rewritten when their integration
+		// The extensions `piggery setup pi|omp|dsh|opencode` installed: rewritten when their integration
 		// version is lower than this binary's, and only then.
 		for _, x := range []struct {
 			what, ext string
@@ -196,6 +196,7 @@ func Run(ctx context.Context, cfg Config) error {
 			{"pi extension", local.PiExtDir(cfg.Dir), local.UpdatePiExt},
 			{"omp extension", local.OmpExtDir(cfg.Dir), local.UpdateOmpExt},
 			{"dsh plugin", local.DshExtDir(cfg.Dir), local.UpdateDshExt},
+			{"opencode plugin", local.OpencodeExtDir(cfg.Dir), local.UpdateOpencodeExt},
 		} {
 			if updated, err := x.update(x.ext); err != nil {
 				log.Warn(x.what, "dir", x.ext, "err", err)

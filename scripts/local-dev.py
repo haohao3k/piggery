@@ -16,7 +16,7 @@ daemon. No mode downloads a Piggery release or calls a release updater.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import datetime as _dt
 import hashlib
 import json
@@ -25,6 +25,7 @@ from pathlib import Path
 import re
 import shutil
 import stat
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -884,6 +885,95 @@ def _refresh_and_restart(
     return snapshot, late_gate.headless_idle, {"status": "ok", "steps": steps}
 
 
+def _database_version(path: Path) -> int | None:
+    if not path.exists():
+        return None
+    _require_regular(path, "database")
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+        row = db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        if row is None:
+            raise LocalDevError("database has no schema version")
+        return int(row[0])
+
+
+def _schema_signature(db: sqlite3.Connection) -> list[tuple[str, ...]]:
+    return [(kind, name, table, re.sub(r"\s+", "", sql))
+            for kind, name, table, sql in db.execute(
+                "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name")]
+
+
+def _upstream_schema(root: Path, *, fork_column: bool = False) -> list[tuple[str, ...]]:
+    with closing(sqlite3.connect(":memory:")) as ref:
+        for name in ["schema.sql", *[f"migrate_{n}.sql" for n in range(2, 23)]]:
+            ref.executescript((root / "internal/store" / name).read_text())
+        if fork_column:
+            ref.execute("ALTER TABLE participants ADD COLUMN binding_quarantined INTEGER NOT NULL DEFAULT 0")
+        return _schema_signature(ref)
+
+
+@contextmanager
+def _restore_upstream_database(root: Path, probe: Path | None, caller: str | None):
+    """Retire the known fork-23 bindings once, under the daemon lock, before installing schema 22.
+
+    The transaction commits only if the binary replacement succeeds. The Go store and all future
+    migrations remain upstream's; unknown schemas are never relabelled as an older version.
+    """
+    home = piggery_home()
+    path = home / "piggery.db"
+    version = _database_version(path)
+    if version is None or version <= 22:
+        yield None
+        return
+    if version != 23:
+        raise LocalDevError(f"unsupported database schema {version}; no conversion attempted")
+    # Recheck immediately before stopping the old daemon; never start the candidate on fork-23.
+    gate = idle_gate(_daemon_snapshot(probe), caller)
+    if gate.running:
+        if probe is None:
+            raise LocalDevError("cannot stop daemon without its installed CLI")
+        _cli_output(_run([probe, "--admin", "shutdown"], env=_command_env()), "piggery shutdown")
+    lock_path = home / "piggery.lock"
+    if lock_path.exists():
+        _require_regular(lock_path, "daemon lock")
+    with lock_path.open("a+") as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise LocalDevError("daemon restarted before database conversion; nothing converted") from exc
+        try:
+            with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)) as db, db:
+                db.execute("PRAGMA foreign_keys=ON")
+                if db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone() != ('23',):
+                    raise LocalDevError("database version changed before conversion")
+                if _schema_signature(db) != _upstream_schema(root, fork_column=True):
+                    raise LocalDevError("schema 23 is not the known fork schema; refusing conversion")
+                if db.execute("PRAGMA integrity_check").fetchall() != [('ok',)] or db.execute("PRAGMA foreign_key_check").fetchall():
+                    raise LocalDevError("database integrity check failed before conversion")
+                unsafe = db.execute("SELECT COUNT(*) FROM participants WHERE binding_quarantined NOT IN (0,1) OR (binding_quarantined=1 AND (state<>'gone' OR COALESCE(mode,'')='headless'))").fetchone()[0]
+                if unsafe:
+                    raise LocalDevError("quarantined participants are not all retired interactive sessions")
+                backup_dir = home / "backups"
+                backup_dir.mkdir(mode=0o700, exist_ok=True)
+                fd, backup_name = tempfile.mkstemp(prefix="fork23-to-upstream22-", suffix=".db", dir=backup_dir)
+                os.close(fd)
+                with closing(sqlite3.connect(backup_name)) as backup:
+                    db.backup(backup)
+                # The daemon lock stays held through binary installation. A failed install rolls
+                # the SQL transaction back; the complete pre-conversion backup is always retained.
+                db.execute("BEGIN IMMEDIATE")
+                retired = db.execute("UPDATE participants SET left_at=COALESCE(left_at,?), host=NULL, token_hash='' WHERE binding_quarantined=1", (int(time.time()*1000),)).rowcount
+                db.execute("ALTER TABLE participants DROP COLUMN binding_quarantined")
+                if _schema_signature(db) != _upstream_schema(root):
+                    raise LocalDevError("converted schema does not match upstream 22")
+                db.execute("UPDATE meta SET value='22' WHERE key='schema_version'")
+                if db.execute("PRAGMA integrity_check").fetchall() != [('ok',)] or db.execute("PRAGMA foreign_key_check").fetchall():
+                    raise LocalDevError("database integrity check failed after conversion")
+                yield {"from": 23, "to": 22, "retired_bindings": retired,
+                       "backup": backup_name, "headless_idle": list(gate.headless_idle)}
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
 def apply(root: Path, caller: str | None) -> None:
     check_origin(root)
     with install_lock():
@@ -902,11 +992,19 @@ def apply(root: Path, caller: str | None) -> None:
             )
         else:
             print("idle gate: passed")
-        installed, backup, pending = install_candidate(info)
+        with _restore_upstream_database(root, _probe_binary(root), caller) as transition:
+            installed, backup, pending = install_candidate(info)
+        if transition:
+            print(f"database: restored upstream schema 22; backup: {transition['backup']}")
+            pending["database_transition"] = transition
+            _write_json_atomic(installed_paths()[1], pending)
+            caller = None  # The validated caller exited with the old daemon.
         print(f"installed {info.receipt['version']} at {installed} (activation pending)")
         if backup is not None:
             print(f"backup: {backup}")
         snapshot, headless_idle, refresh_evidence = _refresh_and_restart(root, installed, caller)
+        if transition:
+            headless_idle = tuple(dict.fromkeys((*transition["headless_idle"], *headless_idle)))
         after = source_digest(root)
         if after != before:
             raise LocalDevError("source changed after installation; rerun local-dev.sh build and apply")
@@ -955,7 +1053,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0 if result.ok else 1
         apply(root, args.caller)
         return 0
-    except (LocalDevError, OSError) as exc:
+    except (LocalDevError, OSError, sqlite3.Error) as exc:
         print(f"local-dev: {exc}", file=sys.stderr)
         return 1
 

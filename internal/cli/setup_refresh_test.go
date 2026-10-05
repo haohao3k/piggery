@@ -150,7 +150,7 @@ func TestSetupRefreshReinstallsSameVersionClaudeCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := filepath.Join(dir, "claude")
-	if _, err := installClaude(root, self); err != nil {
+	if _, err := installClaude(filepath.Dir(root), self); err != nil {
 		t.Fatal(err)
 	}
 	changes(t, log)
@@ -265,7 +265,7 @@ func TestSetupRefreshRepairsSameVersionCodexHookDrift(t *testing.T) {
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
-	if _, err := installCodex(codexHome(), "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), codexHome(), "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	hooksPath := filepath.Join(codexHome(), "hooks.json")
@@ -306,7 +306,7 @@ func TestSetupRefreshDoesNotEnableDisabledCodexMCP(t *testing.T) {
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
-	if _, err := installCodex(codexHome(), "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), codexHome(), "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(codexHome(), "config.toml")
@@ -375,4 +375,41 @@ func mustReadFile(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestSetupRefreshOpencodeKeepsHostConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("CODEX_HOME", filepath.Join(home, "codex"))
+	dir := filepath.Join(home, "piggery")
+	if _, err := local.InstallOpencodeExt(local.OpencodeExtDir(dir)); err != nil {
+		t.Fatal(err)
+	}
+	entry := local.OpencodeEntry(dir)
+	original, err := os.ReadFile(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entry, append(original, []byte("\n// stale same-version asset\n")...), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := opencodeConfig()
+	if err := os.MkdirAll(filepath.Dir(cfg), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// No piggery entry: refreshing worker assets must not register the host.
+	custom := []byte(`{"plugin":["other-plugin"],"model":"user/model"}`)
+	if err := os.WriteFile(cfg, custom, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&env{dir: dir, stdout: &strings.Builder{}}).setup([]string{"--refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	if !local.OpencodeExtCurrent(local.OpencodeExtDir(dir)) {
+		t.Fatal("same-version plugin not refreshed")
+	}
+	if got, err := os.ReadFile(cfg); err != nil || string(got) != string(custom) {
+		t.Fatalf("host config changed: %v", err)
+	}
 }

@@ -1,0 +1,10 @@
+{"message":{"content":[{"text":"Reply with exactly: ALPHA","type":"text"}],"role":"user"},"type":"message_end"}
+{"message":{"content":[{"text":"ALPHA","type":"text"}],"role":"assistant"},"type":"message_end"}
+{"message":{"content":[],"role":"assistant","usage":{"cacheRead":0,"cacheWrite":0,"input":28014,"output":4,"totalTokens":28055}},"type":"message_end"}
+{"type":"turn_end"}
+{"type":"agent_end"}
+{"message":{"content":[{"text":"Reply with exactly: BRAVO","type":"text"}],"role":"user"},"type":"message_end"}
+{"message":{"content":[{"text":"BRAVO","type":"text"}],"role":"assistant"},"type":"message_end"}
+{"message":{"content":[],"role":"assistant","usage":{"cacheRead":27904,"cacheWrite":0,"input":159,"output":4,"totalTokens":28084}},"type":"message_end"}
+{"type":"turn_end"}
+{"type":"agent_end"}

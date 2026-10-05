@@ -1,0 +1,12 @@
+== 01-start-A.log.out
+Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.
+opencode server listening on http://127.0.0.1:4096
+== 01-start-B.log.out
+Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.
+opencode server listening on http://127.0.0.1:59684
+== 01-start-C.log.out
+Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.
+opencode server listening on http://127.0.0.1:47321
+== 01-start-A.log.err
+== 01-start-B.log.err
+== 01-start-C.log.err

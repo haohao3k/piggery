@@ -46,4 +46,7 @@ Give it to the Human, in the Human's words:
 - the dissent and your answer to it;
 - its limits, including "single model family", and what would reopen it.
 
+The verdict ends the council's work. Start agents for anything else, such as carrying out the
+decision, only when the Human asks you to.
+
 For the rest of piggery (changing a worker's model, templates, shell commands), run `piggery skills`.

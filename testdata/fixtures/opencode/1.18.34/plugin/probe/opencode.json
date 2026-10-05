@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "share": "disabled",
+  "model": "hp/glm-5.3-flash",
+  "provider": {
+    "hp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "HP",
+      "options": {
+        "baseURL": "https://llm.example/v1",
+        "apiKey": "{env:HP_KEY}"
+      },
+      "models": {
+        "glm-5.3-flash": {
+          "name": "glm-5.3-flash",
+          "limit": {
+            "context": 500000,
+            "output": 128000
+          },
+          "variants": {
+            "low": {
+              "reasoningEffort": "low"
+            },
+            "high": {
+              "reasoningEffort": "high"
+            }
+          }
+        },
+        "glm-b": {
+          "id": "glm-5.3-flash",
+          "name": "glm-b (alias of glm-5.3-flash)",
+          "limit": {
+            "context": 500000,
+            "output": 128000
+          },
+          "variants": {
+            "low": {
+              "reasoningEffort": "low"
+            },
+            "high": {
+              "reasoningEffort": "high"
+            }
+          }
+        }
+      }
+    }
+  }
+}

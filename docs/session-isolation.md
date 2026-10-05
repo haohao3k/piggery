@@ -1,6 +1,6 @@
 # Codex session isolation
 
-This fork follows upstream v0.7.1 and [PR #6](https://github.com/sting8k/piggery/pull/6),
+This fork follows upstream v0.8.0 and [PR #6](https://github.com/sting8k/piggery/pull/6),
 which supersedes our [PR #5](https://github.com/sting8k/piggery/pull/5) for
 [issue #4](https://github.com/sting8k/piggery/issues/4).
 
@@ -20,27 +20,33 @@ their cached connections and instructions do not change when the executable is r
 
 ## Historical fork data
 
-The fork already deployed schema 23 before upstream chose its adapter fix. Keep that migration
-unchanged and retain its quarantine column, lookup exclusions, token refusal, wake suppression
-and doctor output. This is storage compatibility for existing fork data, not another Codex routing
-implementation. Upstream v0.7.1 still uses schema 22; its stock binary cannot open a fork schema-23
-home. Future upstream migrations must be reconciled explicitly with this fork's migration history.
+The runtime and store use upstream schema 22. The old fork-only migration 23 added a
+`binding_quarantined` column to flag ambiguous historical identities; it was not an upstream
+version or a newer Piggery release.
 
-Quarantined participants, aliases, messages and acknowledgements remain stored. They cannot be
-rebound or used to authenticate, and reconnecting creates a fresh participant without replaying
-old mail. Non-quarantined threads can resume with the upstream thread host. Existing historical
-identity mistakes are not automatically repaired. `piggery doctor` reports quarantine candidates
-for deliberate recovery; it does not infer the intended recipient of old messages.
+For an existing fork-23 installation, guarded `scripts/local-dev.sh apply` stops the daemon only
+when idle, acquires its exclusive lock, validates the exact known schema and writes a complete
+SQLite backup under `~/.piggery/backups/fork23-to-upstream22-*.db`. It requires every flagged
+participant to be a gone interactive session. Those rows receive upstream's `left_at` marker,
+lose their old host and token, and keep their identity references and history. The script drops
+the fork column, verifies the resulting schema against upstream migrations, and sets version 22
+in the same transaction. A failed binary installation rolls the transaction back.
+
+Messages, acknowledgements, aliases and unflagged participants remain unchanged. Reconnecting
+an ambiguous old session creates a fresh participant; no old mail is reassigned. Unknown schema
+variants or active flagged participants block conversion. This one-time developer conversion
+is separate from the release updater and introduces no fork migration into the Go runtime.
 
 ## Installation and verification
 
 Use the guarded [local workflow](local-development.md): test, build, apply only after an
 authoritative idle readback, then verify the installed CLI, daemon and refreshed assets.
-Do not run the upstream release installer over this fork or downgrade its database metadata.
+Existing fork-23 homes must complete the guarded conversion before installing a release.
+Never change the version metadata alone.
 Keep the existing Piggery home and backups. Activation must wait while any other session or worker
 is busy or awaiting permission. After activation, reconnect Codex's app-server/MCP processes at a
 safe time; an installed candidate alone does not reload running sessions.
 
 The upstream author reports live verification on Codex 0.160.0 with a shared app-server and two
 remote TUIs. Local automated tests cover adapter identity, missing metadata, the standard TUI and
-Claude behavior, and preservation of historical quarantine. They are not a live multi-chat test.
+Claude behavior, and safe retirement of historical ambiguous bindings. They are not a live multi-chat test.

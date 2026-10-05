@@ -10,8 +10,8 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 
 | Command | What it does |
 |---|---|
-| `setup [pi\|claude\|codex\|omp\|dsh\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys, and show where each harness stands) |
-| `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
+| `setup [pi\|claude\|codex\|omp\|dsh\|opencode\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys, and show where each harness stands) |
+| `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, opencode, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
 | `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it |
 | `setup --refresh` | Refresh already-installed integration assets even at the same integration version, and safely unpack built-in templates; preserve custom template overrides and report their names; no new harness integration is enabled; mutually exclusive with `--outdated` and harness arguments |
 | `setup remove <harness>` | Take out exactly what `setup` added; `--ext PATH` (setup pi) uses a checkout's extension |
@@ -45,7 +45,7 @@ starting the daemon), `-h/--help`; `-v/--version` on `piggery`. In a shell where
 `inbox`, `who`, `board`, `watch`, `agent`, `join`) are hidden from help; `piggery skills` describes
 them.
 
-The model sees the tools with a `piggery_` prefix in pi, omp and dsh (`piggery_send`) and as
+The model sees the tools with a `piggery_` prefix in pi, omp, dsh and opencode (`piggery_send`) and as
 `mcp__piggery__send` in Claude Code and Codex; manifests and the CLI use the short names.
 
 Environment: `PIGGERY_DISABLED=1` makes an adapter inert (a session that must not join);
@@ -60,7 +60,7 @@ the explicit developer apply script rejects a nondefault `PIGGERY_HOME` because 
 
 | Key | Default | Meaning |
 |---|---|---|
-| `harness` | `pi` | Harness of a worker whose role and founding session name none: `pi`, `claude`, `codex`, `omp`, `dsh` |
+| `harness` | `pi` | Harness of a worker whose role and founding session name none: `pi`, `claude`, `codex`, `omp`, `dsh`, `opencode` |
 | `gc.closed_after` | `14d` | Delete (after archiving) a team closed, or a solo session gone, longer than this: `14d`, `36h`, or `off` |
 | `gc.archive_keep` | `30d` | Delete gc archives older than this, or `off`; also for a manual gc |
 | `display.columns` | `[role, state, harness, model, ctx, turns, unacked, age, since, cwd]` | Columns `top` and `ps` show after the name, in order (`top` has no `unacked` column: its header, team lines and details give it); **live**, read on every run. An unknown name warns and shows the defaults; `-` where a row has no value, `model` is the id without its provider, `cwd` is blank in the project directory itself |
@@ -75,13 +75,15 @@ resume. Missing keys are added with their defaults; `setup --force` writes the d
 
 | Key | In | Default | Meaning |
 |---|---|---|---|
-| `cmd`, `args` | all | the harness's command (`pi --mode rpc -e <extension>`, `claude`, `codex`, `omp --mode rpc`, `dsh`) | What runs; dsh can be `npx` with `["-y", "@deepseek-ai/dsh@<version>"]` |
-| `env` | claude, codex, dsh | `[]` | Extra `KEY=VALUE` for the worker |
+| `cmd`, `args` | all | the harness's command (`pi --mode rpc -e <extension>`, `claude`, `codex`, `omp --mode rpc`, `dsh`, `opencode`) | What runs; dsh can be `npx` with `["-y", "@deepseek-ai/dsh@<version>"]` |
+| `env` | claude, codex, dsh, opencode | `[]` | Extra `KEY=VALUE` for the worker |
 | `model`, `thinking` | all | `inherit` | The worker's model and thinking level, in the harness's own names and levels, passed as written; `inherit` goes on down the chain (role `spawn.model`, this file, the founding session's model, the harness default) |
-| `blacklist` | all | `[]` | What a worker must not load from your own setup: packages, extensions and MCP servers (pi, omp, claude, codex), or rows of your dsh setup. piggery's own copies and `pi-peer` are always left out |
+| `blacklist` | all | `[]` | What a worker must not load from your own setup: packages, extensions and MCP servers (pi, omp, claude, codex), rows of your dsh setup, or MCP servers (keys of `mcp`) of your opencode config. piggery's own copies and `pi-peer` are always left out |
 | `disallowed_tools` | claude | Claude's own tools that reach you or start agents outside piggery | A role gets one back with `spawn.allow_tools` |
 | `disabled_tools` | codex | `agents`, `apps`, `goals` (name to `-c` setting) | Same, by name |
 | `disabled_tools` | dsh | dsh's subagent, messaging, plan and goal tools | Same, a list of tool names |
+| `disabled_tools` | opencode | `question` (asks you), `task` (starts agents) | Same, a list of tool names; every other permission is allowed (an `ask` would hang a headless worker) |
+| `disable_claude_code` | opencode | `false` | `true` keeps the skills and `CLAUDE.md` of your `~/.claude` out of an opencode worker (`OPENCODE_DISABLE_CLAUDE_CODE`); by default a worker runs with your opencode setup |
 | `tested_versions` | all | the version piggery was tested with | `setup` and `doctor` warn about another one |
 
 ## Manifest
@@ -147,8 +149,20 @@ harness's version and problems, each with its fix, and `vN < vM` for an outdated
 | claude | `~/.piggery/claude/` (a local plugin marketplace with hooks); Claude's own commands `claude mcp add --scope user piggery`, `claude plugin marketplace add` and `claude plugin install piggery@piggery`; nothing in `~/.claude` is written by piggery |
 | codex | piggery's hooks in `hooks.json`, after yours, and a block between `# >>> piggery` and `# <<< piggery` in `config.toml`, in `$CODEX_HOME` (default `~/.codex`) |
 | omp | the extension unpacked into omp's agent dir (`~/.omp/agent/extensions/piggery/`; `$PI_CODING_AGENT_DIR` or a profile in `OMP_PROFILE`/`PI_PROFILE` moves it) |
+| opencode | the plugin in `~/.piggery/plugins/opencode/`, and one entry for it in `plugin` of `opencode.json` in opencode's config dir (`$XDG_CONFIG_HOME/opencode`, default `~/.config/opencode`); your other entries and keys stay as they are. A config that is not plain JSON (`opencode.jsonc`, comments) is not touched: setup writes nothing and prints the line to add |
 | dsh | the plugin in `~/.piggery/plugins/dsh/`, and one block between `# BEGIN piggery` and `# END piggery` in dsh's home patch (`$DSH_HOME/cordis.patch.yml`, default `~/.dsh`); your rows stay |
 | paseo | the plugin in `~/.piggery/paseo/`, installed with `paseo plugin install`; the Paseo daemon must run and every app showing it must be Paseo 0.9.1 or newer |
+
+Before `setup` writes a config file of yours (codex `config.toml` and `hooks.json`, dsh's home patch,
+opencode's `opencode.json`, pi's `settings.json`) it copies it to `~/.piggery/backups/setup/<harness>/<file name>` (mode 0600, since
+it may hold keys) and says so. For Claude it copies `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/`),
+which the `claude` commands change; piggery itself writes nothing there. There is one backup per file:
+a file that already has piggery's part (a second run, an upgrade) keeps the backup it has, so the backup is
+the file as it was before piggery came in. `setup remove` takes out piggery's part and leaves the rest as
+it is now; it neither makes nor restores a backup. To go back to the state before piggery, copy the backup over the
+file by hand. `setup remove claude` leaves empty `enabledPlugins` / `extraKnownMarketplaces` keys, an empty
+plugins file and a reordered `settings.json`, since Claude's own commands write them. A pi
+`settings.json` left as `{}` by `setup remove pi` is deleted.
 
 ## Notify hooks
 
@@ -186,11 +200,18 @@ line or `notify: notify` timer is ignored with a warning.
 - **omp**: mail that arrives as a run ends is steered in and shows in the TUI as a user message; Esc or
   `piggery abort` closes the turn unacked and the mail comes again. piggery does not see a permission
   approval, and `piggery model` cannot switch an omp session.
+- **opencode**: one `opencode serve` per worker, on a loopback port with a password only in its
+  environment; the worker's own config is `OPENCODE_CONFIG_CONTENT` and your opencode config file is
+  never written by a worker. Its model names are opencode's `provider/model` (`piggery models` lists
+  them), its thinking levels the model's variants. `piggery model` is accepted at once and lands at
+  the worker's next idle, so a turn that is running finishes on the old model. A worker takes your skills and
+  `instructions` with it unless `disable_claude_code` or a blacklist says otherwise. `piggery stop` aborts the session first: a tool's
+  shell survives its server, only an abort ends it. Restart opencode sessions that were open during setup.
 - **dsh**: restart a `dsh web` that was open during setup; a session's records are kept under
   `~/.piggery/sessions/dsh/`; a worker takes several seconds to start (dsh loads its plugins); model
   names are dsh's routes (`provider/model`); a custom provider is declared in your own dsh setup.
 
 ## Harness versions
 
-Tested with pi 0.87.1, Claude Code 2.1.283, Codex 0.157.1, omp 18.4.2 and dsh 0.2.0-rc.1; `piggery
+Tested with pi 0.87.1, Claude Code 2.1.283, Codex 0.157.1, omp 18.4.2, dsh 0.2.0-rc.1 and opencode 1.18.34; `piggery
 setup` and `doctor` warn about another version.

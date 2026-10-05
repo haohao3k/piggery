@@ -1,0 +1,15 @@
+## default (start_ms=706)
+  GET /skill: 235 skills; locations: ['<built-in>', '~/.agents/skills', '~/.claude/skills']
+  GET /config/providers ids: ['opencode', 'hp']
+  GET /provider connected: ['opencode', 'hp']
+  network connections of serve (lsof -i, remote ends only):
+## disable-claude-code (start_ms=738)
+  GET /skill: 11 skills; locations: ['<built-in>', '~/.agents/skills']
+  GET /config/providers ids: ['opencode', 'hp']
+  GET /provider connected: ['opencode', 'hp']
+  network connections of serve (lsof -i, remote ends only):
+## models-fetch-off-enabled-providers-hp (start_ms=795)
+  GET /skill: 235 skills; locations: ['<built-in>', '~/.agents/skills', '~/.claude/skills']
+  GET /config/providers ids: ['hp']
+  GET /provider connected: ['hp']
+  network connections of serve (lsof -i, remote ends only):

@@ -17,7 +17,7 @@ func fakeReviewCodex(t *testing.T) string {
 
 func TestCodexReviewSkillLifecycle(t *testing.T) {
 	home := fakeReviewCodex(t)
-	if _, err := installCodex(home, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	state, err := inspectCodexSkill(home)
@@ -37,7 +37,7 @@ func TestCodexReviewSkillLifecycle(t *testing.T) {
 	if _, _, drift := codexIntegration(home); drift == "" {
 		t.Fatal("old bootstrap template is not reported as drift")
 	}
-	if _, err := refreshCodex(home, "/opt/new piggery"); err != nil {
+	if _, err := refreshCodex(t.TempDir(), home, "/opt/new piggery"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(codexSkillPath(home))
@@ -59,7 +59,7 @@ func TestCodexReviewSkillPreservesCustomizationAndRemoval(t *testing.T) {
 	for _, mutate := range []string{"customize", "remove-file", "remove-directory"} {
 		t.Run(mutate, func(t *testing.T) {
 			home := fakeReviewCodex(t)
-			if _, err := installCodex(home, "/bin/piggery"); err != nil {
+			if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 				t.Fatal(err)
 			}
 			switch mutate {
@@ -76,7 +76,7 @@ func TestCodexReviewSkillPreservesCustomizationAndRemoval(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if _, err := refreshCodex(home, "/opt/piggery"); err == nil || !strings.Contains(err.Error(), "preserved") {
+			if _, err := refreshCodex(t.TempDir(), home, "/opt/piggery"); err == nil || !strings.Contains(err.Error(), "preserved") {
 				t.Fatalf("refresh did not report ownership conflict: %v", err)
 			}
 			if st := codexStatus(home, "/bin/piggery"); len(st.Problems) == 0 {
@@ -123,7 +123,7 @@ func TestCodexReviewSkillDoesNotClaimUnownedPaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := installCodex(home, "/bin/piggery"); err == nil {
+			if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err == nil {
 				t.Fatal("unowned or nonregular skill path accepted")
 			}
 			if _, err := os.Stat(filepath.Join(home, "hooks.json")); !os.IsNotExist(err) {
@@ -138,7 +138,7 @@ func TestCodexReviewSkillDoesNotClaimUnownedPaths(t *testing.T) {
 
 func TestCodexReviewSkillPreservesOtherSkillFiles(t *testing.T) {
 	home := fakeReviewCodex(t)
-	if _, err := installCodex(home, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	extra := filepath.Join(filepath.Dir(codexSkillPath(home)), "human-notes.md")
@@ -159,7 +159,7 @@ func TestCodexReviewSkillOutdatedDoesNotRestoreDisabledIntegration(t *testing.T)
 			home := fakeReviewCodex(t)
 			t.Setenv("HOME", home)
 			t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
-			if _, err := installCodex(codexHome(), "/bin/piggery"); err != nil {
+			if _, err := installCodex(t.TempDir(), codexHome(), "/bin/piggery"); err != nil {
 				t.Fatal(err)
 			}
 			cfgPath := filepath.Join(codexHome(), "config.toml")
@@ -200,7 +200,7 @@ func TestCodexReviewSkillOutdatedDoesNotRestoreDisabledIntegration(t *testing.T)
 
 func TestCodexReviewSkillDetectsInterruptedExecutableUpdate(t *testing.T) {
 	home := fakeReviewCodex(t)
-	if _, err := installCodex(home, "/bin/piggery"); err != nil {
+	if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	// Simulate host registration moving before the skill write completed.
@@ -212,7 +212,7 @@ func TestCodexReviewSkillDetectsInterruptedExecutableUpdate(t *testing.T) {
 	if _, _, drift := codexIntegration(home); !strings.Contains(drift, "different executable") {
 		t.Fatalf("stale skill command binding not reported: %q", drift)
 	}
-	if _, err := refreshCodex(home, "/opt/piggery"); err != nil {
+	if _, err := refreshCodex(t.TempDir(), home, "/opt/piggery"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, drift := codexIntegration(home); drift != "" {

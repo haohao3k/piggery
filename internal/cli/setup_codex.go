@@ -73,8 +73,8 @@ func codexHome() string {
 // codexHarness: hooks and piggery mcp; an idle session is woken by a queued prompt.
 var codexHarness = harnessProfile{
 	setupTarget: setupTarget{name: "codex", cmd: "codex",
-		install: func(o setupOpts) (string, error) { return installCodex(codexHome(), o.self) },
-		refresh: func(o setupOpts) (string, error) { return refreshCodex(codexHome(), o.self) },
+		install: func(o setupOpts) (string, error) { return installCodex(o.dir, codexHome(), o.self) },
+		refresh: func(o setupOpts) (string, error) { return refreshCodex(o.dir, codexHome(), o.self) },
 		remove:  func(setupOpts) (string, error) { return removeCodex(codexHome()) },
 		status:  func(o setupOpts) harnessState { return codexStatus(codexHome(), o.self) },
 	},
@@ -87,7 +87,7 @@ var codexHarness = harnessProfile{
 // refreshCodex runs the normal guarded Codex merge only while both sides of piggery's host
 // registration are still present. Removing all owned hooks or the config block unregisters it;
 // partial hook drift is refreshed so a new embedded event is picked up at the same version.
-func refreshCodex(home, self string) (string, error) {
+func refreshCodex(dir, home, self string) (string, error) {
 	cfg, err := readOptional(filepath.Join(home, "config.toml"))
 	if err != nil {
 		return "", err
@@ -105,7 +105,7 @@ func refreshCodex(home, self string) (string, error) {
 	if codexPiggeryHookCount(hooks) == 0 {
 		return "codex: skipped (piggery's hooks and MCP registration are not both active)", nil
 	}
-	msg, err := installCodex(home, self)
+	msg, err := installCodex(dir, home, self)
 	if err != nil {
 		return "", err
 	}
@@ -169,7 +169,8 @@ func codexMCPDisabled(cfg []byte) bool {
 
 var codexDisabledSetting = regexp.MustCompile(`^\s*(enabled|"enabled"|'enabled')\s*=\s*false\s*(#.*)?$`)
 
-func installCodex(home, self string) (string, error) {
+func installCodex(dir, home, self string) (string, error) {
+	var backups []string
 	skill, err := inspectCodexSkill(home)
 	if err != nil {
 		return "", err
@@ -187,6 +188,11 @@ func installCodex(home, self string) (string, error) {
 	}
 	changedHooks := !bytes.Equal(oldHooks, newHooks)
 	if changedHooks {
+		msg, err := backupHumanConfig(dir, "codex", hooksPath, contains(" hook codex ")) // what isPiggeryCodexGroup looks for
+		if err != nil {
+			return "", err
+		}
+		backups = append(backups, msg)
 		if err := writeFileAtomic(hooksPath, newHooks); err != nil {
 			return "", err
 		}
@@ -215,6 +221,11 @@ func installCodex(home, self string) (string, error) {
 		return fmt.Sprintf("piggery is already set up in %s (hooks trusted)", home), nil
 	}
 	if !bytes.Equal(oldCfg, newCfg) {
+		msg, err := backupHumanConfig(dir, "codex", cfgPath, contains(codexBlockBegin))
+		if err != nil {
+			return "", err
+		}
+		backups = append(backups, msg)
 		if err := writeFileAtomic(cfgPath, newCfg); err != nil {
 			return "", err
 		}
@@ -230,9 +241,9 @@ func installCodex(home, self string) (string, error) {
 			return "", err
 		}
 	}
-	return fmt.Sprintf("wrote piggery's hooks to %s and its MCP server and hook trust to %s (%d hooks trusted)\n"+
+	return fmt.Sprintf("wrote piggery's hooks to %s and its MCP server and hook trust to %s (%d hooks trusted)\n%s"+
 		"installed $piggery-three-review in %s\n"+
-		"Codex sessions started from now on join piggery; restart any that are open.", hooksPath, cfgPath, len(keys), codexSkillPath(home)), nil
+		"Codex sessions started from now on join piggery; restart any that are open.", hooksPath, cfgPath, len(keys), backupLines(backups), codexSkillPath(home)), nil
 }
 
 // codexHookGroups walks hooks.json (order and the Human's groups kept): fn gets each event's

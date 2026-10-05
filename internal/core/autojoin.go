@@ -65,7 +65,7 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 	err = e.inTx(ctx, func(t *txn) error {
 		if a.Host != "" { // the same process again (its MCP server and hooks, or /clear): no new participant
 			var id, team, run string
-			err := t.QueryRowContext(t.ctx, `SELECT id, COALESCE(team_id,''), run_id FROM participants WHERE host=? AND binding_quarantined=0
+			err := t.QueryRowContext(t.ctx, `SELECT id, COALESCE(team_id,''), run_id FROM participants WHERE host=?
 				AND state<>'gone' AND left_at IS NULL AND COALESCE(mode,'')<>'headless'
 				ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.Host).Scan(&id, &team, &run)
 			if err == nil {
@@ -89,7 +89,7 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 		// A row that left (found elsewhere, replaced or merged by reopen) never comes back.
 		var mode, host sql.NullString
 		p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`, mode, host FROM participants
-			WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?)) AND left_at IS NULL AND binding_quarantined=0
+			WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?)) AND left_at IS NULL
 			AND (team_id IS NULL OR team_id IN (SELECT id FROM teams WHERE closed_at IS NULL))
 			ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.HarnessRef, a.HarnessRef), &mode, &host)
 		switch {

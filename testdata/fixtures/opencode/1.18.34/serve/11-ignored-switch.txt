@@ -1,0 +1,18 @@
+session=ses_ef518c237ffeKky7I25Pp0f5UH
+switch -> 204
+session model: {'id': 'alt', 'providerID': 'hp', 'variant': 'high'}
+proxy requests so far (a noReply makes none): 0
+next prompt, no model in the body, variant passed as the plugin would:
+prompt_async http=204
+turn: 66167 ms
+request 0 model glm-5.3-flash reasoning_effort high needle_found False messages [('system', 92941), ('user', 30)]
+request 1 model glm-5.3-flash reasoning_effort high needle_found False messages [('system', 92941), ('user', 30)]
+request 2 model glm-5.3-flash reasoning_effort high needle_found False messages [('system', 92941), ('user', 30)]
+request 3 model glm-5.3-flash reasoning_effort high needle_found False messages [('system', 92941), ('user', 30)]
+request 4 model glm-5.3-flash reasoning_effort high needle_found False messages [('system', 92941), ('user', 30)]
+request 5 model glm-5.3-flash reasoning_effort high needle_found False messages [('system', 92941), ('user', 30)]
+user build id=..7gkJ8V parent=.. +0ms done=None finish=None model=alt tokens=None err=None
+    part text 'piggery: model switch'
+user build id=..w3oKV7 parent=.. +1080ms done=None finish=None model=alt tokens=None err=None
+    part text 'Reply with exactly: SWITCHED'
+assistant build id=..gYbIek parent=..w3oKV7 +1092ms done=67027 finish=None model=alt tokens={'input': 0, 'output': 0, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}} err=APIError

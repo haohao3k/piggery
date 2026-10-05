@@ -1,0 +1,737 @@
+{
+ "connected": [
+  "opencode",
+  "hp"
+ ],
+ "default": {
+  "opencode": "big-pickle",
+  "hp": "glm-5.3-flash"
+ },
+ "all": [
+  {
+   "id": "opencode",
+   "name": "OpenCode Zen",
+   "source": "custom",
+   "env": [
+    "OPENCODE_API_KEY"
+   ],
+   "options": {
+    "apiKey": "public"
+   },
+   "models": {
+    "ling-3.0-flash-fin-free": {
+     "id": "ling-3.0-flash-fin-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "ling-3.0-flash-fin-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "Ling 3.0 Flash Fin Free",
+     "family": "ling",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": false,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": false
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 262144,
+      "output": 32768
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-08-27",
+     "variants": {
+      "low": {
+       "reasoningEffort": "low"
+      },
+      "medium": {
+       "reasoningEffort": "medium"
+      },
+      "high": {
+       "reasoningEffort": "high"
+      }
+     }
+    },
+    "fledge-alpha-free": {
+     "id": "fledge-alpha-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "fledge-alpha-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "Fledge Alpha Free",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": true,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": true,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": false
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 1048576,
+      "output": 131072
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-10-01",
+     "variants": {
+      "low": {
+       "reasoningEffort": "low"
+      },
+      "high": {
+       "reasoningEffort": "high"
+      },
+      "max": {
+       "reasoningEffort": "max"
+      }
+     }
+    },
+    "ling-3.1-flash-free": {
+     "id": "ling-3.1-flash-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "ling-3.1-flash-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "Ling 3.1 Flash Free",
+     "family": "ling",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": false,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": false
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 262144,
+      "output": 32768
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-09-29",
+     "variants": {
+      "low": {
+       "reasoningEffort": "low"
+      },
+      "medium": {
+       "reasoningEffort": "medium"
+      },
+      "high": {
+       "reasoningEffort": "high"
+      }
+     }
+    },
+    "longcat-2.5-preview-free": {
+     "id": "longcat-2.5-preview-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "longcat-2.5-preview-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "LongCat 2.5 Preview Free",
+     "family": "longcat",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": true,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": true,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": {
+       "field": "reasoning_content"
+      }
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 1000000,
+      "output": 131072
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-09-25",
+     "variants": {
+      "low": {
+       "reasoningEffort": "low"
+      },
+      "medium": {
+       "reasoningEffort": "medium"
+      },
+      "high": {
+       "reasoningEffort": "high"
+      }
+     }
+    },
+    "space-bunny-free": {
+     "id": "space-bunny-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "space-bunny-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "Space Bunny Free",
+     "capabilities": {
+      "temperature": false,
+      "reasoning": true,
+      "attachment": true,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": true,
+       "video": true,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": {
+       "field": "reasoning_content"
+      }
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 1048576,
+      "input": 524288,
+      "output": 524288
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-09-23",
+     "variants": {
+      "low": {
+       "reasoningEffort": "low"
+      },
+      "medium": {
+       "reasoningEffort": "medium"
+      },
+      "high": {
+       "reasoningEffort": "high"
+      },
+      "xhigh": {
+       "reasoningEffort": "xhigh"
+      },
+      "max": {
+       "reasoningEffort": "max"
+      }
+     }
+    },
+    "mimo-v2.6-flash-free": {
+     "id": "mimo-v2.6-flash-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "mimo-v2.6-flash-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "MiMo-V2.6-Flash Free",
+     "family": "mimo",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": true,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": true,
+       "image": true,
+       "video": true,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": {
+       "field": "reasoning_content"
+      }
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 200000,
+      "output": 32000
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-09-22",
+     "variants": {}
+    },
+    "nemotron-3-ultra-free": {
+     "id": "nemotron-3-ultra-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "nemotron-3-ultra-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "Nemotron 3 Ultra Free",
+     "family": "nemotron-free",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": false,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": {
+       "field": "reasoning_content"
+      }
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 1000000,
+      "output": 128000
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-06-04",
+     "variants": {}
+    },
+    "nemotron-3.5-lightning-free": {
+     "id": "nemotron-3.5-lightning-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "nemotron-3.5-lightning-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "Nemotron 3.5 Lightning Free",
+     "family": "nemotron-free",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": false,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": {
+       "field": "reasoning_content"
+      }
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 262144,
+      "output": 262144
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-08-11",
+     "variants": {}
+    },
+    "big-pickle": {
+     "id": "big-pickle",
+     "providerID": "opencode",
+     "api": {
+      "id": "big-pickle",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "Big Pickle",
+     "family": "big-pickle",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": false,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": {
+       "field": "reasoning_content"
+      }
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 200000,
+      "input": 160000,
+      "output": 32000
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2025-10-17",
+     "variants": {}
+    },
+    "muse-spark-1.3-contributor-free": {
+     "id": "muse-spark-1.3-contributor-free",
+     "providerID": "opencode",
+     "api": {
+      "id": "muse-spark-1.3-contributor-free",
+      "url": "https://opencode.ai/zen/v1",
+      "npm": "@ai-sdk/openai"
+     },
+     "name": "Muse Spark 1.3 Free",
+     "family": "muse-free",
+     "capabilities": {
+      "temperature": true,
+      "reasoning": true,
+      "attachment": true,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": true,
+       "image": true,
+       "video": true,
+       "pdf": true
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": false
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 1048576,
+      "output": 131072
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "2026-09-02",
+     "variants": {
+      "minimal": {
+       "reasoningEffort": "minimal",
+       "reasoningSummary": "auto",
+       "include": [
+        "reasoning.encrypted_content"
+       ]
+      },
+      "low": {
+       "reasoningEffort": "low",
+       "reasoningSummary": "auto",
+       "include": [
+        "reasoning.encrypted_content"
+       ]
+      },
+      "medium": {
+       "reasoningEffort": "medium",
+       "reasoningSummary": "auto",
+       "include": [
+        "reasoning.encrypted_content"
+       ]
+      },
+      "high": {
+       "reasoningEffort": "high",
+       "reasoningSummary": "auto",
+       "include": [
+        "reasoning.encrypted_content"
+       ]
+      },
+      "xhigh": {
+       "reasoningEffort": "xhigh",
+       "reasoningSummary": "auto",
+       "include": [
+        "reasoning.encrypted_content"
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "hp",
+   "name": "HP",
+   "source": "config",
+   "env": [],
+   "options": {
+    "baseURL": "http://127.0.0.1:47901/v1",
+    "apiKey": "<HP_KEY>"
+   },
+   "models": {
+    "glm-5.3-flash": {
+     "id": "glm-5.3-flash",
+     "providerID": "hp",
+     "api": {
+      "id": "glm-5.3-flash",
+      "url": "",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "glm-5.3-flash",
+     "family": "",
+     "capabilities": {
+      "temperature": false,
+      "reasoning": false,
+      "attachment": false,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": false
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 500000,
+      "output": 128000
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "",
+     "variants": {}
+    },
+    "alt": {
+     "id": "alt",
+     "providerID": "hp",
+     "api": {
+      "id": "glm-5.3-flash",
+      "url": "",
+      "npm": "@ai-sdk/openai-compatible"
+     },
+     "name": "alt (alias, reasoning)",
+     "family": "",
+     "capabilities": {
+      "temperature": false,
+      "reasoning": true,
+      "attachment": false,
+      "toolcall": true,
+      "input": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "output": {
+       "text": true,
+       "audio": false,
+       "image": false,
+       "video": false,
+       "pdf": false
+      },
+      "interleaved": false
+     },
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "limit": {
+      "context": 500000,
+      "output": 128000
+     },
+     "status": "active",
+     "options": {},
+     "headers": {},
+     "release_date": "",
+     "variants": {
+      "low": {
+       "reasoningEffort": "low"
+      },
+      "high": {
+       "reasoningEffort": "high"
+      }
+     }
+    }
+   }
+  }
+ ],
+ "_note": "trimmed after capture: all/default reduced to the connected providers (the raw reply listed 227 providers, 6.4 MB)"
+}

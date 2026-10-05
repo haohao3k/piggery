@@ -96,3 +96,13 @@ refresh. Keep backups and receipts outside Git and never paste auth material int
 If the candidate migrated the schema, do not start the previous executable against the upgraded
 database. Prefer a corrected candidate; a deliberate rollback must account for the store's
 pre-migration backup and any activity after it. See [session isolation](session-isolation.md).
+
+## Returning an existing fork-23 home to upstream
+
+The runtime uses upstream schema 22. `apply` automatically handles only the known older fork-23
+schema after the idle gate: graceful shutdown, exclusive daemon lock, full SQLite backup,
+retirement of gone ambiguous identities, and transactional removal of the fork column. The
+backup path is recorded in the activation receipt. Unknown schemas block installation.
+See [session isolation](session-isolation.md) for the data-preservation contract.
+Do not restore only the old binary after conversion: it would add the fork migration again.
+Recovery requires the matching binary and database backup with the daemon stopped.

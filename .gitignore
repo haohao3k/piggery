@@ -7,8 +7,6 @@
 /docs/*
 !/docs/guide.md
 !/docs/reference.md
-/AGENTS.md
-/CLAUDE.md
 /scripts/
 /just-harness-cli
 

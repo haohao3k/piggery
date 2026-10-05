@@ -47,10 +47,10 @@ type setupTarget struct {
 type setupOpts struct{ dir, self, ext, paseoHome string }
 
 // harnesses is the registry, in the order setup reports them.
-var harnesses = []harnessProfile{piHarness, claudeHarness, codexHarness, ompHarness, dshHarness}
+var harnesses = []harnessProfile{piHarness, claudeHarness, codexHarness, ompHarness, dshHarness, opencodeHarness}
 
 // setupTargets are the harnesses and the other places setup installs to, in the order it reports them.
-var setupTargets = []setupTarget{piHarness.setupTarget, claudeHarness.setupTarget, codexHarness.setupTarget, ompHarness.setupTarget, dshHarness.setupTarget, paseoTarget}
+var setupTargets = []setupTarget{piHarness.setupTarget, claudeHarness.setupTarget, codexHarness.setupTarget, ompHarness.setupTarget, dshHarness.setupTarget, opencodeHarness.setupTarget, paseoTarget}
 
 // targetNamed is the setup target called name.
 func targetNamed(name string) (setupTarget, bool) {

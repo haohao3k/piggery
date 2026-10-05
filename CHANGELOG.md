@@ -2,11 +2,10 @@
 
 ## Unreleased
 
-- Sync upstream v0.7.1: use the upstream Codex adapter's per-thread hosts and MCP
-  connections with `_meta.sessionId`. Remove the superseded core-side thread authentication,
-  capability probe and single-thread MCP binding. Codex TUI and Claude retain upstream `/clear` behavior.
-- Preserve the already-deployed fork schema 23 and historical quarantine exclusions. No old
-  messages are reassigned and no quarantined identity is revived. See [session isolation](docs/session-isolation.md).
+- Sync all of upstream v0.8.0, including OpenCode, new templates and setup config backups.
+- Use the upstream Codex adapter and schema 22 without fork quarantine logic. Guarded development
+  activation backs up known fork-23 databases, retires ambiguous gone bindings using upstream
+  fields and preserves messages, acknowledgements and aliases. See [session isolation](docs/session-isolation.md).
 
 - Make `piggery update` and `install.sh` use GitHub Releases from `haohao3k/piggery`, with
   checksum verification and no checkout/receipt dependency or upstream fallback. Remove the local
@@ -24,6 +23,37 @@
 - Add the optional `triple-review` team template: two independent semantic reviews from different
   provider families and one OCR delegate coverage review of a frozen candidate. The coordinator
   verifies readiness, keeps the first pass sealed and adjudicates findings by evidence.
+
+## v0.8.0 - 2026-10-05
+
+opencode joins the farm, and two new team templates come built in: `amp-like` and `gastown-like`.
+
+After upgrading, run `piggery restart`: the daemon then knows opencode and refreshes the built-in
+templates you never edited. No existing integration changed, so `setup --outdated` has nothing to
+do. To use opencode, run `piggery setup opencode`.
+
+- opencode 1.x (tested with 1.18.34): an opencode session you open joins piggery through a plugin,
+  and a team can start opencode workers (`opencode serve`, one per worker). Mail wakes an idle
+  session and reaches a busy one at its next step; `abort`, `stop`, `resume` and `model` work on
+  its workers. `setup opencode` adds one `plugin` entry to your `opencode.json` and refuses an
+  `opencode.jsonc` (it prints the line to add by hand). Workers keep your opencode setup, except
+  the `question` and `task` tools (`disabled_tools` in `harness/opencode.json`; a role gets one
+  back with `spawn.allow_tools`).
+- Template `amp-like`, after [Amp](https://ampcode.com)'s oracle and code review: a lead does the
+  work and calls an oracle (hard reasoning) or a reviewer (one diff), each answering once. It pays
+  off when they run another model family than the lead.
+- Template `gastown-like`, after [Gas Town](https://github.com/gastownhall/gastown): a mayor splits
+  the work, polecats do each task on their own branch and worktree, and a refinery merges the
+  branches one at a time into an integration branch. Your own branch moves only when you say.
+- `council`: the chair stops at the verdict and starts agents for other work, such as carrying out
+  the decision, only when you ask.
+- [manifests/README.md](manifests/README.md) draws every built-in template, with when to pick it.
+- Forks get an `AGENTS.md` with the rules that keep the design intact, for people and coding agents.
+- `setup <harness>` keeps one copy of each of your config files it is about to change for the first
+  time, in `~/.piggery/backups/setup/<harness>/`. `setup remove` still takes out only piggery's part
+  and never restores the copy; it is there if something goes wrong.
+- Fix: `setup pi --ext` then `setup remove pi` left a `settings.json` of `{}` where there was none,
+  and could re-indent other values in it (such as `packages`).
 
 ## v0.7.1 - 2026-10-05
 

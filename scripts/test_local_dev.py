@@ -44,6 +44,100 @@ def valid_refresh_evidence():
     }
 
 
+class UpstreamDatabaseTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name)
+        self.root = SCRIPT.parent.parent
+        self.path = self.home / 'piggery.db'
+        self.db = local_dev.sqlite3.connect(self.path)
+        self.addCleanup(self.db.close)
+        for name in ['schema.sql', *[f'migrate_{n}.sql' for n in range(2, 23)]]:
+            self.db.executescript((self.root / 'internal/store' / name).read_text())
+        self.db.execute("INSERT INTO meta VALUES ('schema_version','23')")
+        self.db.execute("ALTER TABLE participants ADD COLUMN binding_quarantined INTEGER NOT NULL DEFAULT 0")
+        for ident, flag in [('old', 1), ('unambiguous', 0)]:
+            self.db.execute("""INSERT INTO participants(id,run_id,kind,harness,mode,name,cwd,state,
+                state_since,last_activity,token_hash,harness_ref,created_at,host,session_ref,binding_quarantined)
+                VALUES (?,?,'session','codex','interactive',?,'/synthetic','gone',1,1,'hash',?,1,?,?,?)""",
+                (ident, ident, ident, ident+'-ref', ident+'-host', ident+'-ref', flag))
+        self.db.execute("INSERT INTO participant_refs VALUES ('alias','old')")
+        self.db.execute("INSERT INTO messages(id,seq,from_id,to_id,body,created_at,acked_at) VALUES ('mail',1,'old','unambiguous','history',1,2)")
+        self.db.execute("INSERT INTO deliveries(message_id,run_id,delivered_at,acked_at) VALUES ('mail','old',1,2)")
+        self.db.commit()
+        self.home_patch = mock.patch.object(local_dev, 'piggery_home', return_value=self.home)
+        self.home_patch.start()
+        self.addCleanup(self.home_patch.stop)
+        self.snapshot_patch = mock.patch.object(local_dev, '_daemon_snapshot', return_value=None)
+        self.snapshot = self.snapshot_patch.start()
+        self.addCleanup(self.snapshot_patch.stop)
+
+    def rows(self, table):
+        return self.db.execute(f'SELECT * FROM {table}').fetchall()
+
+    def test_conversion_preserves_history_and_matches_upstream(self):
+        history = {t: self.rows(t) for t in ['messages','deliveries','participant_refs']}
+        clean = self.db.execute("SELECT * FROM participants WHERE id='unambiguous'").fetchone()[:-1]
+        with local_dev._restore_upstream_database(self.root, None, None) as receipt:
+            self.assertEqual(receipt['retired_bindings'], 1)
+            self.assertEqual(local_dev._database_version(self.path), 23)  # uncommitted until install succeeds
+        self.assertEqual(local_dev._database_version(self.path), 22)
+        self.assertEqual(local_dev._schema_signature(self.db), local_dev._upstream_schema(self.root))
+        for table, expected in history.items():
+            self.assertEqual(self.rows(table), expected)
+        self.assertEqual(self.db.execute("SELECT * FROM participants WHERE id='unambiguous'").fetchone(), clean)
+        old = self.db.execute("SELECT state,left_at,host,token_hash FROM participants WHERE id='old'").fetchone()
+        self.assertEqual((old[0], old[2], old[3]), ('gone',None,''))
+        self.assertGreater(old[1], 0)
+        backup = Path(receipt['backup'])
+        self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(local_dev._database_version(backup), 23)
+        with local_dev._restore_upstream_database(self.root, None, None) as again:
+            self.assertIsNone(again)
+
+    def test_failed_install_rolls_back_conversion(self):
+        before = list(self.db.iterdump())
+        with self.assertRaisesRegex(RuntimeError, 'install failed'):
+            with local_dev._restore_upstream_database(self.root, None, None):
+                raise RuntimeError('install failed')
+        self.assertEqual(list(self.db.iterdump()), before)
+        self.assertEqual(len(list((self.home/'backups').glob('*.db'))), 1)
+
+    def test_busy_readback_prevents_shutdown_and_conversion(self):
+        self.snapshot.return_value = valid_snapshot(solos=[{'id':'busy','name':'busy','state':'working'}])
+        with mock.patch.object(local_dev, '_run') as run:
+            with self.assertRaisesRegex(local_dev.LocalDevError, 'idle gate blocked'):
+                with local_dev._restore_upstream_database(self.root, Path('/unused'), None):
+                    self.fail('conversion ran')
+            run.assert_not_called()
+        self.assertEqual(local_dev._database_version(self.path), 23)
+
+    def test_daemon_lock_prevents_conversion(self):
+        with (self.home/'piggery.lock').open('a+') as lock:
+            local_dev.fcntl.flock(lock, local_dev.fcntl.LOCK_EX | local_dev.fcntl.LOCK_NB)
+            with self.assertRaisesRegex(local_dev.LocalDevError, 'daemon restarted'):
+                with local_dev._restore_upstream_database(self.root, None, None):
+                    self.fail('conversion ran')
+        self.assertEqual(local_dev._database_version(self.path), 23)
+
+    def test_unknown_schema_refuses_conversion(self):
+        self.db.execute('ALTER TABLE participants ADD COLUMN unexpected TEXT')
+        self.db.commit()
+        with self.assertRaisesRegex(local_dev.LocalDevError, 'not the known fork schema'):
+            with local_dev._restore_upstream_database(self.root, None, None):
+                self.fail('conversion ran')
+        self.assertEqual(local_dev._database_version(self.path), 23)
+
+    def test_active_quarantined_binding_refuses_conversion(self):
+        self.db.execute("UPDATE participants SET state='working' WHERE id='old'")
+        self.db.commit()
+        with self.assertRaisesRegex(local_dev.LocalDevError, 'not all retired'):
+            with local_dev._restore_upstream_database(self.root, None, None):
+                self.fail('conversion ran')
+        self.assertEqual(local_dev._database_version(self.path), 23)
+
+
 class SourceDigestTests(unittest.TestCase):
     def test_digest_changes_for_untracked_nonignored_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,69 +1,12 @@
 package core_test
 
 import (
-	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/sting8k/piggery/internal/core"
 	"github.com/sting8k/piggery/internal/store"
 )
-
-func TestHistoricalQuarantineSurvivesUpstreamAdapterSync(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "piggery.db")
-	db, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { db.Close() }()
-	e := core.New(db)
-	a := core.JoinAutoArgs{Harness: "codex", Mode: "interactive", Host: "codex:100:1", HarnessRef: "thread-a", Cwd: t.TempDir()}
-	j, err := e.JoinAuto(ctx, a)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`UPDATE participants SET binding_quarantined=1 WHERE id=?`, j.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO participant_refs(ref,participant_id) VALUES ('thread-b',?)`, j.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	db, err = store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e = core.New(db)
-	_, err = e.Authenticate(ctx, j.ID, j.Token)
-	var ce *core.Error
-	if !errors.As(err, &ce) || ce.RuleID != "session.quarantined" {
-		t.Fatalf("old token: %v", err)
-	}
-	if _, err := e.AuthenticateHost(ctx, a.Host); code(err) != core.CodeUnauthorized {
-		t.Fatal("quarantine authenticated")
-	}
-	if ref := e.SessionRef(ctx, j.ID); ref != "" {
-		t.Fatalf("quarantined binding still has a wake target: %s", ref)
-	}
-	if fresh, err := e.JoinAuto(ctx, a); err != nil || fresh.ID == j.ID {
-		t.Fatalf("legacy host revived quarantine: %+v %v", fresh, err)
-	}
-	for _, ref := range []string{"thread-a", "thread-b"} {
-		a.HarnessRef = ref
-		a.Host = "codex:100:1/" + ref
-		fresh, err := e.JoinAuto(ctx, a)
-		if err != nil || fresh.ID == j.ID {
-			t.Fatalf("contaminated history reused: %+v %v", fresh, err)
-		}
-	}
-	var aliases int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM participant_refs WHERE participant_id=?`, j.ID).Scan(&aliases); err != nil || aliases != 1 {
-		t.Fatalf("historical alias erased: %d %v", aliases, err)
-	}
-}
 
 func TestReviewReturnAddressDoesNotFollowReusedDisplayName(t *testing.T) {
 	db, err := store.OpenMemory()
@@ -100,5 +43,44 @@ func TestReviewReturnAddressDoesNotFollowReusedDisplayName(t *testing.T) {
 	var mail int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM messages WHERE to_id=?`, fresh.ID).Scan(&mail); err != nil || mail != 0 {
 		t.Fatalf("report leaked to reused display name: %d %v", mail, err)
+	}
+}
+
+func TestRetiredAmbiguousBindingUsesUpstreamLifecycle(t *testing.T) {
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	e := core.New(db)
+	a := core.JoinAutoArgs{Harness: "codex", Mode: "interactive", Host: "codex:100:1", HarnessRef: "thread-a", Cwd: t.TempDir()}
+	old, err := e.JoinAuto(ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO participant_refs(ref,participant_id) VALUES ('thread-b',?)`, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Same ordinary upstream fields used by the one-time fork database conversion.
+	if _, err := db.Exec(`UPDATE participants SET state='gone', left_at=1, host=NULL, token_hash='' WHERE id=?`, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Authenticate(ctx, old.ID, old.Token); code(err) != core.CodeUnauthorized {
+		t.Fatalf("old token accepted: %v", err)
+	}
+	if _, err := e.AuthenticateHost(ctx, a.Host); code(err) != core.CodeUnauthorized {
+		t.Fatalf("old host accepted: %v", err)
+	}
+	for _, ref := range []string{"thread-a", "thread-b"} {
+		a.HarnessRef = ref
+		a.Host = "codex:100:1/" + ref
+		fresh, err := e.JoinAuto(ctx, a)
+		if err != nil || fresh.ID == old.ID {
+			t.Fatalf("retired history reused: %+v %v", fresh, err)
+		}
+	}
+	var aliasOwner string
+	if err := db.QueryRow(`SELECT participant_id FROM participant_refs WHERE ref='thread-b'`).Scan(&aliasOwner); err != nil || aliasOwner != old.ID {
+		t.Fatalf("historical alias changed: %s %v", aliasOwner, err)
 	}
 }

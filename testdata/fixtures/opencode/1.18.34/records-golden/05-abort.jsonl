@@ -1,0 +1,11 @@
+{"message":{"content":[{"text":"Use the bash tool to run exactly: sleep 888 . Then reply with exactly: LONG-DONE","type":"text"}],"role":"user"},"type":"message_end"}
+{"args":{"command":"sleep 888","timeout":900000},"toolName":"bash","type":"tool_execution_start"}
+{"message":{"content":[{"text":"After the abort, reply with exactly: SHOULD-NOT-RUN","type":"text"}],"role":"user"},"type":"message_end"}
+{"message":{"errorMessage":"aborted","role":"assistant","stopReason":"error"},"type":"message_end"}
+{"type":"agent_end"}
+{"isError":false,"result":{"content":[{"text":"(no output)\n\n<shell_metadata>\nUser aborted the command\n</shell_metadata>","type":"text"}]},"toolName":"bash","type":"tool_execution_end"}
+{"message":{"content":[{"text":"Reply with exactly: AFTER-ABORT","type":"text"}],"role":"user"},"type":"message_end"}
+{"message":{"content":[{"text":"AFTER-ABORT","type":"text"}],"role":"assistant"},"type":"message_end"}
+{"message":{"content":[],"role":"assistant","usage":{"cacheRead":28160,"cacheWrite":0,"input":61,"output":7,"totalTokens":28517}},"type":"message_end"}
+{"type":"turn_end"}
+{"type":"agent_end"}

@@ -1,0 +1,132 @@
+serve pid=73559 port=4096 start_ms=753
+session=ses_ef55725e2ffe6LWkLVGUXy4lCf
+prompt_async(long) http=204
+before abort: 73977 ppid=73559 pgid=73977 sleep 888
+status: {"ses_ef55725e2ffe6LWkLVGUXy4lCf":{"type":"busy"}}
+prompt_async(queued) http=204
+abort -> true in 40 ms (at +7253 ms)
+status after abort: {}
+sleep 888 after abort: dead
+abort again on an idle session -> true
+## follow-up prompt after abort:
+prompt_async(after) http=204
+turn took 3476 ms
+## messages
+user build id=..FIrWXR parent=.. +0ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Use the bash tool to run exactly: sleep 888 . Then reply with exactly: LONG-DONE'
+assistant build id=..3VBYWY parent=..FIrWXR +260ms done=7232 finish=None model=glm-5.3-flash tokens={'input': 0, 'output': 0, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}} err=MessageAbortedError
+    part step-start 
+    part reasoning 
+    part tool bash completed {"command": "sleep 888", "timeout": 900000}
+user build id=..i3oDNk parent=.. +7187ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'After the abort, reply with exactly: SHOULD-NOT-RUN'
+user build id=..U3gsKJ parent=.. +9343ms done=None finish=None model=glm-5.3-flash tokens=None err=None
+    part text 'Reply with exactly: AFTER-ABORT'
+assistant build id=..4j7dNM parent=..U3gsKJ +9351ms done=12518 finish=stop model=glm-5.3-flash tokens={'total': 28517, 'input': 61, 'output': 7, 'reasoning': 289, 'cache': {'read': 28160, 'write': 0}} err=None
+    part step-start 
+    part reasoning 
+    part text 'AFTER-ABORT'
+    part step-finish 
+## SSE (time since the first prompt):
+  -979 server.connected 
+   -26 session.created 
+    49 session.updated 
+   311 message.updated user
+   311 message.part.updated text
+   311 session.updated 
+   342 session.status {'type': 'busy'}
+   342 message.updated assistant
+   343 session.updated 
+   343 session.diff 
+   343 message.updated user
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   384 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   392 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   473 plugin.added 
+   479 catalog.updated 
+   480 plugin.added 
+   480 plugin.added 
+   480 plugin.added 
+   480 plugin.added 
+   480 plugin.added 
+   480 plugin.added 
+   480 plugin.added 
+   480 plugin.added 
+   480 plugin.added 
+   480 reference.updated 
+   558 integration.updated 
+   558 catalog.updated 
+   588 session.status {'type': 'busy'}
+  1849 message.part.updated step-start
+  1849 message.part.updated reasoning
+  2655 message.part.updated reasoning
+  2655 message.part.updated tool
+  2697 message.part.updated tool
+  2723 message.part.updated tool
+  7233 message.updated user
+  7233 message.part.updated text
+  7233 session.updated 
+  7269 session.error MessageAbortedError
+  7269 session.status {'type': 'idle'}
+  7269 session.idle 
+  7275 message.part.updated tool
+  7275 message.updated assistant
+  7275 session.status {'type': 'idle'}
+  7275 session.idle 
+  9366 session.status {'type': 'idle'}
+  9366 session.idle 
+  9409 message.updated user
+  9409 message.part.updated text
+  9409 session.updated 
+  9412 session.status {'type': 'busy'}
+  9412 message.updated assistant
+  9412 session.updated 
+  9412 session.diff 
+  9412 message.updated user
+  9416 session.status {'type': 'busy'}
+ 10631 message.part.updated step-start
+ 10631 message.part.updated reasoning
+ 12524 message.part.updated reasoning
+ 12524 message.part.updated text
+ 12562 message.part.updated text
+ 12562 message.part.updated step-finish
+ 12562 message.updated assistant
+ 12562 message.updated assistant
+ 12562 session.status {'type': 'busy'}
+ 12562 session.status {'type': 'idle'}
+ 12562 session.idle 
+ 12562 session.updated 
+ 12562 session.diff 
+ 12562 message.updated user

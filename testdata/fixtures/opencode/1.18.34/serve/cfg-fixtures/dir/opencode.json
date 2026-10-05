@@ -1,0 +1,3 @@
+{ "mcp": { "dirm": { "type": "local", "command": ["true"], "enabled": false } },
+  "plugin": ["file:///tmp/oc/cfg-fixtures/noop-plugin-b.js"],
+  "permission": { "read": "deny" } }

@@ -1,0 +1,19 @@
+# files
+ 
+256 .
+128 ..
+96 log
+561152 opencode.db
+32768 opencode.db-shm
+1924072 opencode.db-wal
+64 repos
+128 snapshot
+
+# tables
+account                message                session_context_epoch
+account_state          migration              session_input        
+control_account        part                   session_message      
+credential             permission             session_share        
+data_migration         project                todo                 
+event                  project_directory      workspace            
+event_sequence         session              

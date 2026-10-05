@@ -45,7 +45,7 @@ func TestRefreshClaudeRefreshesThreeReviewSkillCache(t *testing.T) {
 	t.Setenv("PIGGERY_FAKE_CLAUDE", log)
 	root := filepath.Join(home, ".piggery", "claude")
 	self := "/opt/piggery"
-	if _, err := installClaude(root, self); err != nil {
+	if _, err := installClaude(filepath.Dir(root), self); err != nil {
 		t.Fatal(err)
 	}
 	changes(t, log)
@@ -93,7 +93,7 @@ func TestRefreshClaudeSkipsDisabledPluginSkill(t *testing.T) {
 	t.Setenv("PIGGERY_FAKE_CLAUDE", log)
 	root := filepath.Join(home, ".piggery", "claude")
 	self := "/opt/piggery"
-	if _, err := installClaude(root, self); err != nil {
+	if _, err := installClaude(filepath.Dir(root), self); err != nil {
 		t.Fatal(err)
 	}
 	changes(t, log)

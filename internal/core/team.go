@@ -192,7 +192,7 @@ func (e *Engine) AuthenticateHost(ctx context.Context, host string) (Caller, err
 		var closed sql.NullInt64
 		p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`,
 			(SELECT closed_at FROM teams WHERE id=participants.team_id) FROM participants
-			WHERE host=? AND binding_quarantined=0 AND state<>'gone' AND left_at IS NULL AND COALESCE(mode,'')<>'headless'
+			WHERE host=? AND state<>'gone' AND left_at IS NULL AND COALESCE(mode,'')<>'headless'
 			ORDER BY created_at DESC, rowid DESC LIMIT 1`, host), &closed)
 		if errors.Is(err, sql.ErrNoRows) {
 			return &Error{Code: CodeUnauthorized, Message: "no live session with this host", RuleID: "host.unknown", Layer: "token"}
@@ -213,11 +213,10 @@ func (e *Engine) Authenticate(ctx context.Context, id, token string) (Caller, er
 	var c Caller
 	err := e.inTx(ctx, func(t *txn) error {
 		var hash, mode string
-		var quarantined bool
 		var closed sql.NullInt64
 		p, err := scanParticipant(t.QueryRowContext(t.ctx,
 			`SELECT `+participantCols+`, token_hash, (SELECT closed_at FROM teams WHERE id=participants.team_id),
-			COALESCE(mode,''), binding_quarantined FROM participants WHERE id=?`, id), &hash, &closed, &mode, &quarantined)
+			COALESCE(mode,'') FROM participants WHERE id=?`, id), &hash, &closed, &mode)
 		if errors.Is(err, sql.ErrNoRows) {
 			return deny(nil, "authenticate", "token", "token.invalid", "unknown participant", nil,
 				map[string]any{"claimed_id": id})
@@ -227,10 +226,6 @@ func (e *Engine) Authenticate(ctx context.Context, id, token string) (Caller, er
 		}
 		if subtle.ConstantTimeCompare([]byte(hash), []byte(hashToken(token))) != 1 {
 			return deny(&p, "authenticate", "token", "token.invalid", "token does not match", nil, nil)
-		}
-		if quarantined {
-			return &Error{Code: CodeUnauthorized, RuleID: "session.quarantined", Layer: "token",
-				Message: "this historical binding is quarantined; reconnect to create a new participant; history is preserved"}
 		}
 		if closed.Valid { // team down: every verb of its participants is refused here
 			if mode == modeHeadless {

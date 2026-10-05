@@ -1,0 +1,59 @@
+# amp-like: a lead that does the work and calls one-shot specialists, after Amp's main agent with
+# its oracle and code-review subagents. Every role talks with `send`; routing is the fence: a
+# specialist reaches only the lead, so the specialists cannot see each other. Each specialist
+# answers once and the lead stops it; the next question or review round gets a new one.
+# Tools are kept by the role prompts, not enforced. The idea pays off when the specialists run a
+# different model family from the lead: set roles.<role>.spawn.model (see the README).
+template: amp-like
+summary: A lead does the work and calls one-shot specialists, an oracle for hard reasoning and a reviewer for diffs, each answering once.
+auto_join_role: lead   # the founder's role when a session founds a team from this template
+roles:
+  lead:
+    description: Does the work itself; asks an oracle for plans, reviews of its own work and debugging, and a reviewer for a diff; stops each after its answer.
+    instructions_file: prompts/amp-like/lead.md
+    tools: [send, inbox, who, agent]
+    can_spawn: [oracle, reviewer]
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  oracle:
+    description: Answers one hard question (plan, review, architecture, debugging) once, with one simple recommendation; reads, does not edit.
+    instructions_file: prompts/amp-like/oracle.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:
+      harness: inherit
+      model: inherit         # best: a strong reasoning model of another family than the lead's
+      thinking: inherit
+      allow_tools: []
+  reviewer:
+    description: Reviews one diff once, hunk by hunk, and reports findings with severity and fix; reads, does not edit.
+    instructions_file: prompts/amp-like/reviewer.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:
+      harness: inherit
+      model: inherit         # best: a model of another family than the lead's and the oracle's
+      thinking: inherit
+      allow_tools: []
+routing:
+  - {from: lead, to: oracle, allow: true, cc: []}
+  - {from: lead, to: reviewer, allow: true, cc: []}
+  - {from: oracle, to: lead, allow: true, cc: []}
+  - {from: reviewer, to: lead, allow: true, cc: []}
+timers:
+  - {on: oracle, notify: reports_to, silent_for: 20m}
+  - {on: reviewer, notify: reports_to, silent_for: 20m}
+limits:                  # none: no limit
+  depth: 2                 # how deep spawned_by chains may go
+  concurrency: 10           # live workers at once
+  messages_per_participant_per_minute: 30
+  max_respawn_per_hour: none
