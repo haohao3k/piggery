@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -166,8 +167,13 @@ func TestOpencodeHelperProcess(t *testing.T) {
 	})
 	_ = sessionBody
 	fmt.Println("Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.") // a first line the driver must skip, as serve prints it without a password
+	l, err := net.Listen("tcp", "127.0.0.1:"+port)                                    // listening before the line, as serve is
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	fmt.Println("opencode server listening on http://127.0.0.1:" + port)
-	http.ListenAndServe("127.0.0.1:"+port, h)
+	http.Serve(l, h)
 	os.Exit(0)
 }
 
