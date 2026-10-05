@@ -406,3 +406,20 @@ Remove a column to hide it; the name is always shown.
   joining: `PIGGERY_DISABLED=1 pi --resume …` (the pi, omp, dsh and opencode adapters honor it).
 - **Two mail systems.** Remove `pi-peer` from pi's packages while using piggery: both give the model a
   `send`-style mailbox.
+
+### Installing the three-review shortcut again
+
+The fork includes the three-review playbook (`piggery skills three-review`) and `triple-review`
+template. Claude's `/piggery:three-review` and Pi's `/three-review` come with their normal harness
+integrations. `piggery setup codex` also installs the Codex shortcut by default.
+
+Use `piggery setup three-review` to install or restore the Codex `$piggery-three-review` shortcut
+independently, including after deleting a managed shortcut. This command does not register or
+re-enable hooks/MCP, start a daemon, or launch reviewers. To remove that shortcut, use
+`piggery setup remove three-review`. A later explicit `setup codex` includes it again.
+
+`piggery setup` displays shortcut status separately from the Codex adapter. A customized,
+symlinked or deliberately deleted skill never blocks adapter setup/refresh and never marks
+hooks/MCP outdated. Ordinary refresh preserves deletions; explicit addon setup can restore them.
+User changes and unowned paths are preserved even with `--force`; move them aside before choosing
+to install the bundled shortcut. The CLI playbook remains available without any shortcut.

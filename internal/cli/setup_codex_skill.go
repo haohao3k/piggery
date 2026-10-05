@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -70,6 +71,10 @@ func checkCodexSkillPaths(home string) error {
 }
 
 func inspectCodexSkill(home string) (codexSkillState, error) {
+	return inspectCodexSkillForSetup(home, false)
+}
+
+func inspectCodexSkillForSetup(home string, restoreMissing bool) (codexSkillState, error) {
 	var state codexSkillState
 	if err := checkCodexSkillPaths(home); err != nil {
 		return state, err
@@ -87,7 +92,7 @@ func inspectCodexSkill(home string) (codexSkillState, error) {
 		if err := json.Unmarshal(raw, &record); err != nil || len(record.SHA256) != 64 {
 			return state, fmt.Errorf("preserved %s: invalid Piggery skill receipt", codexSkillReceiptPath(home))
 		}
-		if state.content == nil || skillHash(state.content) != record.SHA256 {
+		if (state.content == nil && !restoreMissing) || (state.content != nil && skillHash(state.content) != record.SHA256) {
 			return state, fmt.Errorf("preserved %s: managed skill was changed or removed; restore its recorded copy or move the custom skill and receipt aside before setup", codexSkillPath(home))
 		}
 		state.receipt = &record
@@ -108,7 +113,7 @@ func inspectCodexSkill(home string) (codexSkillState, error) {
 
 func writeCodexSkill(home, self string, before codexSkillState) error {
 	// Recheck ownership after the host registration work, before touching skill bytes.
-	if _, err := inspectCodexSkill(home); err != nil {
+	if _, err := inspectCodexSkillForSetup(home, before.receipt != nil && before.content == nil); err != nil {
 		return err
 	}
 	content := []byte(threeReviewSkill(self, codexReviewSkill))
@@ -169,4 +174,48 @@ func removeCodexSkill(home string) (string, error) {
 		_ = os.Remove(filepath.Join(home, "skills"))
 	}
 	return "removed Piggery's three-review skill", nil
+}
+
+// installCodexReviewShortcut has no dependency on Codex's hooks, MCP registration or CLI.
+// Only the explicit addon setup may recreate a deliberately removed managed shortcut.
+func installCodexReviewShortcut(home, self string, restoreMissing bool) (string, error) {
+	state, err := inspectCodexSkillForSetup(home, restoreMissing)
+	if err != nil {
+		return "", err
+	}
+	if codexReviewSkillCurrent(state, self) {
+		return "three-review (Codex): ready", nil
+	}
+	if err := writeCodexSkill(home, self, state); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("three-review (Codex): installed $piggery-three-review in %s", codexSkillPath(home)), nil
+}
+
+func codexReviewSkillCurrent(state codexSkillState, self string) bool {
+	return state.receipt != nil && bytes.Equal(state.content, []byte(threeReviewSkill(self, codexReviewSkill))) &&
+		state.receipt.TemplateSHA256 == skillHash([]byte(threeReviewSkillMD)) && state.receipt.Executable == self
+}
+
+func codexReviewStatus(home, self string) string {
+	state, err := inspectCodexSkill(home)
+	if err != nil {
+		return "three-review (Codex): needs attention: " + err.Error() + "; use piggery setup three-review"
+	}
+	if codexReviewSkillCurrent(state, self) {
+		return "three-review (Codex): ready"
+	}
+	return "three-review (Codex): shortcut available; install or update with piggery setup three-review"
+}
+
+// The addon ships with the fork, but a custom or deleted shortcut cannot block adapter upkeep.
+func codexSetupWithReview(home, self, adapterMessage string, includeMissing bool) string {
+	if state, err := inspectCodexSkill(home); err == nil && state.receipt == nil && !includeMissing {
+		return adapterMessage + "\n" + codexReviewStatus(home, self)
+	}
+	note, err := installCodexReviewShortcut(home, self, false)
+	if err != nil {
+		note = "warning: three-review shortcut not updated: " + err.Error() + "; use piggery setup three-review"
+	}
+	return adapterMessage + "\n" + note
 }

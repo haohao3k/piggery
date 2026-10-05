@@ -150,8 +150,8 @@ func (e *env) root() *cobra.Command {
 		"piggery archive show ~/.piggery/archive/demo-1790000000.jsonl --table messages", authLocal, e.archiveShow))
 
 	root.AddCommand(
-		e.cmd("setup [--outdated|--refresh] | setup <pi|claude|codex|omp|dsh|opencode|paseo> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <harness> [--ext PATH] [--force]", "Add or remove a harness integration; --outdated updates older versions; --refresh refreshes installed local assets", grpStart,
-			"piggery setup", authLocal, e.setup),
+		e.cmd("setup [--outdated|--refresh] | setup <pi|claude|codex|omp|dsh|opencode|paseo|three-review> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <harness|three-review> [--ext PATH] [--force]", "Add or remove a harness integration; --outdated updates older versions; --refresh refreshes installed local assets", grpStart,
+			"piggery setup\npiggery setup three-review", authLocal, e.setup),
 		e.cmd("skills [three-review]", "Print the agent guide or three-arm review playbook", grpStart,
 			"piggery skills\npiggery skills three-review", authLocal, e.skills),
 		team, template,

@@ -15,8 +15,7 @@ import (
 
 // Integration versions (local/integration.go): each thing piggery installs for a harness has an
 // integer, and what is installed carries the one it was written with. An integration is outdated
-// when that integer is lower than this binary's, or, for Codex, when a hook or the managed review
-// skill is missing or changed. The check reads a few small files and starts no process, so ps and
+// when that integer is lower than this binary's, or, for Codex, when a hook is missing. The check reads a few small files and starts no process, so ps and
 // top can run it on every refresh.
 
 // integration is one installed part of piggery against this binary's integer.
@@ -193,16 +192,8 @@ func codexIntegration(home string) (have int, installed bool, drift string) {
 	}
 	if n < len(codexHookEvents) {
 		drift = fmt.Sprintf("%d of %d hooks are in hooks.json", n, len(codexHookEvents))
-	} else if have >= local.IntegrationVersion("codex") {
-		if skill, err := inspectCodexSkill(home); err != nil {
-			drift = err.Error()
-		} else if skill.receipt == nil || skill.receipt.TemplateSHA256 != skillHash([]byte(threeReviewSkillMD)) {
-			drift = "Piggery's three-review skill is missing or outdated"
-		} else if ownBlock, _, _ := strings.Cut(rest, codexBlockEnd); skill.receipt.Executable == "" ||
-			!strings.Contains(ownBlock, "command = "+strconv.Quote(skill.receipt.Executable)+"\n") {
-			drift = "Piggery's three-review skill runs a different executable from its MCP registration"
-		}
 	}
+
 	return have, true, drift
 }
 

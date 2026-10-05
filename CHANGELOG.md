@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep three-review bundled, add `setup three-review` to install/restore its Codex shortcut,
+  and report addon status separately. Skill conflicts no longer block Codex adapter upkeep;
+  customized skills remain untouched. `setup remove three-review` removes only the owned shortcut.
+
 - Sync all of upstream v0.8.0, including OpenCode, new templates and setup config backups.
 - Use the upstream Codex adapter and schema 22 without fork quarantine logic. Guarded development
   activation backs up known fork-23 databases, retires ambiguous gone bindings using upstream

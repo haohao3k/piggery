@@ -51,7 +51,7 @@ func (e *env) setup(args []string) error {
 	if *refresh && *ext != "" {
 		return fmt.Errorf("%w: setup --refresh cannot be used with --ext", errUsage)
 	}
-	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode|paseo] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
+	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode|paseo|three-review] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode|paseo|three-review> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
 	self, err := selfPath()
 	if err != nil {
 		return err
@@ -69,6 +69,10 @@ func (e *env) setup(args []string) error {
 		}
 	}
 	switch {
+	case len(pos) == 1 && pos[0] == "three-review":
+		return e.say(installCodexReviewShortcut(codexHome(), o.self, true))
+	case len(pos) == 2 && pos[0] == "remove" && pos[1] == "three-review":
+		return e.say(removeCodexSkill(codexHome()))
 	case *outdated:
 		return e.updateOutdated(o)
 	case len(pos) > 0 && pos[0] == "notify":
@@ -129,6 +133,7 @@ func (e *env) setup(args []string) error {
 			fmt.Fprintf(e.stdout, "  ! %s\n", p)
 		}
 	}
+	fmt.Fprintln(e.stdout, codexReviewStatus(codexHome(), self))
 	fmt.Fprintln(e.stdout, server.ConfigStatus(e.dir))
 	if set, err := server.LoadSettings(e.dir); err == nil {
 		if n := proto.UpdateNotice(server.UpdateAvailable(e.dir, set, Version)); n != "" {
@@ -225,8 +230,7 @@ func (e *env) updateOutdated(o setupOpts) error {
 			continue
 		}
 		install := t.install
-		// Skill drift is also an update trigger now. It must not turn automatic Codex
-		// maintenance into permission to re-enable a disabled or unregistered integration.
+		// Routine Codex maintenance must not re-enable a disabled or unregistered host.
 		if i.Name == "codex" {
 			install = t.refresh
 		}

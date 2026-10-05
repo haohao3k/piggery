@@ -105,12 +105,12 @@ func refreshCodex(dir, home, self string) (string, error) {
 	if codexPiggeryHookCount(hooks) == 0 {
 		return "codex: skipped (piggery's hooks and MCP registration are not both active)", nil
 	}
-	msg, err := installCodex(dir, home, self)
+	msg, err := installCodexAdapter(dir, home, self, false)
 	if err != nil {
 		return "", err
 	}
 	if strings.Contains(msg, "already set up") {
-		return "codex: already current", nil
+		return "codex: already current\n" + msg, nil
 	}
 	return "codex: refreshed\n" + msg, nil
 }
@@ -170,13 +170,11 @@ func codexMCPDisabled(cfg []byte) bool {
 var codexDisabledSetting = regexp.MustCompile(`^\s*(enabled|"enabled"|'enabled')\s*=\s*false\s*(#.*)?$`)
 
 func installCodex(dir, home, self string) (string, error) {
+	return installCodexAdapter(dir, home, self, true)
+}
+
+func installCodexAdapter(dir, home, self string, includeMissingReview bool) (string, error) {
 	var backups []string
-	skill, err := inspectCodexSkill(home)
-	if err != nil {
-		return "", err
-	}
-	skillChanged := !bytes.Equal(skill.content, []byte(threeReviewSkill(self, "piggery-three-review"))) ||
-		skill.receipt == nil || skill.receipt.TemplateSHA256 != skillHash([]byte(threeReviewSkillMD)) || skill.receipt.Executable != self
 	hooksPath := filepath.Join(home, "hooks.json")
 	oldHooks, err := readOptional(hooksPath)
 	if err != nil {
@@ -212,13 +210,7 @@ func installCodex(dir, home, self string) (string, error) {
 	}
 	newCfg := withCodexBlock(oldCfg, codexBlock(home, self, trusted))
 	if !changedHooks && bytes.Equal(oldCfg, newCfg) && allTrusted(metas, keys) {
-		if skillChanged {
-			if err := writeCodexSkill(home, self, skill); err != nil {
-				return "", err
-			}
-			return fmt.Sprintf("updated Piggery's three-review skill in %s", codexSkillPath(home)), nil
-		}
-		return fmt.Sprintf("piggery is already set up in %s (hooks trusted)", home), nil
+		return codexSetupWithReview(home, self, fmt.Sprintf("piggery is already set up in %s (hooks trusted)", home), includeMissingReview), nil
 	}
 	if !bytes.Equal(oldCfg, newCfg) {
 		msg, err := backupHumanConfig(dir, "codex", cfgPath, contains(codexBlockBegin))
@@ -236,14 +228,9 @@ func installCodex(dir, home, self string) (string, error) {
 	if bad := untrustedPiggeryHooks(metas, keys); len(bad) > 0 {
 		return "", fmt.Errorf("Codex does not trust piggery's hooks after setup: %s", strings.Join(bad, ", "))
 	}
-	if skillChanged {
-		if err := writeCodexSkill(home, self, skill); err != nil {
-			return "", err
-		}
-	}
-	return fmt.Sprintf("wrote piggery's hooks to %s and its MCP server and hook trust to %s (%d hooks trusted)\n%s"+
-		"installed $piggery-three-review in %s\n"+
-		"Codex sessions started from now on join piggery; restart any that are open.", hooksPath, cfgPath, len(keys), backupLines(backups), codexSkillPath(home)), nil
+	msg := fmt.Sprintf("wrote piggery's hooks to %s and its MCP server and hook trust to %s (%d hooks trusted)\n%s"+
+		"Codex sessions started from now on join piggery; restart any that are open.", hooksPath, cfgPath, len(keys), backupLines(backups))
+	return codexSetupWithReview(home, self, msg, includeMissingReview), nil
 }
 
 // codexHookGroups walks hooks.json (order and the Human's groups kept): fn gets each event's
@@ -332,7 +319,7 @@ func removeCodex(home string) (string, error) {
 	var did []string
 	skillNote, err := removeCodexSkill(home)
 	if err != nil {
-		return "", err
+		skillNote = "warning: three-review shortcut not removed: " + err.Error()
 	}
 	if skillNote != "" {
 		did = append(did, skillNote)
@@ -668,15 +655,6 @@ func codexStatus(home, self string) harnessState {
 	if len(keys) == 0 || len(st.Problems) > 0 {
 		return st
 	}
-	if skill, err := inspectCodexSkill(home); err != nil {
-		st.Problems = append(st.Problems, problem{err.Error(), ""})
-	} else if !bytes.Equal(skill.content, []byte(threeReviewSkill(self, "piggery-three-review"))) ||
-		skill.receipt == nil || skill.receipt.TemplateSHA256 != skillHash([]byte(threeReviewSkillMD)) || skill.receipt.Executable != self {
-		st.Problems = append(st.Problems, problem{"Piggery's three-review skill is missing or outdated", fix})
-	}
-	if len(st.Problems) > 0 {
-		return st
-	}
 	metas, err := codexHooksList(home)
 	if err != nil {
 		st.Problems = append(st.Problems, problem{"cannot check the hooks' trust: " + err.Error(), ""})
@@ -686,6 +664,6 @@ func codexStatus(home, self string) harnessState {
 		st.Problems = append(st.Problems, problem{"Codex will not run piggery's hooks (not trusted: " + strings.Join(bad, ", ") + ")", fix})
 		return st
 	}
-	st.Detail = fmt.Sprintf("MCP server, %d hooks trusted, $piggery-three-review", len(keys))
+	st.Detail = fmt.Sprintf("MCP server, %d hooks trusted", len(keys))
 	return st
 }

@@ -34,8 +34,11 @@ func TestCodexReviewSkillLifecycle(t *testing.T) {
 	if _, err := writeJSON(codexSkillReceiptPath(home), state.receipt, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, drift := codexIntegration(home); drift == "" {
-		t.Fatal("old bootstrap template is not reported as drift")
+	if _, _, drift := codexIntegration(home); drift != "" {
+		t.Fatal("review shortcut incorrectly marked the adapter outdated")
+	}
+	if !strings.Contains(codexReviewStatus(home, "/bin/piggery"), "install or update") {
+		t.Fatal("addon update not visible")
 	}
 	if _, err := refreshCodex(t.TempDir(), home, "/opt/new piggery"); err != nil {
 		t.Fatal(err)
@@ -76,14 +79,17 @@ func TestCodexReviewSkillPreservesCustomizationAndRemoval(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if _, err := refreshCodex(t.TempDir(), home, "/opt/piggery"); err == nil || !strings.Contains(err.Error(), "preserved") {
-				t.Fatalf("refresh did not report ownership conflict: %v", err)
+			if msg, err := refreshCodex(t.TempDir(), home, "/opt/piggery"); err != nil || !strings.Contains(msg, "warning: three-review") {
+				t.Fatalf("addon blocked adapter refresh or warning missing: %v", err)
 			}
-			if st := codexStatus(home, "/bin/piggery"); len(st.Problems) == 0 {
-				t.Fatal("custom or removed skill reported current")
+			if st := codexStatus(home, "/opt/piggery"); len(st.Problems) != 0 {
+				t.Fatalf("addon affected adapter status: %+v", st)
 			}
-			if _, _, drift := codexIntegration(home); drift == "" {
-				t.Fatal("custom or removed skill not reported as drift")
+			if !strings.Contains(codexReviewStatus(home, "/opt/piggery"), "needs attention") {
+				t.Fatal("addon problem was hidden")
+			}
+			if _, _, drift := codexIntegration(home); drift != "" {
+				t.Fatal("addon affected adapter update state")
 			}
 			if msg, err := removeCodex(home); err != nil || !strings.Contains(msg, "preserved") {
 				t.Fatalf("remove did not report preserved skill: %s %v", msg, err)
@@ -123,11 +129,11 @@ func TestCodexReviewSkillDoesNotClaimUnownedPaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := installCodex(t.TempDir(), home, "/bin/piggery"); err == nil {
-				t.Fatal("unowned or nonregular skill path accepted")
+			if msg, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil || !strings.Contains(msg, "warning: three-review") {
+				t.Fatalf("addon blocked adapter install or warning missing: %v", err)
 			}
-			if _, err := os.Stat(filepath.Join(home, "hooks.json")); !os.IsNotExist(err) {
-				t.Fatalf("host hooks changed before detecting skill conflict: %v", err)
+			if _, err := os.Stat(filepath.Join(home, "hooks.json")); err != nil {
+				t.Fatalf("host hooks were not installed: %v", err)
 			}
 			if files, err := os.ReadDir(outside); err != nil || len(files) != 0 {
 				t.Fatalf("installer followed a skill link: %v %v", files, err)
@@ -180,7 +186,7 @@ func TestCodexReviewSkillOutdatedDoesNotRestoreDisabledIntegration(t *testing.T)
 			if err := (&env{dir: dir, stdout: &out}).updateOutdated(setupOpts{dir: dir, self: "/opt/piggery"}); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(out.String(), "codex: skipped") || strings.Contains(out.String(), "codex: updated") {
+			if (mode == "no-hooks" && !strings.Contains(out.String(), "codex: skipped")) || strings.Contains(out.String(), "codex: updated") {
 				t.Fatalf("misleading update result: %s", out.String())
 			}
 			if got := mustReadFile(t, cfgPath); string(got) != string(cfg) {
@@ -209,13 +215,16 @@ func TestCodexReviewSkillDetectsInterruptedExecutableUpdate(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte(strings.Replace(string(cfg), "command = \"/bin/piggery\"", "command = \"/opt/piggery\"", 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, drift := codexIntegration(home); !strings.Contains(drift, "different executable") {
-		t.Fatalf("stale skill command binding not reported: %q", drift)
+	if _, _, drift := codexIntegration(home); drift != "" {
+		t.Fatalf("stale skill marked adapter outdated: %q", drift)
+	}
+	if !strings.Contains(codexReviewStatus(home, "/opt/piggery"), "install or update") {
+		t.Fatal("stale addon command binding not reported")
 	}
 	if _, err := refreshCodex(t.TempDir(), home, "/opt/piggery"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, drift := codexIntegration(home); drift != "" {
-		t.Fatalf("binding not repaired: %q", drift)
+	if got := codexReviewStatus(home, "/opt/piggery"); got != "three-review (Codex): ready" {
+		t.Fatalf("binding not repaired: %s", got)
 	}
 }
