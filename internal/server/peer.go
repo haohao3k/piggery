@@ -24,6 +24,7 @@ const workerDepth = 1
 // start time (a reused pid is another process) and pid is it or one of its descendants within
 // depth. The host string alone is no secret (ps shows it); the peer's process tree is.
 func hostMatches(pid int, host string, depth int) bool {
+	host, _, _ = strings.Cut(host, "/") // "<host>/<thread>": a thread of a shared app-server (the adapter's suffix) is that process's
 	parts := strings.Split(host, ":")
 	if len(parts) != 3 {
 		return false

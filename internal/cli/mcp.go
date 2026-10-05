@@ -64,8 +64,11 @@ var builtinTools, mcpBaseTools = func() ([]builtinTool, []string) {
 type mcpServer struct {
 	dir               string
 	id, token, run    string
-	host              string // a session the Human opened: its harness process (no id/token)
-	harness           string // claude or codex: the process that started this server
+	host              string     // a session the Human opened: its harness process (no id/token)
+	harness           string     // claude or codex: the process that started this server
+	shared            bool       // host is a shared app-server's: each tool call is served by the session its _meta.sessionId names (sessions)
+	parent            *mcpServer // a session's server under a shared app-server: its output is the parent's
+	sessions          map[string]*mcpServer
 	ref, sock, sockTk string // CLAUDE_CODE_SESSION_ID, CLAUDE_CODE_MESSAGING_SOCKET/_TOKEN
 	out               io.Writer
 	outMu             sync.Mutex
@@ -98,6 +101,13 @@ func (e *env) mcp(args []string) error {
 			return s.serve(os.Stdin)
 		}
 		s.harness, _, _ = strings.Cut(s.host, ":")
+		if s.shared = sharedAppServer(s.host); s.shared {
+			// Many threads, one process: no connection of its own. Each tool call names its thread
+			// (forSession); until then the tools are a solo's.
+			s.sessions = map[string]*mcpServer{}
+			s.harness = s.profile().name
+			return s.serve(os.Stdin)
+		}
 	} else if s.id == "" || s.token == "" || s.run == "" {
 		return errors.New("piggery mcp: PIGGERY_ID, PIGGERY_TOKEN and PIGGERY_RUN_ID must be set (the harness runs it for a piggery worker)")
 	} else if h := sessionHost(); h != "" {
@@ -344,6 +354,10 @@ func (s *mcpServer) serve(in io.Reader) error {
 }
 
 func (s *mcpServer) write(v any) {
+	if s.parent != nil {
+		s.parent.write(v)
+		return
+	}
 	b, _ := json.Marshal(v)
 	s.outMu.Lock()
 	defer s.outMu.Unlock()
@@ -368,7 +382,7 @@ func (s *mcpServer) handle(m rpcMsg) (any, *rpcError) {
 		res := map[string]any{"protocolVersion": p.ProtocolVersion,
 			"capabilities": map[string]any{"tools": map[string]any{"listChanged": true}},
 			"serverInfo":   map[string]any{"name": "piggery", "version": Version}}
-		if s.host != "" {
+		if s.host != "" && !s.shared {
 			// A session's role card and how mail reaches it (captured: enough for the model to
 			// trust and act on mail). A worker has both in its system prompt already. A later
 			// role change reaches the model with the next hook (the daemon adds the new card).
@@ -390,17 +404,45 @@ func (s *mcpServer) handle(m rpcMsg) (any, *rpcError) {
 		var p struct {
 			Name      string          `json:"name"`
 			Arguments json.RawMessage `json:"arguments"`
+			Meta      struct {
+				SessionID string `json:"sessionId"`
+			} `json:"_meta"`
 		}
 		if err := json.Unmarshal(m.Params, &p); err != nil {
 			return nil, &rpcError{-32602, "bad params: " + err.Error()}
 		}
-		text, err := s.callTool(p.Name, p.Arguments)
+		target := s
+		if s.shared {
+			target = s.forSession(p.Meta.SessionID)
+			if target == nil { // fail closed: never another thread's identity
+				return map[string]any{"content": []any{map[string]any{"type": "text", "text": "piggery cannot tell which Codex thread this call is from (no _meta.sessionId): refused"}}, "isError": true}, nil
+			}
+		}
+		text, err := target.callTool(p.Name, p.Arguments)
 		if err != nil {
 			return map[string]any{"content": []any{map[string]any{"type": "text", "text": errText(err)}}, "isError": true}, nil
 		}
 		return map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}}, nil
 	}
 	return nil, &rpcError{-32601, "method not found: " + m.Method}
+}
+
+// forSession is the server of the thread session under a shared app-server, made at its first call:
+// its own host (threadHost) and daemon connection, so a wake for that thread goes out on that
+// connection. nil when the call names no session.
+func (s *mcpServer) forSession(session string) *mcpServer {
+	if session == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.sessions[session]
+	if !ok {
+		t = &mcpServer{dir: s.dir, host: threadHost(s.host, session), harness: s.harness, parent: s, ready: make(chan struct{})}
+		s.sessions[session] = t
+		go t.keepConnected()
+	}
+	return t
 }
 
 func errText(err error) string {
@@ -443,7 +485,10 @@ func (s *mcpServer) identityWithin(d time.Duration) (*core.IdentifyResult, *daem
 }
 
 func (s *mcpServer) toolList() []any {
-	id, _ := s.identity()
+	var id *core.IdentifyResult
+	if !s.shared { // a shared app-server has no identity of its own to wait for
+		id, _ = s.identity()
+	}
 	tools := []any{}
 	if id == nil && s.host != "" {
 		// Not placed yet (no daemon): a solo's tools, like pi; calling one starts the daemon.
