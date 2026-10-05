@@ -94,7 +94,7 @@ More:
 | `supervisor-executor` | A supervisor splits the goal into checkable tasks; executors do them. |
 | `slp` | You steer a supervisor; each lane has a lead and peers, often in its own git worktree. |
 | `council` | A chair asks members for independent views on one hard decision. |
-| `triple-review` | Two independent semantic reviewers and an OCR coverage reviewer inspect one frozen candidate; a coordinator adjudicates the evidence. |
+| `dual-lane-adjudication` | A Lead chooses two independent perspectives, exchanges their conflicts and resolves a hard question by evidence. |
 | `amp-like` | A lead does the work; an oracle (hard reasoning) and a reviewer (diffs) each answer once. |
 | `gastown-like` | A mayor splits the work; polecats do each task on its own branch; a refinery merges them one at a time. |
 
@@ -103,8 +103,8 @@ Each one is drawn, with when to pick it, in [manifests/README.md](manifests/READ
 Make your own: `piggery template new mine --from slp`, then edit
 `~/.piggery/templates/mine/manifest.yaml` (see the [guide](docs/guide.md#customize-piggery-piggery)).
 
-For three-arm review, see [the review setup](docs/guide.md#three-arm-review): it needs two different
-provider families and [open-code-review](https://github.com/alibaba/open-code-review) on the coverage worker's PATH.
+For dual-lane adjudication, see [the workflow](docs/guide.md#dual-lane-adjudication):
+two model families, independent analysis and bounded conflict exchange through the Lead.
 
 ## Build from source
 

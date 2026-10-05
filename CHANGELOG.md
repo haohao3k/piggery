@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Replace three-review with dual-lane-adjudication: two independent model families, Lead-selected
+  perspectives and bounded conflict exchange; remove the mandatory OCR/third lane. Add renamed
+  native entries and safe managed-shortcut migration, retaining old CLI/template compatibility.
+
 - Keep three-review bundled, add `setup three-review` to install/restore its Codex shortcut,
   and report addon status separately. Skill conflicts no longer block Codex adapter upkeep;
   customized skills remain untouched. `setup remove three-review` removes only the owned shortcut.

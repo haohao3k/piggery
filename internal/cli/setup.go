@@ -51,7 +51,7 @@ func (e *env) setup(args []string) error {
 	if *refresh && *ext != "" {
 		return fmt.Errorf("%w: setup --refresh cannot be used with --ext", errUsage)
 	}
-	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode|paseo|three-review] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode|paseo|three-review> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
+	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode|paseo|dual-lane-adjudication] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode|paseo|dual-lane-adjudication> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
 	self, err := selfPath()
 	if err != nil {
 		return err
@@ -68,10 +68,15 @@ func (e *env) setup(args []string) error {
 			return err
 		}
 	}
+	for i, arg := range pos {
+		if arg == "three-review" {
+			pos[i] = "dual-lane-adjudication"
+		}
+	}
 	switch {
-	case len(pos) == 1 && pos[0] == "three-review":
+	case len(pos) == 1 && pos[0] == "dual-lane-adjudication":
 		return e.say(installCodexReviewShortcut(codexHome(), o.self, true))
-	case len(pos) == 2 && pos[0] == "remove" && pos[1] == "three-review":
+	case len(pos) == 2 && pos[0] == "remove" && pos[1] == "dual-lane-adjudication":
 		return e.say(removeCodexSkill(codexHome()))
 	case *outdated:
 		return e.updateOutdated(o)

@@ -6,42 +6,18 @@ import (
 	"github.com/sting8k/piggery/internal/core"
 	"github.com/sting8k/piggery/internal/store"
 	"github.com/sting8k/piggery/manifests"
-	"gopkg.in/yaml.v3"
 )
 
 // Exercise the shipped template through unpack, spawn and mail delivery: reviewers can
-// hand back to the coordinator but cannot leak findings to one another or the board.
-func TestTripleReviewIsolation(t *testing.T) {
-	for _, coverageHarness := range []string{"codex", "claude"} {
-		t.Run(coverageHarness, func(t *testing.T) {
-			testTripleReviewIsolation(t, coverageHarness)
-		})
-	}
-}
-
-func testTripleReviewIsolation(t *testing.T, coverageHarness string) {
-	t.Helper()
+// hand back to the Lead but cannot leak findings to one another or the board.
+func TestDualLaneAdjudicationIsolation(t *testing.T) {
 	home := t.TempDir()
 	if err := manifests.Unpack(home); err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := manifests.Resolve("triple-review", home)
+	manifest, err := manifests.Resolve("dual-lane-adjudication", home)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if coverageHarness == "claude" {
-		// Exercise the documented pre-founding alternative using the same shipped template.
-		var doc map[string]any
-		if err := yaml.Unmarshal([]byte(manifest), &doc); err != nil {
-			t.Fatal(err)
-		}
-		spawn := doc["roles"].(map[string]any)["coverage"].(map[string]any)["spawn"].(map[string]any)
-		spawn["harness"], spawn["model"] = "claude", "claude-opus-5-5"
-		raw, err := yaml.Marshal(doc)
-		if err != nil {
-			t.Fatal(err)
-		}
-		manifest = string(raw)
 	}
 	db, err := store.OpenMemory()
 	if err != nil {
@@ -56,7 +32,7 @@ func testTripleReviewIsolation(t *testing.T, coverageHarness string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j, err := e.Join(ctx, core.JoinArgs{Team: team.ID, Role: "coordinator", Name: "lead", Cwd: team.RootCwd})
+	j, err := e.Join(ctx, core.JoinArgs{Team: team.ID, Role: "lead", Name: "lead", Cwd: team.RootCwd})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,14 +41,14 @@ func testTripleReviewIsolation(t *testing.T, coverageHarness string) {
 		t.Fatal(err)
 	}
 	reviewers := map[string]core.Caller{}
-	for _, role := range []string{"semantic_a", "semantic_b", "coverage"} {
+	for _, role := range []string{"lane_a", "lane_b"} {
 		res, err := e.Agent(ctx, lead, core.AgentArgs{Action: core.AgentSpawn, Role: role, Name: role, Task: "Readiness only"})
 		if err != nil {
 			t.Fatalf("spawn %s: %v", role, err)
 		}
 		rt := codex
 		wantModel := "gpt-6-astra"
-		if role == "semantic_b" || role == "coverage" && coverageHarness == "claude" {
+		if role == "lane_b" {
 			rt = claude
 			wantModel = "claude-opus-5-5"
 		}
@@ -92,8 +68,8 @@ func testTripleReviewIsolation(t *testing.T, coverageHarness string) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := e.Agent(ctx, lead, core.AgentArgs{Action: core.AgentSpawn, Role: "coverage", Name: "extra", Task: "t"}); rule(err) != "limit/limits.concurrency" {
-		t.Fatalf("fourth live worker: %v; want concurrency denied", err)
+	if _, err := e.Agent(ctx, lead, core.AgentArgs{Action: core.AgentSpawn, Role: "lane_a", Name: "extra", Task: "t"}); rule(err) != "limit/limits.concurrency" {
+		t.Fatalf("third live worker: %v; want concurrency denied", err)
 	}
 	for name, c := range reviewers {
 		for other := range reviewers {
@@ -109,7 +85,7 @@ func testTripleReviewIsolation(t *testing.T, coverageHarness string) {
 				t.Fatalf("%s -> %s: %v; want denied", name, to, err)
 			}
 		}
-		if _, err := e.Agent(ctx, c, core.AgentArgs{Action: core.AgentSpawn, Role: "coverage", Name: "child", Task: "t"}); rule(err) != "permission/tools.not_granted" {
+		if _, err := e.Agent(ctx, c, core.AgentArgs{Action: core.AgentSpawn, Role: "lane_a", Name: "child", Task: "t"}); rule(err) != "permission/tools.not_granted" {
 			t.Fatalf("%s spawn: %v; want denied", name, err)
 		}
 		if _, err := e.Send(ctx, c, core.SendArgs{To: "lead", Kind: "handback", Body: "private " + name}); err != nil {
@@ -123,12 +99,26 @@ func testTripleReviewIsolation(t *testing.T, coverageHarness string) {
 		}
 	}
 	mail, err := e.Inbox(ctx, lead, core.InboxArgs{})
-	if err != nil || len(mail) != 3 {
-		t.Fatalf("coordinator inbox: %+v, %v; want all three handbacks", mail, err)
+	if err != nil || len(mail) != 2 {
+		t.Fatalf("Lead inbox: %+v, %v; want both handbacks", mail, err)
 	}
 	for _, m := range mail {
 		if m.Kind != "handback" {
-			t.Fatalf("coordinator received unexpected mail: %+v", m)
+			t.Fatalf("Lead received unexpected mail: %+v", m)
+		}
+	}
+
+	// Conflicts are relayed through the Lead; first-pass isolation stays enforced.
+	for role, c := range reviewers {
+		if _, err := e.Send(ctx, lead, core.SendArgs{To: role, Kind: "follow", Body: "C1: both claims and the opposing evidence"}); err != nil {
+			t.Fatal(err)
+		}
+		inbox, err := e.Inbox(ctx, c, core.InboxArgs{})
+		if err != nil || len(inbox) != 3 || inbox[2].Kind != "follow" {
+			t.Fatalf("conflict not delivered to %s: %+v %v", role, inbox, err)
+		}
+		if _, err := e.Send(ctx, c, core.SendArgs{To: "lead", Kind: "handback", Body: "C1: REVISE with deciding evidence"}); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

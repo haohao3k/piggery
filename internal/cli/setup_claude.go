@@ -162,11 +162,25 @@ func writeClaudePlugin(root, self string) error {
 	}
 	// Claude exposes a plugin skill as a namespaced slash command. Keep the command's
 	// invocation arguments literal: Claude substitutes $ARGUMENTS when the user runs
-	// `/piggery:three-review <scope>`.
-	skill := threeReviewSkill(self, "three-review") + "\n\n## Invocation arguments\n\n$ARGUMENTS\n"
-	if err := writeFileAtomic(filepath.Join(root, "piggery", "skills", "three-review", "SKILL.md"), []byte(skill)); err != nil {
+	// `/piggery:dual-lane-adjudication <scope>`.
+	skill := dualLaneAdjudicationSkill(self, "dual-lane-adjudication") + "\n\n## Invocation arguments\n\n$ARGUMENTS\n"
+	if err := writeFileAtomic(filepath.Join(root, "piggery", "skills", "dual-lane-adjudication", "SKILL.md"), []byte(skill)); err != nil {
 		return err
 	}
+	// Legacy copies without edits can be retired. Custom copies keep their old CLI alias.
+	legacyDir := filepath.Join(root, "piggery", "skills", "three-review")
+	legacyPath := filepath.Join(legacyDir, "SKILL.md")
+	if dir, err := os.Lstat(legacyDir); err == nil && dir.IsDir() {
+		if st, err := os.Lstat(legacyPath); err == nil && st.Mode().IsRegular() {
+			if b, err := os.ReadFile(legacyPath); err == nil && bytes.Equal(b, []byte(legacyThreeReviewSkill(self))) {
+				if err := os.Remove(legacyPath); err != nil {
+					return err
+				}
+				_ = os.Remove(legacyDir) // only when empty
+			}
+		}
+	}
+
 	return nil
 }
 

@@ -22,7 +22,7 @@ import (
 
 // `piggery setup codex` installs the Codex adapter once for every Codex session and worker
 // (piggery writes the Codex home itself):
-//   - a managed skills/piggery-three-review/SKILL.md entry with a content-hash receipt;
+//   - a managed skills/piggery-dual-lane-adjudication/SKILL.md entry with a content-hash receipt;
 //   - piggery's hooks (`piggery hook codex <Event>`) in <CODEX_HOME>/hooks.json, after the
 //     Human's own groups there (a file of its own keeps piggery's positions, which are part of
 //     Codex's trust key, stable);
@@ -319,7 +319,7 @@ func removeCodex(home string) (string, error) {
 	var did []string
 	skillNote, err := removeCodexSkill(home)
 	if err != nil {
-		skillNote = "warning: three-review shortcut not removed: " + err.Error()
+		skillNote = "warning: dual-lane-adjudication shortcut not removed: " + err.Error()
 	}
 	if skillNote != "" {
 		did = append(did, skillNote)

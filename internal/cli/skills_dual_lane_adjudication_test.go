@@ -11,20 +11,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestThreeReviewSkillPrintsEmbeddedCoordinatorWithoutDaemon(t *testing.T) {
+func TestDualLaneAdjudicationSkillPrintsEmbeddedCoordinatorWithoutDaemon(t *testing.T) {
 	// Printing a workflow must work before setup, even in a participant shell. It must not
 	// create a home, connect to a daemon, or turn a skill lookup into a review run.
 	t.Setenv("PIGGERY_ID", "unused-participant")
 	t.Setenv("PIGGERY_TOKEN", "unused-token")
 	home := filepath.Join(t.TempDir(), "not-created")
 	var out, stderr bytes.Buffer
-	if code := Main(home, []string{"skills", "three-review"}, &out, &stderr); code != 0 {
+	if code := Main(home, []string{"skills", "dual-lane-adjudication"}, &out, &stderr); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
 	if _, err := os.Lstat(home); !os.IsNotExist(err) {
 		t.Fatalf("printing a skill touched the Piggery home: %v", err)
 	}
-	manifest, err := manifests.Builtin("triple-review")
+	manifest, err := manifests.Builtin("dual-lane-adjudication")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestThreeReviewSkillPrintsEmbeddedCoordinatorWithoutDaemon(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(manifest), &team); err != nil {
 		t.Fatal(err)
 	}
-	playbook := team.Roles["coordinator"].Instructions
+	playbook := team.Roles["lead"].Instructions
 	if playbook == "" || !strings.Contains(out.String(), playbook) {
 		t.Fatal("CLI skill is not the same playbook as the embedded coordinator role")
 	}
@@ -48,7 +48,7 @@ func TestSkillsTopicRouting(t *testing.T) {
 	}{
 		{"default", []string{"skills"}, 0},
 		{"unknown", []string{"skills", "unknown"}, 2},
-		{"extra", []string{"skills", "three-review", "execute"}, 2},
+		{"extra", []string{"skills", "dual-lane-adjudication", "execute"}, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out, stderr bytes.Buffer
@@ -62,57 +62,26 @@ func TestSkillsTopicRouting(t *testing.T) {
 	}
 }
 
-func TestThreeReviewPlaybookBindsLaunchAndRoot(t *testing.T) {
+func TestLegacyReviewTopicUsesDualLanePlaybook(t *testing.T) {
 	var out, stderr bytes.Buffer
 	if code := Main(t.TempDir(), []string{"skills", "three-review"}, &out, &stderr); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
-	playbook := out.String()
-	for _, want := range []string{
-		"pwd -P",
-		"git -C <candidate-root> rev-parse --show-toplevel",
-		"session binding root",
-		"not the candidate Git root",
-		"participant id",
-		"assignment's `#N`",
-		"Never hardcode `coordinator`",
-	} {
-		if !strings.Contains(playbook, want) {
-			t.Fatalf("playbook missing %q", want)
-		}
-	}
-	if strings.Contains(playbook, "to: notify") || strings.Contains(playbook, "to=coordinator") {
-		t.Fatal("playbook contains a fixed notify or coordinator recipient")
+	if !strings.Contains(out.String(), manifests.DualLaneAdjudicationInstructions()) {
+		t.Fatal("legacy command did not use new playbook")
 	}
 	manifest, err := manifests.Builtin("triple-review")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(manifest, "to: notify") {
-		t.Fatal("triple-review manifest routes agent mail to notify")
-	}
-	home := t.TempDir()
-	if err := manifests.Unpack(home); err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := manifests.Resolve("triple-review", home)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var team struct {
-		Roles map[string]struct {
-			Instructions string
-		}
+		Roles  map[string]struct{ Instructions string }
+		Limits struct{ Concurrency int }
 	}
-	if err := yaml.Unmarshal([]byte(resolved), &team); err != nil {
+	if err := yaml.Unmarshal([]byte(manifest), &team); err != nil {
 		t.Fatal(err)
 	}
-	for _, role := range []string{"coordinator", "semantic_a", "coverage"} {
-		instructions := team.Roles[role].Instructions
-		for _, want := range []string{"return_to", "piggery ps --json", "participant id", "unknown or gone", "need not equal"} {
-			if !strings.Contains(instructions, want) {
-				t.Fatalf("%s prompt missing %q", role, want)
-			}
-		}
+	if len(team.Roles) != 3 || team.Limits.Concurrency != 2 || team.Roles["lead"].Instructions != manifests.DualLaneAdjudicationInstructions() {
+		t.Fatal("legacy template retained old workflow")
 	}
 }

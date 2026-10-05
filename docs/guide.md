@@ -36,7 +36,7 @@ shows one. Install and first steps are in the [README](../README.md).
 
 Built-in templates: `supervisor-executor` (a supervisor splits the goal; executors do the tasks),
 `slp` (a supervisor steers a lane: one lead, peers with separate scopes), `council` (a chair asks
-members for independent views on one decision), `triple-review` (two semantic reviews and OCR coverage of one frozen candidate), `amp-like` (a lead does the work and calls an oracle
+members for independent views on one decision), `dual-lane-adjudication` (two independent perspectives with Lead-mediated conflict resolution), `amp-like` (a lead does the work and calls an oracle
 or a reviewer that answers once), `gastown-like` (a mayor splits the work, polecats do each task on
 its own branch, a refinery merges them one at a time), `p2p` (peers that talk freely and spawn peers). Each one
 is drawn, with when to pick it, in [manifests/README.md](../manifests/README.md).
@@ -55,100 +55,48 @@ admitted by a member whose role may spawn that role: ask the member, "admit the 
 the cap is held until you `release` it. A template is frozen into a team when it is brought up:
 editing it changes the next team only.
 
-### Three-arm review
+### Dual-lane adjudication
 
-Use `triple-review` when you want two independent semantic reviews plus a reproducible account
-of the reviewed files. The coordinator resolves findings by evidence; there is no majority vote.
-This is an optional review workflow, not a requirement for ordinary work.
-
-After installing or refreshing the Piggery integration, use the native short entry point:
+Use `dual-lane-adjudication` when a Lead faces a hard design, debugging or review question.
+The Lead chooses two useful perspectives on one neutral brief. Both lanes analyze independently;
+after both reports arrive, the Lead checks their overlap and sends each material conflict to the
+other side. Evidence checks drive bounded follow-up rounds and the final resolution. Agreement
+is useful corroboration, not proof; unresolved dissent stays explicit. No OCR or third lane is required.
 
 | Harness | Invocation |
 |---|---|
-| Claude Code | `/piggery:three-review` |
-| Codex | `$piggery-three-review`, or select it with `/skills` |
-| Pi | `/three-review` |
+| Claude Code | `/piggery:dual-lane-adjudication` |
+| Codex | `$piggery-dual-lane-adjudication`, or select it with `/skills` |
+| Pi | `/dual-lane-adjudication` |
 
-Add ordinary scope text when useful, such as `review the import and rollback lanes since their
-last accepted candidate`, or `prepare for commit <SHA>` (`prepare` starts no team or reviewers).
-With no extra text, the coordinator
-investigates the current project's recent lanes, changes and decisions. You do not need to write
-the full review prompt. The wrappers load `piggery skills three-review` from the installed binary;
-this command only prints the same playbook used by the coordinator role.
+Add scope such as `investigate the reconnect race from lifecycle and recovery perspectives`,
+or `prepare for commit <SHA>` (brief only, no workers). Without extra scope, use the current
+hard question. `piggery skills dual-lane-adjudication` prints the same playbook the Lead receives.
+An authorized Lead may select this method when delegation is permitted; discovering a skill
+does not expand the task's authority.
 
-The coordinator identifies a defensible baseline, reads relevant requirements and decisions,
-distinguishes accepted decisions from proposals, and states its scope before starting reviewers.
-It uses one integration candidate when that covers the request, or separate frozen candidates
-for divergent lanes. Dirty or unresolved lanes stay visible as blockers; they are never silently
-omitted from an "all lanes" result. It asks only for choices the available evidence cannot settle.
-Prior reviewer conclusions are reconciled after the independent first pass rather than supplied
-as hints. Both semantic reviewers receive the same full scope.
+The template has `lead`, `lane_a` and `lane_b`, with a maximum of two workers. Defaults are
+Codex / `gpt-6-astra` / high and Claude / `claude-opus-5-5` / high. They use different model
+families; the Lead verifies actual routes and snapshot access before releasing analysis.
+Customize routes before founding using `piggery template new my-adjudication --from dual-lane-adjudication`.
+An existing compatible team can use the method within its own spawn/routing permissions;
+otherwise prepare a separate-session handoff without replacing that team's contract.
 
-Invoke from a solo session at the repository root to prepare and found the review team. If the
-current session already belongs to another team, the entry point prepares a scope handoff for a
-separate solo session; it does not leave, replace or close the development team. A prepare-only
-request creates neither a team nor reviewers. New commands/skills may require a new host session
-to become visible; Pi can reload its extension with `/reload`. A local build is not activation:
-the built CLI, integration assets and template must be applied before these entries are live.
+Code review pins exact base/head commits and candidate bytes. Design questions use versioned
+briefs and accessible evidence instead. The default budget is one independent pass and at most
+two conflict-exchange rounds. Each conflict records both claims, objections, deciding checks and
+CONCEDE/MAINTAIN/NARROW/REVISE responses. The Lead reports RESOLVED, DECIDED_WITH_DISSENT or BLOCKED,
+then implements and verifies only work already authorized. It stops this case's workers afterwards.
 
-The Codex entry is a managed skill at `<CODEX_HOME>/skills/piggery-three-review/SKILL.md`
-(`CODEX_HOME` defaults to `~/.codex`). Its ownership receipt sits beside `config.toml` as
-`piggery-three-review.json`. Refresh reports a conflict and preserves a skill you customized or
-removed; it never overwrites an existing unowned skill directory. To replace a conflicting copy,
-move its directory and any ownership receipt aside, preserving needed custom files, then rerun
-setup. Alternatively restore the recorded managed copy before refreshing. Claude's entry
-belongs to the existing Piggery plugin and follows its enablement/cache-refresh lifecycle.
+Routing keeps lane-to-lane mail and board pins disabled; the Lead relays conflicts deliberately.
+Private notes and read-only analysis are prompt contracts, not a filesystem sandbox. Neither
+consensus nor a clean review grants merge/release authority.
 
-The template has four roles: `coordinator`, `semantic_a`, `semantic_b`, `coverage`. Reviewer
-routes are pinned; they do not inherit a model from the founder or worker profile:
-
-| Role | Native CLI | Model | Effort |
-|---|---|---|---|
-| `semantic_a` | Codex | `gpt-6-astra` | `high` |
-| `semantic_b` | Claude | `claude-opus-5-5` (Opus 5.5) | `high` |
-| `coverage` (default) | Codex | `gpt-6-astra` | `high` |
-| `coverage` (permitted alternative) | Claude | `claude-opus-5-5` | `high` |
-
-Coverage is exactly one separate CLI session. Piggery's native adapters launch `codex app-server`
-or Claude's streaming CLI and pass the chosen model/effort. The coverage agent runs OCR delegate
-directly inside that session; it does not launch another coding agent or use a pi provider route.
-The coordinator still verifies the actual executable/provider/model in readiness; a configured
-route alone is not proof of what ran.
-
-Before founding, prepare your routes and install
-[open-code-review](https://github.com/alibaba/open-code-review) in the coverage worker's environment
-(`ocr --version` checks it). OCR delegate mode needs no separate LLM endpoint: it selects files
-and resolves rules; the coverage agent reasons about the code. The template embeds that procedure,
-so a separately installed OCR skill is not required. A missing OCR command blocks that review.
-
-To choose Claude CLI for coverage before founding:
-
-```sh
-piggery template new my-review --from triple-review
-# Edit only roles.coverage.spawn in ~/.piggery/templates/my-review/manifest.yaml:
-```
-
-```yaml
-harness: claude
-model: claude-opus-5-5
-thinking: high
-```
-
-This selects the third worker's route; it does not add a fourth reviewer or configure automatic
-fallback. Missing models, native CLIs or OCR block readiness rather than silently substituting
-another route.
-
-Then ask your session: *"Found a triple-review team to review commit <full SHA>"* (or name your
-custom template and exact base/head SHAs). The coordinator uses a clean candidate checkout and
-waits for readiness receipts confirming the candidate, routes and OCR before releasing all
-three reviews. The first reports stay independent. Only after all three arrive does it send
-material contradictions back to the affected reviewers. It reports findings, coverage, checks,
-uncertainty and a verdict scoped to that candidate. Corrections require a new review candidate.
-
-Piggery enforces coordinator-only reviewer mail, denies reviewer spawning and disables board
-pins. Read-only source access and keeping notes private are prompt instructions, not a filesystem
-sandbox; team membership remains visible. Reviewers must not inspect each other's logs or reports.
-No automatic merge, release, council or product acceptance follows from the verdict.
+The old `skills three-review` and `setup three-review` spellings redirect to this method.
+The legacy `triple-review` template name is a compatibility alias with two lanes on new teams;
+existing frozen teams and custom templates retain their own contracts. Setup migrates unchanged
+managed Codex shortcuts and retires unchanged Claude entries. Custom or removed shortcuts are
+preserved; new host sessions (or Pi `/reload`) may be needed to discover the new command.
 
 ## Watch and step in
 
@@ -407,16 +355,16 @@ Remove a column to hide it; the name is always shown.
 - **Two mail systems.** Remove `pi-peer` from pi's packages while using piggery: both give the model a
   `send`-style mailbox.
 
-### Installing the three-review shortcut again
+### Installing the dual-lane-adjudication shortcut again
 
-The fork includes the three-review playbook (`piggery skills three-review`) and `triple-review`
-template. Claude's `/piggery:three-review` and Pi's `/three-review` come with their normal harness
+The fork includes the dual-lane-adjudication playbook (`piggery skills dual-lane-adjudication`) and `dual-lane-adjudication`
+template. Claude's `/piggery:dual-lane-adjudication` and Pi's `/dual-lane-adjudication` come with their normal harness
 integrations. `piggery setup codex` also installs the Codex shortcut by default.
 
-Use `piggery setup three-review` to install or restore the Codex `$piggery-three-review` shortcut
+Use `piggery setup dual-lane-adjudication` to install or restore the Codex `$piggery-dual-lane-adjudication` shortcut
 independently, including after deleting a managed shortcut. This command does not register or
 re-enable hooks/MCP, start a daemon, or launch reviewers. To remove that shortcut, use
-`piggery setup remove three-review`. A later explicit `setup codex` includes it again.
+`piggery setup remove dual-lane-adjudication`. A later explicit `setup codex` includes it again.
 
 `piggery setup` displays shortcut status separately from the Codex adapter. A customized,
 symlinked or deliberately deleted skill never blocks adapter setup/refresh and never marks

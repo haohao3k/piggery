@@ -1,8 +1,7 @@
-# Deprecated name: use dual-lane-adjudication. Existing frozen teams are unchanged.
 # Two independent perspectives; the Lead relays conflicts after both first handbacks.
 # Routing enforces mail isolation. Prompts govern independence and read-only analysis;
 # neither this template nor its prompts provide a filesystem sandbox.
-template: triple-review
+template: dual-lane-adjudication
 summary: A Lead frames a difficult problem, asks two independent model families, exchanges their conflicts, and resolves the decision by evidence.
 auto_join_role: lead
 roles:

@@ -62,29 +62,18 @@ switches from its next turn and keeps its context; a stopped one gets it when re
 model as the worker's harness does (pi and omp: `provider/model`); a model or level the harness does
 not run is refused and nothing changes. Tell the Human what `ps` shows after.
 
-## Three-arm review
+## Dual-lane adjudication
 
-For a short entry point, use `/piggery:three-review` in Claude, `$piggery-three-review` (or
-select it with `/skills`) in Codex, or `/three-review` in Pi. Optional trailing text narrows
-the scope; no extra text asks the coordinator to investigate recent lanes, changes and decisions.
-Run `piggery skills three-review` to read the shared preparation and review playbook. It only
-prints instructions. Preparation resolves the baseline, reads relevant docs and decisions, and
-pins candidates before any reviewer starts. In an unrelated development team, it prepares a
-handoff for a separate solo review session instead of replacing the team.
-
-When the Human requests three-arm review (Triple Review), select the `triple-review` template:
-one coordinator, two independent semantic reviewers from different provider families, and one
-OCR coverage reviewer. The role prompts contain the workflow and OCR delegate commands; a
-separate OCR skill is not required. Use a frozen commit or exact base/head SHAs. Configure exact
-routes in the template before founding: semantic defaults are native Codex CLI / `gpt-6-astra`
-and native Claude CLI / `claude-opus-5-5`, both at high effort. Coverage is a separate native
-Codex CLI / `gpt-6-astra` / high worker running `ocr delegate`; the permitted alternative is
-Claude CLI / `claude-opus-5-5` / high, chosen before founding, never automatic fallback.
-Do not route coverage through pi or an OCR LLM endpoint. Verify actual models/providers and `ocr`
-availability through the readiness pass. Do not substitute missing routes, skip OCR or turn an
-ordinary review request into three workers. Findings stay sealed until all three handbacks;
-the coordinator resolves contradictions by evidence, not votes. See
-[the guide](https://github.com/haohao3k/piggery/blob/codex/local-development/docs/guide.md#three-arm-review) for setup.
+For a hard question needing two independent perspectives, an authorized Lead can use
+`piggery skills dual-lane-adjudication`. Native entries are `/piggery:dual-lane-adjudication`
+in Claude, `$piggery-dual-lane-adjudication` in Codex and `/dual-lane-adjudication` in Pi.
+The `dual-lane-adjudication` template has a Lead and two lanes: native Codex / gpt-6-astra
+and Claude / claude-opus-5-5, at high effort. The Lead selects the angles, collects both
+independent reports, relays each material conflict to the other side, and resolves by evidence
+within a bounded exchange budget. There is no third lane or required OCR dependency.
+The playbook covers snapshot identity, exact return bindings, existing-team compatibility,
+remaining dissent, and cleanup. `prepare` only prepares the brief. Use existing delegation
+and task authority; do not treat a skill lookup as permission to launch workers or publish.
 
 ## Writing a template (when the Human asks)
 

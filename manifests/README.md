@@ -13,6 +13,7 @@ Anyone not connected by an arrow cannot reach the other, and that is on purpose.
 | [`p2p`](#p2p) | You want no structure at all, or a starting point for your own |
 | [`supervisor-executor`](#supervisor-executor) | You have a goal that splits into checkable tasks, and you want someone to judge each one |
 | [`slp`](#slp) | The work is big enough for lanes, each with its own plan, and you want to steer from above |
+| [`dual-lane-adjudication`](#dual-lane-adjudication) | A Lead needs two independent angles on a hard problem and evidence-based conflict resolution |
 | [`council`](#council) | You face one hard decision and want independent opinions before choosing |
 | [`amp-like`](#amp-like) | You want to do the work in one session and call a second brain now and then |
 | [`gastown-like`](#gastown-like) | Several coding tasks can run at once on separate branches and need merging |
@@ -78,6 +79,23 @@ flowchart TD
 The supervisor may tell a peer something directly, but the lead always gets a copy, so the lane's
 plan stays in one place. One lane is the default; more lanes only when the parts really are
 separate.
+
+## dual-lane-adjudication
+
+The Lead frames one problem through two useful perspectives. GPT-6-astra and Claude Opus 5.5
+analyze independently; only after both reports arrive does the Lead exchange conflicting claims
+and evidence. Bounded checks resolve the conflict or leave an explicit decision with dissent.
+There is no third worker. Existing compatible teams may apply the same method within their
+own role permissions. The legacy `triple-review` name resolves to this two-lane contract for
+new teams; existing frozen teams stay unchanged.
+
+```mermaid
+flowchart TD
+    L[Lead: frame, compare, resolve] <--> A[Lane A: independent perspective]
+    L <--> B[Lane B: independent perspective]
+    L -. starts .-> A
+    L -. starts .-> B
+```
 
 ## council
 

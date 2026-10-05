@@ -13,11 +13,11 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `setup [pi\|claude\|codex\|omp\|dsh\|opencode\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys, and show where each harness stands) |
 | `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, opencode, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
 | `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it |
-| `setup three-review` | Install or restore the Codex `$piggery-three-review` shortcut without changing hooks/MCP. The playbook and template ship in the fork; Claude and Pi entries ship with their harness integrations. Modified or unowned skills are preserved, including with `--force`. |
-| `setup remove three-review` | Remove the unchanged managed Codex shortcut; leave hooks/MCP and the bundled playbook/template available. |
+| `setup dual-lane-adjudication` | Install or restore the Codex `$piggery-dual-lane-adjudication` shortcut without changing hooks/MCP. The playbook and template ship in the fork; Claude and Pi entries ship with their harness integrations. Modified or unowned skills are preserved, including with `--force`. |
+| `setup remove dual-lane-adjudication` | Remove the unchanged managed Codex shortcut; leave hooks/MCP and the bundled playbook/template available. |
 | `setup --refresh` | Refresh already-installed integration assets even at the same integration version, and safely unpack built-in templates; preserve custom template overrides and report their names; no new harness integration is enabled; mutually exclusive with `--outdated` and harness arguments |
 | `setup remove <harness>` | Take out exactly what `setup` added; `--ext PATH` (setup pi) uses a checkout's extension |
-| `skills [three-review]` | Print the agent guide, or the shared three-arm context-preparation and review playbook; does not start a daemon, team or model |
+| `skills [dual-lane-adjudication]` | Print the agent guide, or the two-lane problem framing and conflict-adjudication playbook; does not start a daemon, team or model |
 | `team up <template\|path.yaml> [--cwd D] [--name N]` | Start a team from a template in `~/.piggery/templates`, or a manifest file |
 | `team down <team>` | Close a team: workers stopped, nothing acked |
 | `template new <name> [--from <built-in>]` | Copy a built-in (default `p2p`) to `~/.piggery/templates/<name>` |
@@ -111,7 +111,7 @@ refused with the reason when the team is brought up.
 | `routing[]` | none = all denied | `{from, to, allow, cc}`; the first rule matching a sender and receiver decides; `cc` roles get a copy; a `to: notify` line is ignored with a warning (`piggery check` shows it), since only piggery writes to `notify` |
 | `timers[]` | `[]` | `{on: <role>, silent_for: <duration>, notify: <role\|reports_to>}`: one notice when a working member has no turn end for that long; `notify: notify` is ignored |
 | `limits.depth` | none | How deep spawn chains may go |
-| `limits.concurrency` | none | Live workers at once (most built-ins set 10; `triple-review` sets 3) |
+| `limits.concurrency` | none | Live workers at once (most built-ins set 10; `dual-lane-adjudication` sets 2) |
 | `limits.messages_per_participant_per_minute` | none | Flood guard; a mail over it is held until you `release` it |
 | `limits.max_respawn_per_hour` | none | A worker resumed that often in an hour is parked and its lead is told |
 
