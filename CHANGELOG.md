@@ -8,9 +8,10 @@
 - Preserve the already-deployed fork schema 23 and historical quarantine exclusions. No old
   messages are reassigned and no quarantined identity is revived. See [session isolation](docs/session-isolation.md).
 
-- Make local `piggery update` rebuild and activate assets from its owning checkout through the
-  guarded local workflow. Bind the source path to the binary and receipt, keep `--check` read-only,
-  and prevent `--force` or the calling directory from redirecting it to a release installation.
+- Make `piggery update` and `install.sh` use GitHub Releases from `haohao3k/piggery`, with
+  checksum verification and no checkout/receipt dependency or upstream fallback. Remove the local
+  update delegate and `--caller` update flag. Keep `scripts/local-dev.sh` as an explicit development
+  verification tool, separate from release installation.
 
 - Add short three-review entries for Claude Code, Codex and Pi, backed by the local CLI's shared
   `skills three-review` playbook. The coordinator resolves recent lane scope and decision context
@@ -19,11 +20,6 @@
 - Pin Triple Review to native Codex CLI / GPT-6-astra and Claude CLI / Opus 5.5 at high effort.
   OCR delegate coverage runs in a separate Codex CLI worker by default; Claude CLI / Opus 5.5
   is an explicit pre-founding choice. Missing routes block readiness instead of falling back.
-
-- Establish the `haohao3k/piggery` local fork workflow: fingerprinted build/apply/check, guarded
-  activation, same-version refresh of installed assets, and protection against release installers
-  replacing a local build. Source changes are not complete until the installed runtime readback
-  matches the candidate.
 
 - Add the optional `triple-review` team template: two independent semantic reviews from different
   provider families and one OCR delegate coverage review of a frozen candidate. The coordinator

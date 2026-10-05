@@ -13,19 +13,13 @@ go test ./...                         # narrow this when a focused check is appr
 ./scripts/local-dev.sh check
 ```
 
-After the first installation, the shorter equivalent is:
-
-```sh
-piggery update                         # rebuild as needed, apply local assets, verify
-piggery update --check                 # read-only; nonzero if source/install/daemon differ
-```
-
-From an active solo session, use `piggery update --caller <participant-id>` with its current exact
-identity. `--force` still uses the same guarded local workflow; it never bypasses the idle gate.
+This is an explicit developer workflow. `piggery update` uses GitHub Releases from
+`haohao3k/piggery` and never invokes these scripts. Use `scripts/local-dev.sh check` to verify
+a development deployment; `piggery update --check` only compares published release versions.
 
 `build` creates a candidate in the ignored `dist/local` directory. It fingerprints checkout inputs,
-including local source and embedded assets, and stamps a unique local version plus the local build
-mode. A fingerprint mismatch requires another build. `apply` builds the current candidate, checks
+including local source and embedded assets, and stamps a unique development version. A fingerprint
+mismatch requires another build. `apply` builds the current candidate, checks
 activation safety, saves the previous binary, installs atomically at the stable path, refreshes
 assets and restarts the same Piggery home. `check` is read-only and must fail when source, installed
 binary or daemon no longer matches the activation receipt.
@@ -76,19 +70,16 @@ Editing those checkout files requires a build. Version-based `setup --outdated` 
 release installations, but it cannot by itself guarantee that same-version development assets were
 refreshed. The local workflow explicitly runs `setup --refresh` for that reason.
 
-`piggery update` follows the owning checkout path stamped into the local executable, validated
-against the receipt beside that executable. It rebuilds stale candidates and refreshes assets
-from that checkout, regardless of the calling directory. It does not fetch Git, pull, switch
-branches or contact a Piggery release endpoint. `--check` reads source, candidate, installed binary
-and live daemon without building or restarting; it returns nonzero for drift.
+The public `install.sh` and `piggery update` download fork release binaries and validate their
+checksums. They need no checkout or installation receipt. `--force` permits replacing a development
+build with a fork release. These release commands do not perform this script's source fingerprint
+verification or guarded activation; use the explicit script when validating development changes.
+A successful release update replaces the executable and stops the old daemon; the next command
+starts the new one. Run `piggery setup --outdated` and reconnect affected integrations afterwards.
 
-A missing/moved checkout, absent or mismatched receipt fails explicitly rather than selecting
-another checkout or downloading a release. Recover by running `scripts/local-dev.sh apply` in the
-intended fork checkout. The installation directory is the current executable's directory; an
-inherited `PIGGERY_INSTALL_DIR` cannot redirect `piggery update` to another installation.
-`install.sh` in this fork delegates to the local workflow; it is not a curl-to-shell release
-downloader. Do not run upstream release installers or `go install ...@latest` over the development
-installation.
+Only `haohao3k/piggery` supplies releases for this fork. A push to main alone supplies no binary:
+the release workflow must publish the platform assets and `checksums.txt`. A missing release is an
+error, never a reason to download from upstream. The unchanged Go module path is an import identity.
 
 ## Git and recovery
 

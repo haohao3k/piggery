@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,43 +15,10 @@ import (
 	"testing"
 )
 
-func TestLocalBuildUsesStampedCheckout(t *testing.T) {
-	oldMode, oldVersion := BuildMode, Version
-	BuildMode, Version = "local", "local-test"
-	t.Cleanup(func() { BuildMode, Version = oldMode, oldVersion })
-	requests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
-		http.Error(w, "must not contact releases", http.StatusInternalServerError)
-	}))
-	t.Cleanup(srv.Close)
-	f := newLocalUpdateFixture(t, "pending")
-	u := updater{api: srv.URL, exe: f.binary, client: srv.Client()}
-	for _, force := range []bool{false, true} {
-		if replaced, err := u.run(context.Background(), io.Discard, false, force); replaced || err != nil {
-			t.Fatalf("local update force=%v: replaced=%v err=%v", force, replaced, err)
-		}
-	}
-	var out strings.Builder
-	if replaced, err := u.run(context.Background(), &out, true, false); replaced || err != nil {
-		t.Fatalf("local check: replaced=%v err=%v output=%q", replaced, err, out.String())
-	}
-	if requests != 0 {
-		t.Fatalf("local build contacted release API %d times", requests)
-	}
-	invocation, err := os.ReadFile(f.invocation)
-	if err != nil || !strings.HasPrefix(string(invocation), "check\n") {
-		t.Fatalf("local checkout invocation = %q (%v); want check", invocation, err)
-	}
-}
-
 // update against a fake GitHub API: --check writes nothing; a binary whose sha256 is not the
 // one in checksums.txt is refused and the running binary stays; the right one replaces it (the
 // asset for this os/arch, through a symlink to the binary, keeping its mode).
 func TestUpdate(t *testing.T) {
-	oldMode := BuildMode
-	BuildMode = "release"
-	t.Cleanup(func() { BuildMode = oldMode })
 	newBin, otherBin := []byte("piggery v0.2.0 linux arm64"), []byte("piggery v0.2.0 darwin arm64")
 	sum := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 	sums := sum(otherBin) + "  piggery-darwin-arm64\n" + sum(newBin) + "  piggery-linux-arm64\n"
@@ -119,4 +87,57 @@ func TestUpdate(t *testing.T) {
 	if st, _ := os.Stat(exe); st.Mode().Perm() != 0o750 {
 		t.Fatalf("mode %v; want the old binary's 0750", st.Mode().Perm())
 	}
+
+	// Moving off an old checkout build uses the same verified release install, even with
+	// no checkout or receipt. --force retains upstream's explicit dev-build replacement rule.
+	if err := os.WriteFile(exe, []byte("old"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	Version = "local-old-installation"
+	if replaced, err := u.run(context.Background(), io.Discard, false, false); replaced || err == nil || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("development build without --force: %v, %v", replaced, err)
+	}
+	unchanged("development build without --force")
+	if replaced, err := u.run(context.Background(), io.Discard, false, true); err != nil || !replaced {
+		t.Fatalf("development build to fork release: %v, %v", replaced, err)
+	}
+	if b, err := os.ReadFile(exe); err != nil || string(b) != string(newBin) {
+		t.Fatalf("development build was not replaced by the release: %q, %v", b, err)
+	}
 }
+
+// A development installation checks the same fork release as the daemon, without a checkout
+// or receipt; a missing fork release must never trigger an upstream request.
+func TestForkReleaseSource(t *testing.T) {
+	oldClient, oldVersion := http.DefaultClient, Version
+	t.Cleanup(func() { http.DefaultClient, Version = oldClient, oldVersion })
+	Version = "local-old-installation"
+	requests, status := 0, http.StatusOK
+	http.DefaultClient = &http.Client{Transport: releaseRoundTrip(func(req *http.Request) (*http.Response, error) {
+		requests++
+		if got := req.URL.String(); got != "https://api.github.com/repos/haohao3k/piggery/releases/latest" {
+			return nil, fmt.Errorf("unexpected release source: %s", got)
+		}
+		return &http.Response{StatusCode: status, Status: http.StatusText(status),
+			Body: io.NopCloser(strings.NewReader(`{"tag_name":"v0.7.2"}`)), Header: make(http.Header)}, nil
+	})}
+	var out strings.Builder
+	e := &env{stdout: &out}
+	if err := e.update([]string{"--check"}); err != nil || out.String() != "current local-old-installation, latest v0.7.2\n" {
+		t.Fatalf("fork release check: %q, %v", out.String(), err)
+	}
+	if tag, err := DaemonLatest(context.Background()); err != nil || tag != "v0.7.2" {
+		t.Fatalf("daemon release check: %q, %v", tag, err)
+	}
+	status = http.StatusNotFound
+	if err := e.update([]string{"--check"}); err == nil || !strings.Contains(err.Error(), "no release published") {
+		t.Fatalf("missing fork release: %v", err)
+	}
+	if requests != 3 {
+		t.Fatalf("got %d requests; expected one per check with no fallback", requests)
+	}
+}
+
+type releaseRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f releaseRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

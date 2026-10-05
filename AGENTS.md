@@ -7,6 +7,15 @@
 - `upstream` is `sting8k/piggery`, for fetching and comparison only. Never push there. Preserve
   its disabled push URL. Do not merge, publish a release, or push to another repository without
   the Human's authorization.
+- Upstream is the source of truth for shared Piggery behavior. Adopt its accepted fixes rather
+  than maintaining competing fork implementations; preserve required existing-data compatibility.
+- Upstream issues and pull requests contain only generally applicable upstream problems and fixes.
+  Prepare PRs from a clean upstream base. Never include this fork's local build/install tooling,
+  custom templates, model routing, machine paths, private state or fork-only policy in an upstream PR.
+  Verify the complete diff against upstream before submission; use synthetic public reproductions.
+- `piggery update` and `install.sh` download releases only from `haohao3k/piggery`. They never
+  build a checkout, depend on a local receipt, or fall back to `sting8k/piggery`. A push to main
+  is not a release: publish binaries and checksums through the fork's release workflow separately.
 - Preserve unrelated work and existing templates, profiles, sessions, messages and credentials.
   A shared changing scope has one write owner; coordinate before editing another owner's files.
 - Use Semble for exploratory code discovery, then read the returned locations directly. Use
@@ -51,13 +60,11 @@ or reload. Report that boundary honestly; never equate installing new bytes with
 running model context. New sessions must resolve the local executable/assets. Do not restart an
 unrelated host application merely to reload an integration.
 
-After the first guarded installation, `piggery update` runs build/apply/check from the owning local
-checkout stamped into the executable and recorded in its installation receipt. It uses current
-local source and embedded artifacts, never a downloaded release or a guessed current directory.
-`piggery update --check` is read-only and fails on drift; `--force` cannot bypass the idle gate.
-Use `--caller <participant-id>` only for the exact invoking solo, as with the script. Updating
-does not fetch, pull, switch branches or edit source. If the checkout moves or the receipt is
-missing, use that checkout's `scripts/local-dev.sh apply` to bind the installation again.
+`scripts/local-dev.sh` is an explicit developer build/apply/check tool, separate from the shipped
+release updater. Its receipts verify test deployments only; they do not bind `piggery update` to
+this checkout. `piggery update --check` checks the latest fork release, and `--force` permits
+replacing a development build or reinstalling a release. Use the script's `check` for source/runtime
+fingerprint verification and its guarded `apply` for development activation.
 Documentation-only changes do not require a daemon
 restart unless the installed instruction/assets or the build fingerprint are affected; they
 still require applicable validation and the same honest handback.

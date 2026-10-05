@@ -34,7 +34,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon and `team up` use. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
 | `doctor` | Findings about the daemon's state; exit 1 when any |
 | `shutdown` / `restart` | Stop the daemon (workers stopped), or stop and start it again from this binary |
-| `update [--check] [--force] [--caller ID]` | Managed local builds: build/apply/check the owning checkout's source and embedded assets, without downloading releases; `--check` is read-only and fails on drift. `--caller` permits only the exact invoking solo during safe activation, and `--force` cannot bypass the gate. Bootstrap or repair an unbound source build with `scripts/local-dev.sh apply`. Release builds: install the latest fork release; `--force` reinstalls; `--caller` is unavailable. |
+| `update [--check] [--force]` | Install the latest release from `haohao3k/piggery`, with checksum verification. `--check` prints current/latest versions without changing files; `--force` replaces a dev build or reinstalls the same release. No checkout is needed. After replacement, stop the old daemon; the next command starts the new one. |
 
 `ps` and `top` show a line such as `outdated: codex (v0 < v1): piggery setup --outdated` in their header
 when a claude, codex or paseo install is outdated (`ps --json` has the same list as `outdated`).
@@ -49,9 +49,9 @@ The model sees the tools with a `piggery_` prefix in pi, omp and dsh (`piggery_s
 `mcp__piggery__send` in Claude Code and Codex; manifests and the CLI use the short names.
 
 Environment: `PIGGERY_DISABLED=1` makes an adapter inert (a session that must not join);
-`PIGGERY_INSTALL_DIR` changes the local installer destination. `install.sh` builds this checkout;
-it does not download a release or accept a release-version selector. Piggery uses `~/.piggery`;
-the local installer rejects a nondefault `PIGGERY_HOME` because the daemon does not support it.
+`PIGGERY_INSTALL_DIR` changes the release installer destination; `PIGGERY_VERSION=vX.Y.Z`
+selects a release from `haohao3k/piggery` instead of the latest. Piggery uses `~/.piggery`;
+the explicit developer apply script rejects a nondefault `PIGGERY_HOME` because the daemon does not support it.
 
 ## config.yaml
 

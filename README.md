@@ -1,6 +1,6 @@
 # Piggery 🐖 - Lợn cày tasks
 
-This is the local development fork at [haohao3k/piggery](https://github.com/haohao3k/piggery),
+This is the fork at [haohao3k/piggery](https://github.com/haohao3k/piggery),
 derived from [sting8k/piggery](https://github.com/sting8k/piggery). Development pushes go to this
 fork. Read [AGENTS.md](AGENTS.md) and the [local workflow](docs/local-development.md) before changing it.
 
@@ -50,28 +50,28 @@ piggery is installed in it.
 ## Install
 
 ```sh
-git clone https://github.com/haohao3k/piggery.git
-cd piggery
-git switch codex/local-development
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/haohao3k/piggery/main/install.sh | sh
 piggery setup pi       # and/or: claude, codex, omp, dsh
 ```
 
-The installer builds this checkout, stamps its source identity, checks whether activation is safe,
-installs it in `~/.local/bin`, refreshes installed integration assets, and restarts the existing
-Piggery home. Go 1.26+ and Python 3 are required. Busy agents block activation; an idle worker is
-stopped by the normal graceful restart and keeps its recorded session for a later authorized resume.
-See the local workflow for the invoking-session exception and readback requirements.
+The installer downloads the binary for your OS and CPU from this fork's GitHub Releases,
+checks it against `checksums.txt`, and installs it in `~/.local/bin`. Set `PIGGERY_VERSION`
+to select a release or `PIGGERY_INSTALL_DIR` to select the install directory. No checkout,
+Go installation or Python installation is required. A release must be published in
+`haohao3k/piggery`; neither the installer nor updater falls back to upstream releases.
 
 Using [Paseo](https://paseo.sh)? `piggery setup paseo` adds a Piggery view (the same as
 `piggery top`) to the app. Turn on plugins in Paseo's settings once.
 
-After installation, `piggery update` rebuilds and activates the owning local checkout's source and
-assets; `piggery update --check` verifies source, installation and daemon without changing them.
-`--force` cannot bypass the idle gate or download a release. Bootstrap or repair with
-`scripts/local-dev.sh apply`; do not install `sting8k/...@latest` over this fork.
-The Go module keeps its upstream import path for compatibility; `go build ./cmd/piggery` uses the
-local checkout's source and embedded assets. Changes are in [CHANGELOG.md](CHANGELOG.md).
+After installation, `piggery update` installs the latest release from `haohao3k/piggery`;
+`piggery update --check` prints the current and latest versions without changing files.
+Use `--force` to replace a development build or reinstall the same release. An update stops
+the old daemon; the next command starts the new binary. Refresh integrations with
+`piggery setup --outdated` and reconnect affected sessions.
+
+For development from source, use the explicit [build/apply/check workflow](docs/local-development.md).
+The Go module keeps its upstream import path for compatibility; it does not choose the release source.
+Changes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick start
 

@@ -387,14 +387,15 @@ Remove a column to hide it; the name is always shown.
 - **A worker does not start.** Its harness profile is missing or wrong (`piggery setup` writes them),
   or the harness has no login for the daemon's `HOME`. `piggery tail <worker>` shows the harness's
   own error.
-- **Local fork updates.** Bootstrap with `scripts/local-dev.sh apply`, then use `piggery update`
-  to rebuild and apply the owning checkout's current source and embedded assets, followed by
-  `piggery update --check`; see [the local workflow](local-development.md). Local builds never
-  download a release, and `--force` cannot bypass safe activation. Release-mode builds use the
-  fork's release endpoint and checksum verification. Before a database upgrade, Piggery copies the
-  database to `~/.piggery/backups/` (the three newest are kept).
-  Once a day the daemon checks for a newer release; nothing is installed automatically.
-  `update.check: false` disables the check; a local source build never asks.
+- **Fork releases.** `piggery update` installs the latest release from `haohao3k/piggery`
+  after verifying its checksum; `piggery update --check` only prints the versions. Use `--force`
+  to replace a development build or reinstall the same release. It does not read or build a checkout.
+  An update stops the old daemon; the next command starts the new binary. Run `piggery setup --outdated`
+  and reconnect affected sessions. Before a database upgrade, Piggery copies the database to
+  `~/.piggery/backups/` (the three newest are kept). For development activation and source verification,
+  use the explicit [local workflow](local-development.md). Once a day a release daemon checks for
+  a newer fork release; nothing is installed automatically. `update.check: false` disables the check.
+  No release in the fork means no downloadable update; there is no upstream fallback.
 - **After a crash or a restart.** State and mail are in SQLite, so nothing is lost. The next command
   starts the daemon again and open sessions reconnect by themselves. It marks every agent whose
   process or connection is gone as `gone`, never respawns workers and never acks mail: bring a worker

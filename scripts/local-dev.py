@@ -16,7 +16,6 @@ daemon. No mode downloads a Piggery release or calls a release updater.
 from __future__ import annotations
 
 import argparse
-import base64
 from contextlib import contextmanager
 import datetime as _dt
 import hashlib
@@ -366,12 +365,7 @@ def build(root: Path) -> BuildInfo:
     os.close(fd)
     temp = Path(temp_name)
     try:
-        ldflags = (
-            f"-s -w -X {MODULE}/internal/cli.Version={version} "
-            f"-X {MODULE}/internal/cli.BuildMode=local "
-            f"-X {MODULE}/internal/cli.LocalSourceRootBase64="
-            + base64.b64encode(os.fsencode(root.resolve())).decode("ascii")
-        )
+        ldflags = f"-s -w -X {MODULE}/internal/cli.Version={version}"
         proc = _run(
             [go, "build", "-trimpath", "-ldflags", ldflags, "-o", temp, "./cmd/piggery"],
             cwd=root,
