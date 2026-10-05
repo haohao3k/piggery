@@ -529,7 +529,7 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 		msg := "participant id and token required"
 		if req.AdminToken != "" { // --admin on a participant verb: say which verb family it is
 			msg = req.Verb + " is a participant verb (PIGGERY_ID/PIGGERY_TOKEN), not an admin one; " +
-				"for an overview as admin use `piggery --admin dump participants`"
+				"for an overview use `piggery ps`"
 		}
 		return errResponse(req.ID, s.unauthorized(req.Verb, msg))
 	}

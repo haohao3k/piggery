@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.7.1 - 2026-10-05
+
+Codex threads that share one app-server are no longer mixed up.
+
+After upgrading, run `piggery restart`, then restart Codex (the Desktop app, or the shared
+`codex app-server` and its TUIs). No integration changed, so `setup --outdated` has nothing to do.
+
+- Fix: Codex Desktop, and TUIs started with `--remote`, run every thread in one `codex app-server`,
+  and piggery made all of them one participant, so mail or a wake could reach the wrong thread or
+  project. Each thread is now its own participant; a piggery tool call there that does not say
+  which thread it is from is refused. A Codex TUI and Claude still keep one participant across
+  `/clear`. Participants already mixed up stay so until they are closed. Reported by @haohao3k
+  (#4).
+- Fix: `--admin` on an agent's command (such as `who`) now points to `piggery ps` instead of the
+  removed `dump`, and `gc`'s usage says `--closed-before DURATION` (such as `168h`).
+
 ## v0.7.0 - 2026-10-03
 
 piggery now tells you, by itself, when a team's mail flow needs you, and `piggery check` tests your
