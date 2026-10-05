@@ -17,13 +17,12 @@ type JoinAutoArgs struct {
 	HarnessRef string `json:"harness_ref"`    // same session -> same participant
 	Name       string `json:"name,omitempty"` // default one word from harness_ref (names.go); suffixed on collision
 	// Source is why the harness started this session (Claude: startup|resume|clear|compact);
-	// recorded only. A Codex thread is never inferred from its process or this source.
+	// recorded only, the host decides.
 	Source string `json:"source,omitempty"`
 	// Host is the harness process the session lives in ("claude:<pid>:<start time>"), shared by
-	// its hooks and MCP server. For Claude, a live participant with the same host is this session: join.auto
+	// its hooks and MCP server. A live participant with the same host is this session: join.auto
 	// returns it with its run (the ref becomes one of its refs), and callers may authenticate by
-	// host (AuthenticateHost). Codex app-server shares a process across threads: it requires
-	// the exact HarnessRef and canonical Cwd as well (AuthenticateSession).
+	// host (AuthenticateHost).
 	Host string `json:"host,omitempty"`
 	// Transcript is the harness's own file of this session, kept on the participant for the CLI's
 	// ctx, turns and tail (never read by the daemon). nil or an empty path keeps the one stored.
@@ -64,38 +63,12 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 	}
 	var res JoinResult
 	err = e.inTx(ctx, func(t *txn) error {
-		codex := a.Harness == "codex" || strings.HasPrefix(a.Host, "codex:")
-		if codex && a.Host != "" {
-			// A process is only transport provenance. Multiple Codex chats, including chats
-			// in the same directory, must have different participants and return addresses.
-			var id, team, run, storedCwd string
-			err := t.QueryRowContext(t.ctx, `SELECT id, COALESCE(team_id,''), run_id, cwd FROM participants
-				WHERE host=? AND session_ref=? AND binding_quarantined=0
+		if a.Host != "" { // the same process again (its MCP server and hooks, or /clear): no new participant
+			var id, team, run string
+			err := t.QueryRowContext(t.ctx, `SELECT id, COALESCE(team_id,''), run_id FROM participants WHERE host=?
 				AND state<>'gone' AND left_at IS NULL AND COALESCE(mode,'')<>'headless'
-				ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.Host, a.HarnessRef).Scan(&id, &team, &run, &storedCwd)
+				ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.Host).Scan(&id, &team, &run)
 			if err == nil {
-				if storedCwd != cwd {
-					return sessionRootMismatch()
-				}
-				res = JoinResult{ID: id, TeamID: team, RunID: run}
-				path, format := a.transcriptCols()
-				_, err = t.ExecContext(t.ctx, `UPDATE participants SET transcript=COALESCE(?,transcript),
-					transcript_format=COALESCE(?,transcript_format) WHERE id=?`, path, format, id)
-				return internal(err)
-			}
-			if !errors.Is(err, sql.ErrNoRows) {
-				return internal(err)
-			}
-		}
-		if a.Host != "" && !codex { // Claude's process survives /clear; Codex has independent threads.
-			var id, team, run, storedCwd string
-			err := t.QueryRowContext(t.ctx, `SELECT id, COALESCE(team_id,''), run_id, cwd FROM participants WHERE host=?
-				AND state<>'gone' AND left_at IS NULL AND COALESCE(mode,'')<>'headless'
-				ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.Host).Scan(&id, &team, &run, &storedCwd)
-			if err == nil {
-				if storedCwd != cwd {
-					return sessionRootMismatch()
-				}
 				res = JoinResult{ID: id, TeamID: team, RunID: run} // no token: it authenticates by host
 				path, format := a.transcriptCols()
 				if _, err := t.ExecContext(t.ctx, `UPDATE participants SET session_ref=?, transcript=COALESCE(?,transcript),
@@ -117,7 +90,6 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 		var mode, host sql.NullString
 		p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`, mode, host FROM participants
 			WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?)) AND left_at IS NULL
-			AND binding_quarantined=0
 			AND (team_id IS NULL OR team_id IN (SELECT id FROM teams WHERE closed_at IS NULL))
 			ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.HarnessRef, a.HarnessRef), &mode, &host)
 		switch {
@@ -130,18 +102,6 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 			// end): the new process takes it over, as a resume.
 			return errf(CodeInvalid, "participant is live")
 		case err == nil: // resume: same participant, new run and token
-			if codex {
-				var storedCwd, storedRef string
-				if err := t.QueryRowContext(t.ctx, `SELECT cwd, COALESCE(session_ref,harness_ref,'') FROM participants WHERE id=?`, p.id).Scan(&storedCwd, &storedRef); err != nil {
-					return internal(err)
-				}
-				if storedCwd != cwd {
-					return sessionRootMismatch()
-				}
-				if storedRef != a.HarnessRef {
-					return &Error{Code: CodeUnauthorized, RuleID: "session.ref", Layer: "token", Message: "a different Codex thread cannot resume this participant"}
-				}
-			}
 			res.ID, res.TeamID = p.id, p.team
 			path, format := a.transcriptCols()
 			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET run_id=?, token_hash=?, last_turn_end=NULL,
