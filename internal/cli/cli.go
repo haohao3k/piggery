@@ -648,7 +648,7 @@ func (e *env) gc(args []string) error {
 	set := false
 	fs.Visit(func(f *flag.Flag) { set = set || f.Name == "closed-before" })
 	if len(pos) != 0 || !set {
-		return fmt.Errorf("%w: gc --closed-before D [--dry-run]", errUsage)
+		return fmt.Errorf("%w: gc --closed-before DURATION [--dry-run]", errUsage)
 	}
 	return do(e, proto.VerbGC, core.GCArgs{ClosedBeforeMs: before.Milliseconds(), DryRun: *dry},
 		func(w io.Writer, r core.GCResult) {

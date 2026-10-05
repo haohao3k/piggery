@@ -2,14 +2,11 @@
 
 ## Unreleased
 
-- Rebase the local fork on upstream v0.7.0 while retaining local build/update ownership and
-  native three-review entry points. Review templates follow the engine-owned notify flow.
-- Isolate interactive Codex chats by thread and canonical directory instead of the shared
-  app-server PID. Refuse missing or mismatched bindings before tools and mail; bind wakes
-  to the identified connection's thread.
-- Quarantine ambiguous legacy Codex aliases in schema 23 without deleting or redirecting
-  history. `doctor` exposes recovery candidates; review handbacks pin a fresh per-launch
-  participant ID. See [session isolation](docs/session-isolation.md).
+- Sync upstream v0.7.1: use the upstream Codex adapter's per-thread hosts and MCP
+  connections with `_meta.sessionId`. Remove the superseded core-side thread authentication,
+  capability probe and single-thread MCP binding. Codex TUI and Claude retain upstream `/clear` behavior.
+- Preserve the already-deployed fork schema 23 and historical quarantine exclusions. No old
+  messages are reassigned and no quarantined identity is revived. See [session isolation](docs/session-isolation.md).
 
 - Make local `piggery update` rebuild and activate assets from its owning checkout through the
   guarded local workflow. Bind the source path to the binary and receipt, keep `--check` read-only,
@@ -31,6 +28,22 @@
 - Add the optional `triple-review` team template: two independent semantic reviews from different
   provider families and one OCR delegate coverage review of a frozen candidate. The coordinator
   verifies readiness, keeps the first pass sealed and adjudicates findings by evidence.
+
+## v0.7.1 - 2026-10-05
+
+Codex threads that share one app-server are no longer mixed up.
+
+After upgrading, run `piggery restart`, then restart Codex (the Desktop app, or the shared
+`codex app-server` and its TUIs). No integration changed, so `setup --outdated` has nothing to do.
+
+- Fix: Codex Desktop, and TUIs started with `--remote`, run every thread in one `codex app-server`,
+  and piggery made all of them one participant, so mail or a wake could reach the wrong thread or
+  project. Each thread is now its own participant; a piggery tool call there that does not say
+  which thread it is from is refused. A Codex TUI and Claude still keep one participant across
+  `/clear`. Participants already mixed up stay so until they are closed. Reported by @haohao3k
+  (#4).
+- Fix: `--admin` on an agent's command (such as `who`) now points to `piggery ps` instead of the
+  removed `dump`, and `gc`'s usage says `--closed-before DURATION` (such as `168h`).
 
 ## v0.7.0 - 2026-10-03
 

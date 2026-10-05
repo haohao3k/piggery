@@ -29,7 +29,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `model <worker> [<provider/model>] [--thinking L] [--team T]` | Change a worker's model or thinking level now, or at its resume |
 | `release <msg_id>` | Deliver a message held by a limit |
 | `why <from> <to> [--team T]` | Every gate check for a send; nothing is sent |
-| `gc --closed-before D [--dry-run]` | Archive, verify and delete closed teams and gone solo sessions |
+| `gc --closed-before DURATION [--dry-run]` | Archive, verify and delete closed teams and gone solo sessions |
 | `archive show <file> [--table T]` | Print a gc archive (local, no daemon) |
 | `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon and `team up` use. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
 | `doctor` | Findings about the daemon's state; exit 1 when any |

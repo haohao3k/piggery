@@ -179,7 +179,7 @@ func (e *env) root() *cobra.Command {
 			"piggery shutdown", authAdmin, e.shutdown),
 		e.cmd("restart", "Shutdown, then start the daemon again from this binary", grpMaintain,
 			"piggery restart", authAdmin, e.restart),
-		e.cmd("gc --closed-before D [--dry-run]", "Archive, verify and delete closed teams", grpMaintain,
+		e.cmd("gc --closed-before DURATION [--dry-run]", "Archive, verify and delete closed teams", grpMaintain,
 			"piggery gc --closed-before 168h --dry-run", authAdmin, e.gc),
 		archive,
 		e.cmd("doctor", "Findings about the daemon's state (exit 1 when any)", grpMaintain,

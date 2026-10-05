@@ -1,64 +1,46 @@
-# Codex session isolation and upgrade recovery
+# Codex session isolation
 
-Codex Desktop can host unrelated conversations in one app-server process. Its PID and start
-time prove transport ancestry; they do not identify a conversation. Two chats in one directory
-also remain two independent sessions.
+This fork follows upstream v0.7.1 and [PR #6](https://github.com/sting8k/piggery/pull/6),
+which supersedes our [PR #5](https://github.com/sting8k/piggery/pull/5) for
+[issue #4](https://github.com/sting8k/piggery/issues/4).
 
-Interactive Codex requests bind the host, exact thread reference and canonical directory.
-Hooks supply `session_id` and `cwd`; MCP calls supply the harness's thread metadata. A request
-without a thread reference cannot fall back to the newest participant under that process.
-Before joining or sending a hook event, the Codex adapter probes the daemon's read-only
-`session.support` capability. An old daemon that ignores the new authentication fields is
-refused before it can mutate a binding.
-The daemon refuses a different directory before executing a tool or returning mail. Worker
-processes continue using their explicit participant credentials and run ownership checks.
+## Current contract
 
-Codex MCP discovery starts without a verified thread reference. The server exposes a generic
-tool catalog and asks for one `who` call; the first exact call binds the thread, returns its
-role card and enables MCP wake routing. Until then it cannot queue wakes for a guessed thread.
-Hooks still carry their own explicit session reference. After `/clear`, a new thread reference
-binds independently and receives a fresh role card.
+Under a shared Codex app-server, the adapter names each host as
+`codex:<pid>:<start>/<session id>`. Hooks supply `session_id`; MCP tool calls supply
+`_meta.sessionId`. A call without that metadata is refused. One MCP child maintains a separate
+server and daemon connection for each thread, so mail and wake delivery remain available to
+multiple threads concurrently. The socket peer check validates the process portion of the host.
+Core authenticates hosts using the upstream contract, without a Codex-specific authentication path.
 
-The adapter keeps one current binding per MCP child and serializes reference changes. The
-observed Codex 0.160 installation retains separate MCP children, but its per-call metadata
-does not promise one child per thread. A host that multiplexes simultaneous threads through
-one child needs separate children or a future per-thread connection map for continuous wake
-availability. Threads never inherit each other's participant or project through a rebind.
+A standalone Codex TUI and Claude keep a participant across `/clear`, as upstream does.
+The previous fork-only `session.support`, host/ref/cwd authentication and `_meta.threadId`
+contract are removed. Reconnect old adapters after installing the matching daemon and CLI;
+their cached connections and instructions do not change when the executable is replaced.
 
-The same thread may resume under a new host process in the same directory. A different thread
-creates a separate participant even when its source is `clear`. Codex does not provide enough
-verified predecessor information to infer lineage from that flag alone. Claude's established
-single-session process and `/clear` behavior are unchanged.
+## Historical fork data
 
-## Return addresses
+The fork already deployed schema 23 before upstream chose its adapter fix. Keep that migration
+unchanged and retain its quarantine column, lookup exclusions, token refusal, wake suppression
+and doctor output. This is storage compatibility for existing fork data, not another Codex routing
+implementation. Upstream v0.7.1 still uses schema 22; its stock binary cannot open a fork schema-23
+home. Future upstream migrations must be reconciled explicitly with this fork's migration history.
 
-`who` includes the invoking participant's stable `id=` in its own row. Capture that identifier
-and the verified project root in each review launch brief. A delegated coordinator sends its
-handback to that exact identifier; Piggery already accepts participant IDs as send addresses
-and still enforces gate-to-gate authorization. Display names are useful labels, but a template
-must not retain a previous caller's address. An unavailable endpoint is a failed delivery to
-record beside the durable report, never permission to pick another chat or project.
+Quarantined participants, aliases, messages and acknowledgements remain stored. They cannot be
+rebound or used to authenticate, and reconnecting creates a fresh participant without replaying
+old mail. Non-quarantined threads can resume with the upstream thread host. Existing historical
+identity mistakes are not automatically repaired. `piggery doctor` reports quarantine candidates
+for deliberate recovery; it does not infer the intended recipient of old messages.
 
-## Existing installations
+## Installation and verification
 
-Schema 23 quarantines ambiguous legacy interactive Codex bindings: rows whose current thread
-differs from the original reference, or which accumulated other thread aliases. They cannot
-authenticate or be automatically reclaimed through an alias. A reconnect creates independent
-participants for the real threads. Some old `/clear` aliases may have been legitimate; without
-evidence the migration does not guess which conversation owns a shared row.
+Use the guarded [local workflow](local-development.md): test, build, apply only after an
+authoritative idle readback, then verify the installed CLI, daemon and refreshed assets.
+Do not run the upstream release installer over this fork or downgrade its database metadata.
+Keep the existing Piggery home and backups. Activation must wait while any other session or worker
+is busy or awaiting permission. After activation, reconnect Codex's app-server/MCP processes at a
+safe time; an installed candidate alone does not reload running sessions.
 
-All participants, aliases, teams, messages, acknowledgements and other history remain in the
-database. Mail addressed to an old participant is not reassigned or replayed to a guessed owner.
-`piggery doctor` reports quarantined IDs for deliberate recovery. Existing team ownership and
-unfinished work must be inspected explicitly before moving a return route. In particular,
-quarantine is not a request to restart workers, close teams or resume a development lane.
-
-The store makes its normal pre-migration backup before applying schema 23. Use the guarded
-[local workflow](local-development.md): build and test first, apply only with an authoritative
-idle readback, then check the installed binary, daemon and refreshed integrations. Do not run
-an older binary against the migrated live database. Preserve the pre-upgrade backup if a
-deliberate rollback is needed.
-
-Long-lived MCP children retain their loaded executable. Reconnect the affected Codex chats
-after activation. Host-only requests from an old adapter fail closed against the new daemon;
-installing a binary does not rewrite instructions already loaded in a model's context.
+The upstream author reports live verification on Codex 0.160.0 with a shared app-server and two
+remote TUIs. Local automated tests cover adapter identity, missing metadata, the standard TUI and
+Claude behavior, and preservation of historical quarantine. They are not a live multi-chat test.

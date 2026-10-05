@@ -70,47 +70,9 @@ func (c *Client) AsParticipant(id, token string) {
 	c.auth, c.admin = &proto.Auth{ID: id, Token: token}, ""
 }
 
-// AsSession authenticates a session opened in a harness by both its process and
-// exact harness session reference. The host is only a lineage check; the
-// session reference is the identity key.
-func (c *Client) AsSession(host, ref, cwd string) {
-	c.auth, c.admin = &proto.Auth{Host: host, HarnessRef: ref, Cwd: cwd}, ""
-}
-
 // AsHost authenticates as the live session of a harness process (a Claude session's hooks and
-// MCP server: "claude:<pid>:<start>"), which has no token of its own. New session callers
-// should use AsSession; this method remains for compatibility with older callers/daemons.
+// MCP server: "claude:<pid>:<start>"), which has no token of its own.
 func (c *Client) AsHost(host string) { c.auth, c.admin = &proto.Auth{Host: host}, "" }
-
-// requireSessionAuth is the compatibility boundary for an interactive Codex
-// session. A daemon predating exact thread authentication accepts the new
-// fields as JSON it does not understand and would otherwise let join.auto fall
-// back to its process host. Probe before any session mutation or event.
-func requireSessionAuth(c *Client) error {
-	var support proto.SessionSupportResult
-	if _, err := c.CallInto(proto.VerbSessionSupport, nil, &support); err != nil {
-		var ce *core.Error
-		if errors.As(err, &ce) && ce.Code == core.CodeInvalid &&
-			strings.Contains(ce.Message, "unknown verb "+proto.VerbSessionSupport) {
-			return sessionAuthUnsupported("the daemon does not recognize the session capability probe")
-		}
-		return err
-	}
-	if !support.ThreadAuth {
-		return sessionAuthUnsupported("the daemon did not advertise exact thread authentication")
-	}
-	return nil
-}
-
-func sessionAuthUnsupported(reason string) error {
-	return &core.Error{Code: core.CodeUnsupported, RuleID: "session.unsupported", Layer: "protocol",
-		Message: "exact Codex session authentication is unavailable (" + reason + "); activate the current local build with the guarded local-dev/update workflow, then reconnect this Codex session"}
-}
-
-func isSessionAuthUnsupported(err error) bool {
-	var ce *core.Error
-	return errors.As(err, &ce) && ce.RuleID == "session.unsupported"
-}
 
 func (c *Client) Close() error { return c.conn.Close() }
 

@@ -25,8 +25,9 @@ import (
 //
 // Two identities: a worker's hooks carry PIGGERY_ID/TOKEN (errors go to stderr, which the harness
 // only logs); a session the Human opened (tier 2, installed by `piggery setup claude|codex`) has
-// no token and is authenticated by its exact harness session id, with the process host retained
-// only as a lineage check. That one is silent on any error: no daemon, no piggery.
+// none and is its harness process (host, shared with its MCP server): SessionStart places it with
+// join.auto, every other hook authenticates by host. That one is silent on any error: no daemon,
+// no piggery.
 
 // claudeHookInput is the part of a hook's stdin the adapters read (Claude's fields, and Codex's
 // where they differ: turn_id).
@@ -179,11 +180,7 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 	var in claudeHookInput
 	raw, _ := io.ReadAll(stdin)
 	_ = json.Unmarshal(raw, &in)
-	if (id == "") != (tok == "") {
-		fmt.Fprintln(stderr, "piggery hook: PIGGERY_ID and PIGGERY_TOKEN must be set together")
-		return
-	}
-	session := id == "" && tok == ""
+	session := id == "" || tok == ""
 	if session && os.Getenv("PIGGERY_DISABLED") == "1" {
 		return // started from inside a piggery session's tool (pi sets this): not a member
 	}
@@ -200,9 +197,6 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 	}
 	if session {
 		stderr = io.Discard
-		if in.SessionID == "" {
-			return // never fall back to a host-only identity
-		}
 	}
 	c, err := Dial(e.dir, false)
 	if err != nil {
@@ -210,19 +204,17 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 		return
 	}
 	defer c.Close()
-	if session && harness == "codex" {
-		// Hooks register the exact thread and cwd. Probe before SessionStart's
-		// join.auto or any event so an old daemon cannot silently collapse this
-		// session back to its shared Codex app-server host.
-		if err := requireSessionAuth(c); err != nil {
-			return // session hooks are intentionally silent on daemon failures
-		}
-	}
 	var join func(source string) error
 	if session {
 		host := sessionHost(harness)
 		if host == "" {
 			return
+		}
+		if sharedAppServer(host) { // one app-server, many threads: one host per thread
+			if in.SessionID == "" {
+				return // fail closed: never the plain pid host
+			}
+			host = threadHost(host, in.SessionID)
 		}
 		join = func(source string) error {
 			var jr core.JoinResult
@@ -239,7 +231,7 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 		if hook == "SessionStart" && join(in.Source) != nil {
 			return // e.g. this session is a headless worker's: not ours to drive
 		}
-		c.AsSession(host, in.SessionID, in.Cwd)
+		c.AsHost(host)
 	} else {
 		c.AsParticipant(id, tok)
 	}
@@ -263,6 +255,25 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 // sessionHost is the host of the session this process serves: its nearest parent process named
 // after one of the harnesses (a session host: claude, codex), as "<name>:<pid>:<start time>".
 var sessionHost = func(harnesses ...string) string { return processHost(os.Getppid(), harnesses...) }
+
+// threadHost is the host of one thread under a shared app-server: the app-server's host and the
+// thread's session id (the hook's session_id; piggery mcp reads the same value from _meta.sessionId
+// of a tool call). The daemon treats it as any other host string.
+func threadHost(host, session string) string { return host + "/" + session }
+
+// sharedAppServer reports whether host (from processHost) is a Codex app-server that serves many
+// threads (Codex Desktop: one `codex app-server --listen ... --managed-daemon` with one piggery mcp
+// child): `app-server` in its arguments. A piggery worker's app-server has PIGGERY_ID, so it never
+// gets here (it is not a session). A var for tests.
+var sharedAppServer = func(host string) bool {
+	name, rest, _ := strings.Cut(host, ":")
+	pid, _, _ := strings.Cut(rest, ":")
+	if name != "codex" {
+		return false
+	}
+	out, err := exec.Command("ps", "-o", "args=", "-p", pid).Output()
+	return err == nil && slices.Contains(strings.Fields(string(out)), "app-server")
+}
 
 // processHost names the harness process a session lives in, "<name>:<pid>:<start time>" (start
 // time: a reused pid is another host). Its hooks and its MCP server are its children (captured
