@@ -74,9 +74,9 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 		version int
 		digest  string
 	}{
-		{"pi", 3, "0723460f7d16"},
-		{"omp", 3, "e710c4d72687"},
-		{"dsh", 4, "3b3a2f108d33"},
+		{"pi", 8, "655d8668c0db"},
+		{"omp", 8, "585d3f9c11dc"},
+		{"dsh", 9, "8e3e05b325fa"},
 		{"claude", 1, "ca51aeba0c80"},
 		{"codex", 1, "c914fad6023c"},
 		{"paseo", 3, "93664ce8a897"},
