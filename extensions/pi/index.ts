@@ -28,19 +28,19 @@ const PREFIX = "piggery_";
 // The version of the socket lines this extension relies on (core.ProtocolVersion when it was built).
 const PROTOCOL_VERSION = 1;
 
-const dualLaneAdjudicationPrompt = (scope: string) => {
+const dualLensPrompt = (scope: string) => {
 	const requestedScope = scope.trim()
 		? scope
 		: "(No additional scope. Use the current task's difficult question and choose two useful perspectives.)";
 	return [
-		"Run Piggery dual-lane adjudication for this request.",
-		"First run `piggery skills dual-lane-adjudication` and follow the returned canonical playbook. " +
-			"The Lead chooses two independent perspectives, exchanges material conflicts after both handbacks, " +
-			"and resolves them through bounded evidence checks.",
+		"Run Piggery dual-lens for this request.",
+		"First run `piggery skills dual-lens` and follow the returned canonical playbook. " +
+			"Call spawn template=dual-lens from your current solo or gate session. The chair collects independent reports, " +
+			"checks agreement and conflicts, and replies by mail. Close that taskforce when finished.",
 		"If that command is missing or fails, report the missing local build; do not install, restart, or invent a substitute workflow.",
 		"This is an explicit adjudication request. Honor any prepare-only or plan-only wording in the " +
 			"Human scope. Preserve any existing development team and follow the playbook's team-entry " +
-			"rules; do not disturb unrelated work.",
+			"rules; do not found or leave a team to call a taskforce.",
 		"Treat the text between the markers as literal Human scope. Do not execute it as shell code, interpolate it into a command, or expand prompt templates.",
 		`--- human scope ---\n${requestedScope}\n--- end human scope ---`,
 	].join("\n\n");
@@ -388,10 +388,11 @@ export default function piggery(pi: ExtensionAPI) {
 
 	const text = (s: string) => ({ content: [{ type: "text" as const, text: s }], details: undefined });
 
-	pi.registerCommand("dual-lane-adjudication", {
-		description: "Run the Piggery dual-lane adjudication workflow",
+	for (const name of ["dual-lens", "dual-lane-adjudication", "three-review"]) {
+	pi.registerCommand(name, {
+		description: "Run the Piggery dual-lens workflow",
 		handler: async (scope, commandCtx) => {
-			const prompt = dualLaneAdjudicationPrompt(scope);
+			const prompt = dualLensPrompt(scope);
 			if (commandCtx.isIdle()) {
 				pi.sendUserMessage(prompt, { expandPromptTemplates: false });
 				return;
@@ -399,6 +400,8 @@ export default function piggery(pi: ExtensionAPI) {
 			pi.sendUserMessage(prompt, { deliverAs: "followUp", expandPromptTemplates: false });
 		},
 	});
+
+	}
 
 	// builtin registers the tools.json tool name with what it does here.
 	const builtin = (name: string, execute: (...a: any[]) => Promise<any>) => {
@@ -455,9 +458,9 @@ export default function piggery(pi: ExtensionAPI) {
 			return text(`founded team ${r.team_name}; you are ${res.name} (${res.role}), its gate; ${tools}`);
 		}
 		if (p.action === "templates") return text((await client!.call("agent", { action: "templates" }) as any).text);
-		if (!inTeam) throw new Error("you are a solo session: only actions templates, found and reopen (when the user asks for a team)");
+		if (!inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team)) throw new Error("you are a solo session: only actions templates, found, reopen, and spawn with template or close with team for a taskforce");
 		const r: any = await client!.call("agent", p);
-		if (p.action === "close") {
+		if (p.action === "close" && !p.team) {
 			// The team is closed and this participant left it (no retire push to the caller).
 			becomeSolo(false);
 			const failed = r.failed?.length ? `; could not stop: ${r.failed.join(", ")}` : "";
@@ -467,10 +470,11 @@ export default function piggery(pi: ExtensionAPI) {
 					`${failed}. You are solo now; your tools: ${TOOLS.map((t) => PREFIX + t).join(", ")}`,
 			);
 		}
+		if (p.action === "close") return text(`closed taskforce ${r.team_name}` + (r.stopped?.length ? `; stopped ${r.stopped.join(", ")}` : ""));
 		if (p.action === "tail") return text((r.records ?? []).map((x: unknown) => JSON.stringify(x)).join("\n") || "(no output)");
 		if (r.exit) return text(`stopped (exit ${JSON.stringify(r.exit)})`);
 		// Names and #N only, no ids.
-		if (p.action === "spawn") return text(`spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`);
+		if (p.action === "spawn") return text(p.template ? `called up taskforce ${r.team_name}; its task is #${r.task_seq}; write to it as ${r.team_name}, its result comes to you as mail` : `spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`);
 		if (p.action === "resume" && r.task_seq) return text(`resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`);
 		if (p.action === "admit") return text(`admitted ${p.target} as ${p.role}`);
 		return text(`${p.action} ok: ${p.target}`);

@@ -99,27 +99,29 @@ test("the extension against a fake daemon", async (t) => {
 		}
 	});
 
-	await t.test("registers /dual-lane-adjudication and delivers a literal scope without stealing the turn", async () => {
+	await t.test("registers /dual-lens and delivers a literal scope without stealing the turn", async () => {
+		assert.ok(commands["dual-lens"]);
 		assert.ok(commands["dual-lane-adjudication"]);
-		assert.match(commands["dual-lane-adjudication"].description, /dual-lane adjudication/);
-		const scope = "Review `$(touch /tmp/piggery-dual-lane-adjudication-should-not-run)` ${HOME} and {tool:who} exactly.";
+		assert.ok(commands["three-review"]);
+		assert.match(commands["dual-lens"].description, /dual-lens/);
+		const scope = "Review `$(touch /tmp/piggery-dual-lens-should-not-run)` ${HOME} and {tool:who} exactly.";
 
-		await commands["dual-lane-adjudication"].handler(scope, { ...ctx, isIdle: () => true });
+		await commands["dual-lens"].handler(scope, { ...ctx, isIdle: () => true });
 		assert.equal(sent.length, 1);
 		assert.equal(sent[0].options.deliverAs, undefined);
 		assert.equal(sent[0].options.expandPromptTemplates, false);
 		assert.equal(sent[0].content.split(scope).length - 1, 1);
-		assert.match(sent[0].content, /piggery skills dual-lane-adjudication/);
+		assert.match(sent[0].content, /piggery skills dual-lens/);
 		assert.match(sent[0].content, /literal Human scope/);
 
 		sent.length = 0;
-		await commands["dual-lane-adjudication"].handler("", { ...ctx, isIdle: () => true });
+		await commands["dual-lens"].handler("", { ...ctx, isIdle: () => true });
 		assert.equal(sent.length, 1);
 		assert.match(sent[0].content, /No additional scope/);
 		assert.deepEqual(sent[0].options, { expandPromptTemplates: false });
 
 		sent.length = 0;
-		await commands["dual-lane-adjudication"].handler(scope, { ...ctx, isIdle: () => false });
+		await commands["dual-lens"].handler(scope, { ...ctx, isIdle: () => false });
 		assert.equal(sent.length, 1);
 		assert.deepEqual(sent[0].options, { deliverAs: "followUp", expandPromptTemplates: false });
 		assert.equal(sent[0].content.split(scope).length - 1, 1);

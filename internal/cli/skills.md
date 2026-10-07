@@ -38,15 +38,26 @@ piggery completion --batch N                  # ack a batch you pulled with inbo
 piggery agent spawn --role R --name N "task"  # if your role may spawn R; its reply comes as mail
                                               # --cwd DIR: run it there (your role needs can_set_cwd;
                                               # inside the team root or a git worktree of its repo)
+piggery agent spawn --template T [--name N] [--cwd DIR] "task"   # a taskforce, see below (no --role)
+piggery agent close [<team>]                  # a taskforce you called up; with no team, your own (see below)
 piggery agent resume <worker> ["task"]        # a task comes to it as at spawn
 piggery agent stop|resume|tail <worker>       # tail: read its log before nudging or resuming it
 piggery agent templates                       # the templates a team can be founded from
 ```
 
+**A taskforce** is a temporary team for a one-off job: a second opinion, a review, a hard question.
+You may call one on your own judgment, as a main session calls a subagent, when you are a solo
+session or a team's gate (a Peer cannot, and a taskforce never calls another). `spawn --template T`
+builds a team from a template that has a `taskforce:` block (`piggery agent templates` marks them)
+in your directory (or `--cwd DIR`: relative to yours or absolute, inside your root, a git worktree of its repo, or an allowed root) and starts its chair as a headless worker, your task being its first mail. You stay
+where you are: the chair reports to you by mail (write to it by the team name `spawn` printed) and
+stays for follow-ups; you close the taskforce when you are done with `agent close <team>` (it never closes itself).
+It only reads unless the task says it may edit.
+
 Only when the Human asks: `found` (start a team from a template, rooted at your directory; you
-become its gate), `admit` (take a solo session at your team's root into a role you may spawn),
-`close` (the gate closes its own team; you become solo), `reopen` (a solo at a closed team's root
-opens it again and becomes its gate). In pi these are `piggery_agent` actions.
+become its gate and stay in it), `admit` (take a solo session at your team's root into a role you may
+spawn), `close` with no team (the gate closes its own team; you become solo), `reopen` (a solo at a
+closed team's root opens it again and becomes its gate). In pi these are `piggery_agent` actions.
 
 **Changing a worker's model** (only when the Human asks you to; it is an admin command, so it
 needs `--admin` in your shell):
@@ -62,18 +73,17 @@ switches from its next turn and keeps its context; a stopped one gets it when re
 model as the worker's harness does (pi and omp: `provider/model`); a model or level the harness does
 not run is refused and nothing changes. Tell the Human what `ps` shows after.
 
-## Dual-lane adjudication
+## Dual-lens
 
-For a hard question needing two independent perspectives, an authorized Lead can use
-`piggery skills dual-lane-adjudication`. Native entries are `/piggery:dual-lane-adjudication`
-in Claude, `$piggery-dual-lane-adjudication` in Codex and `/dual-lane-adjudication` in Pi.
-The `dual-lane-adjudication` template has a Lead and two lanes: native Codex / gpt-6-astra
-and Claude / claude-opus-5-5, at high effort. The Lead selects the angles, collects both
-independent reports, relays each material conflict to the other side, and resolves by evidence
-within a bounded exchange budget. There is no third lane or required OCR dependency.
-The playbook covers snapshot identity, exact return bindings, existing-team compatibility,
-remaining dissent, and cleanup. `prepare` only prepares the brief. Use existing delegation
-and task authority; do not treat a skill lookup as permission to launch workers or publish.
+For a hard question needing two independent perspectives, read `piggery skills dual-lens`.
+Native entries are `/piggery:dual-lens` in Claude, `$piggery-dual-lens` in Codex and `/dual-lens`
+in Pi. A solo or gate calls `spawn template=dual-lens`, receives the chair's answer by mail,
+and closes that taskforce when finished, while keeping its current session/team.
+The fork pins native Codex / GPT-6-astra and Claude / Opus 5.5 at high effort. The chair checks
+actual routes and a common input snapshot, keeps both first reports private, tests agreement
+as well as conflicts, and returns evidence, dissent and missing checks. `prepare` is brief only.
+Use existing delegation authority; review grants no edit, merge or release permission.
+The older `dual-lane-adjudication` and `three-review` CLI names select this same workflow.
 
 ## Writing a template (when the Human asks)
 
@@ -84,7 +94,8 @@ set `template:` to that name. You do not bring it up: the Human does, or asks a 
 **Manifest fields** (only these exist; each with its default is in
 [docs/reference.md](https://github.com/haohao3k/piggery/blob/codex/local-development/docs/reference.md#manifest)):
 `template` (required, the name), `summary`, `auto_join_role`, `roles.<role>` (`instructions` or
-`instructions_file`, `tools`, `can_spawn`, `can_pin`, `can_set_cwd`, `spawn`), `routing`, `limits`, `timers`.
+`instructions_file`, `tools`, `can_spawn`, `can_pin`, `can_set_cwd`, `spawn`), `routing`, `limits`, `timers`, `taskforce` (`idle_for`: a template with this block can also be called up
+with `spawn --template`; keep its keys in that block, because `timers` refuses unknown keys in older binaries).
 The tools are `send`, `inbox`, `who`, `agent` and no others. The first routing rule matching (sender's
 role, recipient's role) decides and none means denied; mail
 between teams ignores routing. A role that can spawn needs `limits.depth` and `limits.concurrency`.

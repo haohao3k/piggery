@@ -11,15 +11,20 @@ Anyone not connected by an arrow cannot reach the other, and that is on purpose.
 | Template | Pick it when |
 | --- | --- |
 | [`p2p`](#p2p) | You want no structure at all, or a starting point for your own |
-| [`supervisor-executor`](#supervisor-executor) | You have a goal that splits into checkable tasks, and you want someone to judge each one |
+| [`lead-peer`](#lead-peer) | You have a goal that splits into checkable scopes, and you want one plan, a judge for each result, and workers that push back with evidence |
 | [`slp`](#slp) | The work is big enough for lanes, each with its own plan, and you want to steer from above |
-| [`dual-lane-adjudication`](#dual-lane-adjudication) | A Lead needs two independent angles on a hard problem and evidence-based conflict resolution |
-| [`council`](#council) | You face one hard decision and want independent opinions before choosing |
+| [`council`](#council) (taskforce) | You face one hard decision and want independent, read-only opinions before choosing |
 | [`amp-like`](#amp-like) | You want to do the work in one session and call a second brain now and then |
+| [`dual-lens`](#dual-lens) (taskforce) | A hard technical question or an important review should get two independent answers on different models, settled by a read-only chair, while you stay in your session |
+| [`advisor`](#advisor) (taskforce) | You are stuck on a decision or an approach and want one read-only second opinion, with a recommendation and a check that would prove it wrong |
 | [`gastown-like`](#gastown-like) | Several coding tasks can run at once on separate branches and need merging |
 
-Start one with `piggery --admin team up <template>`, or let your session found it. Copy one to
+Start one by asking your session to found it (`piggery template list` shows them). Copy one to
 change it: `piggery template new mine --from <template>`.
+
+A template marked (taskforce) has a `taskforce:` block: besides being founded as a long-lived team,
+a solo session or a gate can call it up for one job (`spawn` with `template`); it works with
+its own chair, reports to the caller, and is closed by the caller when the job is done.
 
 ## p2p
 
@@ -35,27 +40,29 @@ flowchart LR
     A -. starts .-> C
 ```
 
-## supervisor-executor
+## lead-peer
 
-A foreman and a crew. The supervisor never does the work itself: it cuts your goal into small
-tasks, each with a check that proves it done, hands them out, and reads every result. A result
-that misses the check goes back with a note (`rework`). Executors can argue with a task mid-way;
-that is welcome.
+A lead and peers who may know as much as it does. The lead owns the plan: it cuts your goal into
+scopes, briefs a peer for each with a check that proves it done, and judges every result; a
+result that misses the check goes back with a note (`rework`). A peer follows the brief by
+default and speaks up only with evidence that the plan is off (wrong premise, wrong focus, more
+than the goal needs); the lead weighs that evidence, not who said it, and brings a disagreement it
+cannot settle to you.
 
 ```mermaid
 flowchart TD
-    H(["You"]) --> S["supervisor<br/>splits the goal, judges each result"]
-    S -. starts .-> E1["executor"]
-    S -. starts .-> E2["executor"]
-    S -- "task, rework" --> E1
-    S -- "task, rework" --> E2
-    E1 -- "handback, ask" --> S
-    E2 -- "handback, ask" --> S
+    H(["You"]) <--> L["lead<br/>owns the plan, judges each result"]
+    L -. starts .-> P1["peer"]
+    L -. starts .-> P2["peer"]
+    L -- "task, rework" --> P1
+    L -- "task, rework" --> P2
+    P1 -- "handback, ask, evidence" --> L
+    P2 -- "handback, ask, evidence" --> L
 ```
 
-Executors cannot talk to each other. Anything they need from one another goes through the
-supervisor, which keeps one view of the whole job. A second executor only starts when two tasks
-can really run side by side.
+Peers cannot talk to each other. Anything they need from one another goes through the lead,
+which keeps one view of the whole job. A second peer only starts when two scopes can really run
+side by side; peers that would change the same files get their own branch and worktree.
 
 ## slp
 
@@ -73,29 +80,13 @@ flowchart TD
     S <--> L
     L <--> P1
     L <--> P2
-    S -- "a word to a peer<br/>(the lead gets a copy)" --> P1
+    S -. "reads the lead's log" .-> L
 ```
 
-The supervisor may tell a peer something directly, but the lead always gets a copy, so the lane's
-plan stays in one place. One lane is the default; more lanes only when the parts really are
+The supervisor talks only to leads and watches a lane by reading its lead's log, so the lane's
+plan stays in one place. A lead writes to its peers as a person would, so a peer sees only its work
+and the one who gives it. One lane is the default; more lanes only when the parts really are
 separate.
-
-## dual-lane-adjudication
-
-The Lead frames one problem through two useful perspectives. GPT-6-astra and Claude Opus 5.5
-analyze independently; only after both reports arrive does the Lead exchange conflicting claims
-and evidence. Bounded checks resolve the conflict or leave an explicit decision with dissent.
-There is no third worker. Existing compatible teams may apply the same method within their
-own role permissions. The legacy `triple-review` name resolves to this two-lane contract for
-new teams; existing frozen teams stay unchanged.
-
-```mermaid
-flowchart TD
-    L[Lead: frame, compare, resolve] <--> A[Lane A: independent perspective]
-    L <--> B[Lane B: independent perspective]
-    L -. starts .-> A
-    L -. starts .-> B
-```
 
 ## council
 
@@ -116,7 +107,8 @@ flowchart TD
 ```
 
 The council ends at the verdict. If you then want it carried out, say so, or use another template
-for the doing.
+for the doing. Called up as a taskforce, the chair is a headless worker: it sends the verdict to the
+session that called it, only reads, and the caller closes the taskforce.
 
 ## amp-like
 
@@ -144,6 +136,51 @@ actually think differently:
 
 Set them in `roles.oracle.spawn.model`, `roles.oracle.spawn.thinking` and
 `roles.reviewer.spawn.model`, written the way that role's harness names models and levels.
+
+## dual-lens
+
+A taskforce for one hard technical question or one review. You (or your session, on its own
+judgment) call it up with the task; its chair writes one neutral brief and gives it to two lenses
+that run different models. The chair checks evidence behind agreement as well as disagreement. Where
+they conflict, it hands each lens the other's argument to answer, then decides on the evidence and
+sends you the decision, what both agreed on, each conflict and how it was settled, and what is
+still open. The lenses never see each other, and nobody edits a file unless the task says so.
+
+```mermaid
+flowchart TD
+    H(["Your session"]) -- "task" --> L["chair (lead)<br/>decides, answers you"]
+    L -. "same brief" .-> A["lens-a<br/>model A, reads only"]
+    L -. "same brief" .-> B["lens-b<br/>model B, reads only"]
+    A -- "opinion, answer" --> L
+    B -- "opinion, answer" --> L
+    L -- "B's argument" --> A
+    L -- "A's argument" --> B
+    L -- "decision" --> H
+```
+
+The fork defaults to native Codex / GPT-6-astra / high and native Claude / Opus 5.5 / high.
+Customize `roles.lens-a.spawn` and `roles.lens-b.spawn` in your own template to choose other
+available model families. The chair checks actual routes and input revisions; unavailable routes
+or missing essential evidence produce BLOCKED. The concurrency limit is three, including the
+headless chair. Both first passes stay private; conflicts get at most two evidence-driven rounds,
+and remaining dissent stays explicit. The compatibility names `dual-lane-adjudication` and
+`triple-review` load this same workflow for new teams. Existing frozen teams are unchanged.
+The chair is a headless worker; it stays for
+follow-up questions. Your session closes the taskforce when it is done. You can also found
+it as a long-lived team, with yourself as the one who asks.
+
+## advisor
+
+A taskforce of one, for a decision you are stuck on or an approach that is not working. The
+advisor does not see your session: it works from your brief and the files it reads, and if
+something missing would change its advice it asks you once by mail. It answers with a recommendation
+and how confident it is, the evidence and assumptions, the credible alternatives and the strongest
+downside, and the smallest check that could prove it wrong (marked as not run). It reads and
+advises; it never edits, and you stay the one who decides. It is not for broad research, for
+carrying out the change, or for a verdict that a change is ready.
+
+Your session closes the taskforce when it is done. With
+nobody else on the team there is no diagram: one worker, one asker.
 
 ## gastown-like
 

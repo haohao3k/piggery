@@ -96,6 +96,27 @@ class UpstreamDatabaseTests(unittest.TestCase):
         with local_dev._restore_upstream_database(self.root, None, None) as again:
             self.assertIsNone(again)
 
+    def test_native_upstream_schema_is_not_converted_or_downgraded(self):
+        self.db.execute("ALTER TABLE participants DROP COLUMN binding_quarantined")
+        self.db.executescript((self.root / 'internal/store/migrate_23.sql').read_text())
+        self.db.commit()
+        with local_dev._restore_upstream_database(self.root, None, None) as receipt:
+            self.assertIsNone(receipt)
+        self.assertEqual(local_dev._database_version(self.path), 23)
+        for n in range(24, 28):
+            self.db.executescript((self.root / f'internal/store/migrate_{n}.sql').read_text())
+        self.db.execute("UPDATE meta SET value='27' WHERE key='schema_version'")
+        self.db.commit()
+        before = list(self.db.iterdump())
+        with local_dev._restore_upstream_database(self.root, None, None) as receipt:
+            self.assertIsNone(receipt)
+        self.assertEqual(list(self.db.iterdump()), before)
+        self.db.execute('ALTER TABLE participants ADD COLUMN unexpected TEXT')
+        self.db.commit()
+        with self.assertRaisesRegex(local_dev.LocalDevError, 'unsupported database schema 27'):
+            with local_dev._restore_upstream_database(self.root, None, None):
+                self.fail('unknown native schema accepted')
+
     def test_stopped_wal_database_without_sidecars_can_be_inspected(self):
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.close()

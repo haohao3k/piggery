@@ -1,6 +1,6 @@
 # Codex session isolation
 
-This fork follows upstream v0.8.0 and [PR #6](https://github.com/sting8k/piggery/pull/6),
+This fork follows upstream v0.9.0 and [PR #6](https://github.com/sting8k/piggery/pull/6),
 which supersedes our [PR #5](https://github.com/sting8k/piggery/pull/5) for
 [issue #4](https://github.com/sting8k/piggery/issues/4).
 
@@ -20,7 +20,7 @@ their cached connections and instructions do not change when the executable is r
 
 ## Historical fork data
 
-The runtime and store use upstream schema 22. The old fork-only migration 23 added a
+The runtime and store use upstream schema 27. The old fork-only migration 23 added a
 `binding_quarantined` column to flag ambiguous historical identities; it was not an upstream
 version or a newer Piggery release.
 
@@ -30,7 +30,9 @@ SQLite backup under `~/.piggery/backups/fork23-to-upstream22-*.db`. It requires 
 participant to be a gone interactive session. Those rows receive upstream's `left_at` marker,
 lose their old host and token, and keep their identity references and history. The script drops
 the fork column, verifies the resulting schema against upstream migrations, and sets version 22
-in the same transaction. A failed binary installation rolls the transaction back.
+in the same transaction. The runtime then applies upstream migrations through 27. A failed binary
+installation rolls the conversion transaction back. Native upstream schemas 23–27 are recognized
+by their schema shape and never run through the historical fork conversion.
 
 Messages, acknowledgements, aliases and unflagged participants remain unchanged. Reconnecting
 an ambiguous old session creates a fresh participant; no old mail is reassigned. Unknown schema

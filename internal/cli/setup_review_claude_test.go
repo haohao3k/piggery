@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestWriteClaudePluginInstallsDualLaneAdjudicationSkill(t *testing.T) {
+func TestWriteClaudePluginInstallsDualLensSkill(t *testing.T) {
 	root := t.TempDir()
 	oldPath := filepath.Join(root, "piggery", "skills", "three-review", "SKILL.md")
 	if err := writeSkillFileAtomic(oldPath, []byte(legacyThreeReviewSkill("/opt/piggery"))); err != nil {
@@ -21,15 +21,15 @@ func TestWriteClaudePluginInstallsDualLaneAdjudicationSkill(t *testing.T) {
 	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
 		t.Fatalf("legacy Claude skill not retired: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join(root, "piggery", "skills", "dual-lane-adjudication", "SKILL.md"))
+	b, err := os.ReadFile(filepath.Join(root, "piggery", "skills", "dual-lens", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(b)
-	if !strings.Contains(s, "name: dual-lane-adjudication") {
+	if !strings.Contains(s, "name: dual-lens") {
 		t.Fatalf("skill name missing:\n%s", s)
 	}
-	if !strings.Contains(s, "'/opt/piggery' skills dual-lane-adjudication") {
+	if !strings.Contains(s, "'/opt/piggery' skills dual-lens") {
 		t.Fatalf("skill does not point at the installing CLI:\n%s", s)
 	}
 	if !strings.Contains(s, "$ARGUMENTS") {
@@ -37,7 +37,7 @@ func TestWriteClaudePluginInstallsDualLaneAdjudicationSkill(t *testing.T) {
 	}
 }
 
-func TestRefreshClaudeRefreshesDualLaneAdjudicationSkillCache(t *testing.T) {
+func TestRefreshClaudeRefreshesDualLensSkillCache(t *testing.T) {
 	home, bin := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin)
@@ -57,8 +57,8 @@ func TestRefreshClaudeRefreshesDualLaneAdjudicationSkillCache(t *testing.T) {
 	}
 	changes(t, log)
 
-	source := filepath.Join(root, "piggery", "skills", "dual-lane-adjudication", "SKILL.md")
-	cache := filepath.Join(home, ".claude", "plugins", "cache", "piggery", "piggery", "skills", "dual-lane-adjudication", "SKILL.md")
+	source := filepath.Join(root, "piggery", "skills", "dual-lens", "SKILL.md")
+	cache := filepath.Join(home, ".claude", "plugins", "cache", "piggery", "piggery", "skills", "dual-lens", "SKILL.md")
 	want, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestRefreshClaudeSkipsDisabledPluginSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cache := filepath.Join(home, ".claude", "plugins", "cache", "piggery", "piggery", "skills", "dual-lane-adjudication", "SKILL.md")
+	cache := filepath.Join(home, ".claude", "plugins", "cache", "piggery", "piggery", "skills", "dual-lens", "SKILL.md")
 	if err := os.WriteFile(cache, []byte("user cache edit"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -148,5 +148,28 @@ func TestRefreshClaudeSkipsDisabledPluginSkill(t *testing.T) {
 	}
 	if got, err := os.ReadFile(cache); err != nil || string(got) != "user cache edit" {
 		t.Fatalf("disabled refresh changed cache: %q, %v", got, err)
+	}
+}
+
+func TestClaudeDualLaneAliasRefreshPreservesCustomContent(t *testing.T) {
+	root := t.TempDir()
+	oldPath := filepath.Join(root, "piggery", "skills", "dual-lane-adjudication", "SKILL.md")
+	if err := writeSkillFileAtomic(oldPath, []byte(legacyDualLaneClaudeSkill("/bin/piggery"))); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeClaudePlugin(root, "/bin/piggery"); err != nil {
+		t.Fatal(err)
+	}
+	if s := string(mustReadFile(t, oldPath)); !strings.Contains(s, "name: dual-lane-adjudication") || !strings.Contains(s, "skills dual-lens") {
+		t.Fatalf("legacy Claude shortcut did not forward: %s", s)
+	}
+	if err := os.WriteFile(oldPath, []byte("my custom instructions"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeClaudePlugin(root, "/bin/piggery"); err != nil {
+		t.Fatal(err)
+	}
+	if string(mustReadFile(t, oldPath)) != "my custom instructions" {
+		t.Fatal("custom Claude alias overwritten")
 	}
 }

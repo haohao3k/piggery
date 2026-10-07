@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-const codexReviewSkill = "piggery-dual-lane-adjudication"
+const codexReviewSkill = "piggery-dual-lens"
 
 // Keep the receipt outside the skill directory so deliberately deleting the skill cannot
 // silently turn a refresh into a first install. CODEX_HOME scopes both files and test homes.
@@ -118,24 +119,28 @@ func inspectReviewSkillForSetup(home, name string, restoreMissing bool) (codexSk
 }
 
 func writeCodexSkill(home, self string, before codexSkillState) error {
+	return writeReviewSkill(home, self, codexReviewSkill, before)
+}
+
+func writeReviewSkill(home, self, name string, before codexSkillState) error {
 	// Recheck ownership after the host registration work, before touching skill bytes.
-	if _, err := inspectCodexSkillForSetup(home, before.receipt != nil && before.content == nil); err != nil {
+	if _, err := inspectReviewSkillForSetup(home, name, before.receipt != nil && before.content == nil); err != nil {
 		return err
 	}
-	content := []byte(dualLaneAdjudicationSkill(self, codexReviewSkill))
-	record := codexSkillReceipt{SHA256: skillHash(content), TemplateSHA256: skillHash([]byte(dualLaneAdjudicationSkillMD)),
+	content := []byte(dualLensSkill(self, name))
+	record := codexSkillReceipt{SHA256: skillHash(content), TemplateSHA256: skillHash([]byte(dualLensSkillMD)),
 		Executable: self, CreatedSkillsDir: before.newRoot}
 	if before.receipt != nil {
 		record.CreatedSkillsDir = before.receipt.CreatedSkillsDir
 	}
-	if err := writeSkillFileAtomic(codexSkillPath(home), content); err != nil {
+	if err := writeSkillFileAtomic(reviewSkillPath(home, name), content); err != nil {
 		return err
 	}
 	raw, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err
 	}
-	return writeSkillFileAtomic(codexSkillReceiptPath(home), append(raw, '\n'))
+	return writeSkillFileAtomic(reviewSkillReceiptPath(home, name), append(raw, '\n'))
 }
 
 // Unlike the older hook writer, use an exclusive random temporary file so a pre-existing
@@ -159,7 +164,19 @@ func writeSkillFileAtomic(path string, content []byte) error {
 	return os.Rename(f.Name(), path)
 }
 
-func removeCodexSkill(home string) (string, error) { return removeReviewSkill(home, codexReviewSkill) }
+func removeCodexSkill(home string) (string, error) {
+	var notes []string
+	for _, name := range []string{codexReviewSkill, legacyDualLaneSkill, legacyReviewSkill} {
+		note, err := removeReviewSkill(home, name)
+		if err != nil {
+			return strings.Join(notes, "\n"), err
+		}
+		if note != "" {
+			notes = append(notes, note)
+		}
+	}
+	return strings.Join(notes, "\n"), nil
+}
 
 func removeReviewSkill(home, name string) (string, error) {
 	state, err := inspectReviewSkillForSetup(home, name, false)
@@ -192,47 +209,50 @@ func installCodexReviewShortcut(home, self string, restoreMissing bool) (string,
 		return "", err
 	}
 	if codexReviewSkillCurrent(state, self) {
-		return finishReviewShortcutMigration(home, "dual-lane-adjudication (Codex): ready"), nil
+		return finishReviewShortcutMigration(home, self, "dual-lens (Codex): ready"), nil
 	}
 	if err := writeCodexSkill(home, self, state); err != nil {
 		return "", err
 	}
-	return finishReviewShortcutMigration(home, fmt.Sprintf("dual-lane-adjudication (Codex): installed $piggery-dual-lane-adjudication in %s", codexSkillPath(home))), nil
+	return finishReviewShortcutMigration(home, self, fmt.Sprintf("dual-lens (Codex): installed $piggery-dual-lens in %s", codexSkillPath(home))), nil
 }
 
 func codexReviewSkillCurrent(state codexSkillState, self string) bool {
-	return state.receipt != nil && bytes.Equal(state.content, []byte(dualLaneAdjudicationSkill(self, codexReviewSkill))) &&
-		state.receipt.TemplateSHA256 == skillHash([]byte(dualLaneAdjudicationSkillMD)) && state.receipt.Executable == self
+	return state.receipt != nil && bytes.Equal(state.content, []byte(dualLensSkill(self, codexReviewSkill))) &&
+		state.receipt.TemplateSHA256 == skillHash([]byte(dualLensSkillMD)) && state.receipt.Executable == self
 }
 
 func codexReviewStatus(home, self string) string {
 	state, err := inspectCodexSkill(home)
 	if err != nil {
-		return "dual-lane-adjudication (Codex): needs attention: " + err.Error() + "; use piggery setup dual-lane-adjudication"
+		return "dual-lens (Codex): needs attention: " + err.Error() + "; use piggery setup dual-lens"
 	}
 	if codexReviewSkillCurrent(state, self) {
-		return "dual-lane-adjudication (Codex): ready"
+		return "dual-lens (Codex): ready"
 	}
-	return "dual-lane-adjudication (Codex): shortcut available; install or update with piggery setup dual-lane-adjudication"
+	return "dual-lens (Codex): shortcut available; install or update with piggery setup dual-lens"
 }
 
 // The addon ships with the fork, but a custom or deleted shortcut cannot block adapter upkeep.
 func codexSetupWithReview(home, self, adapterMessage string, includeMissing bool) string {
 	// An unchanged installed legacy shortcut opts into migration. Deleted/custom copies do not.
-	if legacy, err := inspectReviewSkillForSetup(home, legacyReviewSkill, false); err == nil && legacy.receipt != nil {
-		includeMissing = true
+	for _, name := range []string{legacyReviewSkill, legacyDualLaneSkill} {
+		if legacy, err := inspectReviewSkillForSetup(home, name, false); err == nil && legacy.receipt != nil {
+			includeMissing = true
+		}
 	}
 	if state, err := inspectCodexSkill(home); err == nil && state.receipt == nil && !includeMissing {
 		return adapterMessage + "\n" + codexReviewStatus(home, self)
 	}
 	note, err := installCodexReviewShortcut(home, self, false)
 	if err != nil {
-		note = "warning: dual-lane-adjudication shortcut not updated: " + err.Error() + "; use piggery setup dual-lane-adjudication"
+		note = "warning: dual-lens shortcut not updated: " + err.Error() + "; use piggery setup dual-lens"
 	}
 	return adapterMessage + "\n" + note
 }
 
 const legacyReviewSkill = "piggery-three-review"
+const legacyDualLaneSkill = "piggery-dual-lane-adjudication"
 
 func reviewSkillPath(home, name string) string {
 	return filepath.Join(home, "skills", name, "SKILL.md")
@@ -242,7 +262,16 @@ func reviewSkillReceiptPath(home, name string) string {
 }
 
 // Retire only a receipt-owned unchanged legacy shortcut, after the new one is ready.
-func finishReviewShortcutMigration(home, message string) string {
+func finishReviewShortcutMigration(home, self, message string) string {
+	// Keep an installed, unchanged old name as a thin entry into the canonical workflow.
+	// Customized/deleted aliases remain untouched, even during explicit canonical setup.
+	if old, err := inspectReviewSkillForSetup(home, legacyDualLaneSkill, false); err != nil {
+		message += "\nwarning: legacy shortcut preserved: " + err.Error()
+	} else if old.receipt != nil {
+		if err := writeReviewSkill(home, self, legacyDualLaneSkill, old); err != nil {
+			message += "\nwarning: legacy shortcut preserved: " + err.Error()
+		}
+	}
 	note, err := removeReviewSkill(home, legacyReviewSkill)
 	if err != nil {
 		return message + "\nwarning: legacy shortcut preserved: " + err.Error()

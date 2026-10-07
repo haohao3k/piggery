@@ -21,7 +21,7 @@ func TestCodexReviewSkillLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err := inspectCodexSkill(home)
-	if err != nil || state.receipt == nil || string(state.content) != dualLaneAdjudicationSkill("/bin/piggery", codexReviewSkill) {
+	if err != nil || state.receipt == nil || string(state.content) != dualLensSkill("/bin/piggery", codexReviewSkill) {
 		t.Fatalf("installed skill: %+v %v", state, err)
 	}
 	// A previously installed, still-owned skill refreshes even at the same integration version.
@@ -44,7 +44,7 @@ func TestCodexReviewSkillLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(codexSkillPath(home))
-	if err != nil || string(got) != dualLaneAdjudicationSkill("/opt/new piggery", codexReviewSkill) {
+	if err != nil || string(got) != dualLensSkill("/opt/new piggery", codexReviewSkill) {
 		t.Fatalf("refreshed skill: %s %v", got, err)
 	}
 	if st := codexStatus(home, "/opt/new piggery"); len(st.Problems) != 0 {
@@ -79,7 +79,7 @@ func TestCodexReviewSkillPreservesCustomizationAndRemoval(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if msg, err := refreshCodex(t.TempDir(), home, "/opt/piggery"); err != nil || !strings.Contains(msg, "warning: dual-lane-adjudication") {
+			if msg, err := refreshCodex(t.TempDir(), home, "/opt/piggery"); err != nil || !strings.Contains(msg, "warning: dual-lens") {
 				t.Fatalf("addon blocked adapter refresh or warning missing: %v", err)
 			}
 			if st := codexStatus(home, "/opt/piggery"); len(st.Problems) != 0 {
@@ -129,7 +129,7 @@ func TestCodexReviewSkillDoesNotClaimUnownedPaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if msg, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil || !strings.Contains(msg, "warning: dual-lane-adjudication") {
+			if msg, err := installCodex(t.TempDir(), home, "/bin/piggery"); err != nil || !strings.Contains(msg, "warning: dual-lens") {
 				t.Fatalf("addon blocked adapter install or warning missing: %v", err)
 			}
 			if _, err := os.Stat(filepath.Join(home, "hooks.json")); err != nil {
@@ -224,7 +224,7 @@ func TestCodexReviewSkillDetectsInterruptedExecutableUpdate(t *testing.T) {
 	if _, err := refreshCodex(t.TempDir(), home, "/opt/piggery"); err != nil {
 		t.Fatal(err)
 	}
-	if got := codexReviewStatus(home, "/opt/piggery"); got != "dual-lane-adjudication (Codex): ready" {
+	if got := codexReviewStatus(home, "/opt/piggery"); got != "dual-lens (Codex): ready" {
 		t.Fatalf("binding not repaired: %s", got)
 	}
 }

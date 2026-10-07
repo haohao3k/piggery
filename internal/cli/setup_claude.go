@@ -162,10 +162,23 @@ func writeClaudePlugin(root, self string) error {
 	}
 	// Claude exposes a plugin skill as a namespaced slash command. Keep the command's
 	// invocation arguments literal: Claude substitutes $ARGUMENTS when the user runs
-	// `/piggery:dual-lane-adjudication <scope>`.
-	skill := dualLaneAdjudicationSkill(self, "dual-lane-adjudication") + "\n\n## Invocation arguments\n\n$ARGUMENTS\n"
-	if err := writeFileAtomic(filepath.Join(root, "piggery", "skills", "dual-lane-adjudication", "SKILL.md"), []byte(skill)); err != nil {
+	// `/piggery:dual-lens <scope>`.
+	skill := dualLensSkill(self, "dual-lens") + "\n\n## Invocation arguments\n\n$ARGUMENTS\n"
+	if err := writeFileAtomic(filepath.Join(root, "piggery", "skills", "dual-lens", "SKILL.md"), []byte(skill)); err != nil {
 		return err
+	}
+	// Preserve an existing customized alias; update only a recognized managed bootstrap.
+	oldDir := filepath.Join(root, "piggery", "skills", "dual-lane-adjudication")
+	oldPath := filepath.Join(oldDir, "SKILL.md")
+	alias := dualLensSkill(self, "dual-lane-adjudication") + "\n\n## Invocation arguments\n\n$ARGUMENTS\n"
+	if dir, err := os.Lstat(oldDir); err == nil && dir.IsDir() {
+		if st, err := os.Lstat(oldPath); err == nil && st.Mode().IsRegular() {
+			if b, err := os.ReadFile(oldPath); err == nil && (bytes.Equal(b, []byte(legacyDualLaneClaudeSkill(self))) || bytes.Equal(b, []byte(alias))) {
+				if err := writeFileAtomic(oldPath, []byte(alias)); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	// Legacy copies without edits can be retired. Custom copies keep their old CLI alias.
 	legacyDir := filepath.Join(root, "piggery", "skills", "three-review")

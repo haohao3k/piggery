@@ -8,12 +8,12 @@ import (
 	"testing"
 )
 
-func TestDualLaneAdjudicationSetupRestoresShortcutIndependently(t *testing.T) {
+func TestDualLensSetupRestoresShortcutIndependently(t *testing.T) {
 	home := fakeReviewCodex(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEX_HOME", home)
 	e := &env{dir: t.TempDir(), stdout: &strings.Builder{}}
-	if err := e.setup([]string{"dual-lane-adjudication"}); err != nil {
+	if err := e.setup([]string{"dual-lens"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"hooks.json", "config.toml"} {
@@ -28,13 +28,13 @@ func TestDualLaneAdjudicationSetupRestoresShortcutIndependently(t *testing.T) {
 	if err := os.Remove(codexSkillPath(home)); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.setup([]string{"dual-lane-adjudication"}); err != nil {
+	if err := e.setup([]string{"dual-lens"}); err != nil {
 		t.Fatal(err)
 	}
 	if state, err := inspectCodexSkill(home); err != nil || state.receipt == nil {
 		t.Fatalf("shortcut not restored: %v", err)
 	}
-	if err := e.setup([]string{"remove", "dual-lane-adjudication"}); err != nil {
+	if err := e.setup([]string{"remove", "dual-lens"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := refreshCodex(e.dir, home, "/bin/piggery"); err != nil {
@@ -46,14 +46,14 @@ func TestDualLaneAdjudicationSetupRestoresShortcutIndependently(t *testing.T) {
 	if string(mustReadFile(t, filepath.Join(home, "hooks.json"))) != string(hooks) || string(mustReadFile(t, filepath.Join(home, "config.toml"))) != string(cfg) {
 		t.Fatal("addon maintenance changed adapter")
 	}
-	if err := e.setup([]string{"dual-lane-adjudication"}); err != nil {
+	if err := e.setup([]string{"dual-lens"}); err != nil {
 		t.Fatal(err)
 	}
 	custom := []byte("Human's custom skill")
 	if err := os.WriteFile(codexSkillPath(home), custom, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.setup([]string{"dual-lane-adjudication"}); err == nil {
+	if err := e.setup([]string{"dual-lens"}); err == nil {
 		t.Fatal("customized skill was accepted for overwrite")
 	}
 	if string(mustReadFile(t, codexSkillPath(home))) != string(custom) {
@@ -124,5 +124,57 @@ func TestLegacyReviewShortcutMigrationPreservesOwnership(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDualLaneShortcutRefreshKeepsAliasAndPreservesUserChanges(t *testing.T) {
+	home := t.TempDir()
+	oldPath := reviewSkillPath(home, legacyDualLaneSkill)
+	original := []byte("old managed dual-lane bootstrap")
+	if err := writeSkillFileAtomic(oldPath, original); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(codexSkillReceipt{SHA256: skillHash(original), Executable: "/old/piggery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSkillFileAtomic(reviewSkillReceiptPath(home, legacyDualLaneSkill), raw); err != nil {
+		t.Fatal(err)
+	}
+	codexSetupWithReview(home, "/new/piggery", "adapter ready", false)
+	if state, err := inspectCodexSkill(home); err != nil || !codexReviewSkillCurrent(state, "/new/piggery") {
+		t.Fatalf("canonical shortcut not installed from old managed opt-in: %v", err)
+	}
+	old, err := inspectReviewSkillForSetup(home, legacyDualLaneSkill, false)
+	if err != nil || string(old.content) != dualLensSkill("/new/piggery", legacyDualLaneSkill) {
+		t.Fatalf("old shortcut did not forward to dual-lens on new executable: %v", err)
+	}
+	if _, err := removeCodexSkill(home); err != nil {
+		t.Fatal(err)
+	}
+	codexSetupWithReview(home, "/new/piggery", "adapter ready", false)
+	for _, p := range []string{oldPath, codexSkillPath(home)} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Fatalf("removed shortcut resurrected: %s %v", p, err)
+		}
+	}
+	if err := writeSkillFileAtomic(oldPath, original); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSkillFileAtomic(reviewSkillReceiptPath(home, legacyDualLaneSkill), raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, []byte("my custom instructions"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	codexSetupWithReview(home, "/new/piggery", "adapter ready", false)
+	if _, err := os.Stat(codexSkillPath(home)); !os.IsNotExist(err) {
+		t.Fatal("custom legacy skill opted into a new shortcut")
+	}
+	if _, err := installCodexReviewShortcut(home, "/new/piggery", true); err != nil {
+		t.Fatal(err)
+	}
+	if string(mustReadFile(t, oldPath)) != "my custom instructions" {
+		t.Fatal("custom legacy skill overwritten")
 	}
 }

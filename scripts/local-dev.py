@@ -908,9 +908,9 @@ def _schema_signature(db: sqlite3.Connection) -> list[tuple[str, ...]]:
                 "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name")]
 
 
-def _upstream_schema(root: Path, *, fork_column: bool = False) -> list[tuple[str, ...]]:
+def _upstream_schema(root: Path, *, fork_column: bool = False, version: int = 22) -> list[tuple[str, ...]]:
     with closing(sqlite3.connect(":memory:")) as ref:
-        for name in ["schema.sql", *[f"migrate_{n}.sql" for n in range(2, 23)]]:
+        for name in ["schema.sql", *[f"migrate_{n}.sql" for n in range(2, version + 1)]]:
             ref.executescript((root / "internal/store" / name).read_text())
         if fork_column:
             ref.execute("ALTER TABLE participants ADD COLUMN binding_quarantined INTEGER NOT NULL DEFAULT 0")
@@ -919,7 +919,7 @@ def _upstream_schema(root: Path, *, fork_column: bool = False) -> list[tuple[str
 
 @contextmanager
 def _restore_upstream_database(root: Path, probe: Path | None, caller: str | None):
-    """Retire the known fork-23 bindings once, under the daemon lock, before installing schema 22.
+    """Retire the known fork-23 bindings once, under the daemon lock, before installing the current upstream runtime.
 
     The transaction commits only if the binary replacement succeeds. The Go store and all future
     migrations remain upstream's; unknown schemas are never relabelled as an older version.
@@ -930,6 +930,14 @@ def _restore_upstream_database(root: Path, probe: Path | None, caller: str | Non
     if version is None or version <= 22:
         yield None
         return
+    # Upstream now has its own schema 23 and later migrations. Accept only a schema matching
+    # this checkout; distinguish the old fork-23 shape before invoking its one-time conversion.
+    latest = max(int(p.stem.removeprefix("migrate_")) for p in (root / "internal/store").glob("migrate_*.sql"))
+    if version <= latest:
+        with closing(sqlite3.connect(path.as_uri() + "?mode=rw", uri=True)) as db:
+            if _schema_signature(db) == _upstream_schema(root, version=version):
+                yield None
+                return
     if version != 23:
         raise LocalDevError(f"unsupported database schema {version}; no conversion attempted")
     # Recheck immediately before stopping the old daemon; never start the candidate on fork-23.

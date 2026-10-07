@@ -621,7 +621,7 @@ func TestTemplatesAction(t *testing.T) {
 		names = append(names, tpl.Name)
 		byName[tpl.Name] = tpl
 	}
-	if strings.Join(names, " ") != "amp-like council dual-lane-adjudication gastown-like mine p2p slp supervisor-executor triple-review" {
+	if strings.Join(names, " ") != "advisor amp-like council dual-lane-adjudication dual-lens gastown-like lead-peer mine p2p slp triple-review" {
 		t.Fatalf("templates = %v; want the home's only", names)
 	}
 	if p := byName["p2p"]; p.Summary == "repo peers" || p.From != filepath.Join(manifests.Dir(dir), "p2p") {
