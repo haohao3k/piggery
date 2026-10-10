@@ -103,6 +103,10 @@ test("the omp extension against a fake daemon", async (t) => {
 	handlers.session_start({}, ctx);
 	await until(() => calls.some((c) => c.verb === "identify"));
 	const turns = globalThis.__piggeryOmp.turns;
+	// Receiving identify is not readiness: its response starts an asynchronous mail check.
+	// Wait for that check and its reply before a subtest resets the observed calls.
+	await until(() => calls.some((c) => c.verb === "harness.event" && c.args.wake));
+	await turns.drain();
 
 	// What the daemon was told since the last reset, as `event[:outcome]` and `presence:<event>`.
 	const told = () =>

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.9.1 - 2026-10-11
+
+- Publish the fork's first binary release for Linux and macOS on amd64 and arm64,
+  with SHA-256 checksums and build provenance.
+- Wait for the omp adapter's initial mail check before testing later events, removing a
+  startup race in CI without weakening event assertions. Run every adapter suite and
+  govulncheck in the release gate, matching CI.
+
 - Sync upstream v0.9.0 and consolidate the fork's two-lane review into `dual-lens` taskforces.
   Keep distinct native model routes, immutable review inputs, independent first reports,
   verification of agreement, bounded conflict exchange and explicit dissent. Add canonical
