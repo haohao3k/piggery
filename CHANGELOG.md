@@ -6,6 +6,7 @@
 
 - Publish the fork's first binary release for Linux and macOS on amd64 and arm64,
   with SHA-256 checksums and build provenance.
+- Build with Go 1.26.9 to include the current standard-library security fixes.
 - Wait for the omp adapter's initial mail check before testing later events, removing a
   startup race in CI without weakening event assertions. Run every adapter suite and
   govulncheck in the release gate, matching CI.
