@@ -4,6 +4,32 @@ How to use piggery day to day, by task. Every key and command is listed in
 [reference.md](reference.md); `piggery --help` lists the commands and `piggery <command> --help`
 shows one. Install and first steps are in the [README](../README.md).
 
+## Install on a Linux machine over SSH
+
+SSH into the machine as the user who runs your agents. Linux x86-64 (AMD or Intel) uses
+the amd64 binary; aarch64 uses arm64. The release installer needs curl or wget and a
+SHA-256 checker, but no Go, Python, Node.js or source checkout.
+
+```sh
+ssh user@host
+curl -fsSL https://raw.githubusercontent.com/haohao3k/piggery/main/install.sh -o /tmp/piggery-install.sh
+sh /tmp/piggery-install.sh
+export PATH="$HOME/.local/bin:$PATH"
+piggery --version
+piggery setup claude   # or an installed pi, codex, omp, dsh, opencode
+piggery check
+piggery ps
+piggery doctor
+```
+
+Keep `~/.local/bin` on PATH in your shell profile. Install and authenticate the chosen
+agent CLI separately, then open a new session in your project and ask it to found a team.
+`piggery top` watches that machine's agents. Each machine has its own `~/.piggery`; SSH
+does not synchronize teams, credentials or templates between hosts.
+
+For an existing installation, wait for agents to finish before `piggery update`, then run
+`piggery setup --outdated` and reconnect the affected sessions.
+
 ## Concepts in one screen
 
 - **Session**: an agent you opened yourself (pi, Claude Code, Codex, omp, dsh or opencode). Once piggery is

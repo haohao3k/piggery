@@ -32,10 +32,12 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: python3 scripts/test_local_dev.py
-      - run: node --test extensions/pi/*.test.mjs
+      - run: node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
       - name: Paseo plugin
         working-directory: extensions/paseo
         run: npm ci --ignore-scripts && npm run typecheck && npm test
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   build:
     name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
