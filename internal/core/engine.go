@@ -77,6 +77,10 @@ func (e *Engine) inTx(ctx context.Context, fn func(t *txn) error) error {
 	return d.err
 }
 
+// Rewake wakes a participant again if mail still waits and no turn is open: a runtime driver
+// calls it when a wake it took could not start a turn then (Codex, #26).
+func (e *Engine) Rewake(participantID string) { e.notifyAfterCommit(participantID) }
+
 // notifyAfterCommit tells the notify hook about new mail for a participant. Call only after
 // the message's transaction committed.
 // A participant in a turn the daemon counts (adapter events) is not woken: the turn gets the

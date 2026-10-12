@@ -178,13 +178,13 @@ const (
 
 var gcTeamUnit, gcSoloUnit = newGCUnit(gcTeamParts), newGCUnit(gcSoloParts)
 
-// newGCUnit selects every row of a unit, in delete order (dependents first).
+// newGCUnit selects every row of a unit, in delete order: dependents first, and a table's
+// selector reads only tables deleted after it (else the delete selects fewer rows than the archive).
 // participants.token_hash is never archived.
 func newGCUnit(parts string) gcUnit {
 	msgs := `team_id=:t OR from_id IN ({parts}) OR to_id IN ({parts})`
 	msgsO := `COALESCE(o.team_id,'')=:t OR o.from_id IN ({parts}) OR o.to_id IN ({parts})`
 	u := gcUnit{tables: []gcTable{
-		{"deliveries", `message_id IN (SELECT id FROM messages WHERE ` + msgs + `)`},
 		// A run is known by the participant's current run, the runs that got mail addressed to
 		// the unit (deliveries), processes and kept events. An older run's batch with no delivery
 		// (an empty pull) is not reachable: it stays behind, harmless (no reference to the unit).
@@ -193,6 +193,7 @@ func newGCUnit(parts string) gcUnit {
 		UNION SELECT run_id FROM deliveries WHERE message_id IN (SELECT id FROM messages WHERE to_id IN ({parts}))
 		UNION SELECT run_id FROM events WHERE run_id IS NOT NULL AND participant IN ({parts})
 		UNION SELECT run_id FROM processes WHERE participant_id IN ({parts}))`},
+		{"deliveries", `message_id IN (SELECT id FROM messages WHERE ` + msgs + `)`},
 		{"messages", msgs},
 		{"timers", `team_id=:t OR owner IN ({parts})`},
 		{"processes", `participant_id IN ({parts})`},

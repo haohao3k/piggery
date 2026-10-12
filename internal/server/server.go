@@ -164,6 +164,8 @@ func Run(ctx context.Context, cfg Config) error {
 		if err := s.eng.UnbatchedTurn(context.Background(), participantID, runID, event); err != nil {
 			s.log.Warn("turn", "participant", participantID, "run", runID, "event", event, "err", err)
 		}
+	}, OnRewake: func(participantID string) {
+		go s.eng.Rewake(participantID) // a wake writes the run's stdin: never on its stdout reader
 	}}
 	// Every built-in runtime driver; a worker runs on the one its harness names.
 	drivers := local.Builtin(cfg.Dir, opts)

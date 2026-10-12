@@ -83,6 +83,9 @@ type record struct {
 	// turn is core.TurnStarted or core.TurnEnded for a turn no delivered batch started; the
 	// runner reports it (Options.OnUnbatchedTurn).
 	turn string
+	// rewake: a wake came while the harness was still in a turn the daemon had already ended,
+	// and that turn is over now; the runner reports it (Options.OnRewake).
+	rewake bool
 }
 
 // Options tunes a Driver.
@@ -99,6 +102,9 @@ type Options struct {
 	// OnUnbatchedTurn is called when a turn no delivered batch started begins or ends
 	// (core.Engine.UnbatchedTurn).
 	OnUnbatchedTurn func(participantID, runID, event string)
+	// OnRewake is called when a wake the codec could not act on may be due now
+	// (core.Engine.Rewake). It must not block: it runs on the run's stdout reader.
+	OnRewake func(participantID string)
 	// StopWait is how long Stop waits after closing stdin before SIGTERM (default 10s);
 	// TermWait how long after SIGTERM before SIGKILL (default 5s); KillWait the same for Kill
 	// (default 2s).
@@ -574,6 +580,9 @@ func (d *Driver) normalize(w *worker, r io.ReadCloser) {
 			}
 			if rec.turn != "" && d.opts.OnUnbatchedTurn != nil {
 				d.opts.OnUnbatchedTurn(w.participantID, w.runID, rec.turn)
+			}
+			if rec.rewake && d.opts.OnRewake != nil {
+				d.opts.OnRewake(w.participantID)
 			}
 			if rec.fatal != "" {
 				f.Write(append(stdError(rec.fatal), '\n'))

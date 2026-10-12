@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.10.2 - 2026-10-12
+
+A Codex worker is woken for mail that came as its turn ended, and cleanup removes closed teams it used to skip.
+
+- Fix: a Codex worker could stay idle with unread mail. A mail that came in the moment between
+  the end of its turn and Codex reporting that turn over did not wake it, and once a turn had been
+  kept going 8 times for mail that came during it, this happened every time; the mail waited for
+  a newer one. The worker
+  is now woken once the turn is over (#26).
+- Fix: cleanup never removed a closed team in which a member had been given mail on an earlier
+  run of its process (`piggery gc` reported that the team had changed since the archive was
+  written, every time). Such teams are now removed.
+
 ## v0.10.1 - 2026-10-12
 
 Mail is no longer lost or held back after an interrupted, failed or crashed turn on any harness, cleanup keeps mail its recipients have not read, a team member can no longer stop a person's session, and Claude Code sessions keep their participant across `/clear`, `/branch` and forks.

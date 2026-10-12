@@ -443,6 +443,38 @@ func TestGCCollectsGoneSolosWithUnreadMailToEachOther(t *testing.T) {
 	}
 }
 
+// A batch on a member's older run, known only by the delivery of mail to the member, is
+// collected with the team: the delete selects it as the archive did (before, such a team was
+// skipped as changed on every gc).
+func TestGCCollectsABatchOnAnOlderRunKnownByItsDelivery(t *testing.T) {
+	f := newGCFixture(t, "a")
+	if _, err := f.e.Send(ctx, f.who["a"]["lead"], core.SendArgs{To: "lead2", Body: "read"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []core.HarnessEventArgs{{Event: core.HarnessTurnStart, PromptID: "p1"}, {Event: core.HarnessTurnEnd, PromptID: "p1", Outcome: core.HarnessOutcomeOK}} {
+		if _, err := f.e.HarnessEvent(ctx, f.who["a"]["lead2"], ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.e.Identify(ctx, f.who["a"]["lead2"], core.IdentifyArgs{NewRun: true}); err != nil { // a restart: new run, no event
+		t.Fatal(err)
+	}
+	if _, err := f.e.TeamDown(ctx, core.TeamDownArgs{Team: "a"}); err != nil {
+		t.Fatal(err)
+	}
+	*f.now = f.now.Add(2 * time.Hour)
+	res, err := f.e.GC(ctx, core.GCPlace{ArchiveDir: f.dir}, core.GCArgs{ClosedBeforeMs: time.Hour.Milliseconds()})
+	if err != nil || len(res.Teams) != 1 {
+		t.Fatalf("gc: %+v %v", res, err)
+	}
+	if g := res.Teams[0]; !g.Deleted || g.Counts["batches"] != 1 {
+		t.Fatalf("team not collected: %q, counts %v", g.Skipped, g.Counts)
+	}
+	if n := f.count(t, `SELECT COUNT(*) FROM batches`); n != 0 {
+		t.Fatalf("%d batches left", n)
+	}
+}
+
 // A name shared with a gone member of a closed team resolves to the live one; when every match
 // is in a closed team the name is ambiguous as before (`piggery x kc`, 2026-09-30).
 func TestAdminNameSkipsGoneMembersOfClosedTeams(t *testing.T) {
