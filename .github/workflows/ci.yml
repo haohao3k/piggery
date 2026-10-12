@@ -52,10 +52,6 @@ jobs:
       - name: Node tests
         if: ${{ !cancelled() }} # a failed Go step must not hide these
         run: node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
-      - name: Paseo plugin
-        if: ${{ !cancelled() }}
-        working-directory: extensions/paseo
-        run: npm ci --ignore-scripts && npm run typecheck && npm test
       # A warning here: a new Go advisory turns it red with no change of ours. The release
       # script runs it before a tag is made, where it blocks.
       - name: govulncheck

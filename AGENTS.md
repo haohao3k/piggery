@@ -16,7 +16,6 @@ go build ./cmd/piggery
 go vet ./...
 go test -race ./...
 node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
-(cd extensions/paseo && npm ci --ignore-scripts && npm run typecheck && npm test)
 go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 ```
 
@@ -33,8 +32,8 @@ CI runs exactly these. A change is not done until they pass.
 | `internal/proto` | The socket wire format (JSON lines), shared by server and clients |
 | `internal/cli` | The `piggery <cmd>` client, `top`, `setup <harness>`, hooks and `piggery mcp` |
 | `internal/driver/local` | Headless workers: the process runner plus one codec per harness |
-| `internal/view` | What `top`, `ps` and the Paseo plugin show |
-| `extensions/` | What runs inside a harness: pi, omp and dsh extensions, the Paseo plugin |
+| `internal/view` | What `top` and `ps` show (`ps --view` and `tail --view` print it as JSON) |
+| `extensions/` | What runs inside a harness: the pi, omp, dsh and opencode extensions |
 | `manifests/` | Built-in templates (`*.yaml`) and their role prompts, embedded in the binary |
 | `testdata/fixtures/` | Real captures of each harness, by version, replayed by the tests |
 

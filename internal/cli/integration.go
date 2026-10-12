@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -38,7 +37,7 @@ func (i integration) detail() string { return i.proto().Detail() }
 // manualIntegrations are the ones the daemon does not bring up by itself (`piggery setup
 // --outdated` does): their files sit in the harness's own config or in an app that has to reload
 // them. The others (pi, omp, dsh, opencode) are brought up by the daemon at its start.
-var manualIntegrations = map[string]bool{"claude": true, "codex": true, "paseo": true}
+var manualIntegrations = map[string]bool{"claude": true, "codex": true}
 
 // installedIntegrations is every integration of dir (and the Codex home) that is installed, with
 // its state, in the order of setupTargets.
@@ -69,9 +68,6 @@ func installedIntegrations(dir string) []integration {
 		case "codex":
 			have, installed, drift := codexIntegration(codexHome())
 			add("codex", have, installed, drift)
-		case "paseo":
-			have, installed := paseoIntegration(paseoDir(dir))
-			add("paseo", have, installed, "")
 		}
 	}
 	return out
@@ -89,7 +85,7 @@ func outdatedIntegrations(dir string, manual bool) (outdated []integration) {
 }
 
 // DaemonOutdated is server.Config.Integrations: the manual integrations that are outdated. The
-// daemon logs them at its start and ps reports them on each call, so ps, top and the Paseo plugin
+// daemon logs them at its start and ps reports them on each call, so ps and top
 // share one list.
 func DaemonOutdated(dir string) []proto.Outdated {
 	var out []proto.Outdated
@@ -195,19 +191,4 @@ func codexIntegration(home string) (have int, installed bool, drift string) {
 		drift = fmt.Sprintf("%d of %d hooks are in hooks.json", n, len(codexHookEvents))
 	}
 	return have, true, drift
-}
-
-// paseoVersionFile is the content of the VERSION file of the plugin copy: the marker and the
-// integer. The file also says the directory is piggery's.
-func paseoVersionFile() []byte {
-	return []byte(local.IntegrationMarker + strconv.Itoa(local.IntegrationVersion("paseo")) + "\n")
-}
-
-// paseoIntegration: the plugin copy setup wrote to dst (~/.piggery/paseo).
-func paseoIntegration(dst string) (have int, installed bool) {
-	b, err := os.ReadFile(filepath.Join(dst, "VERSION"))
-	if err != nil {
-		return 0, false
-	}
-	return local.ParseIntegration(string(bytes.TrimSpace(b))), true
 }

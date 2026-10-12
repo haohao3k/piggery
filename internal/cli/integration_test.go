@@ -64,23 +64,17 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 			block := strings.Replace(codexBlock("/h", "/x/piggery", nil), codexMarker(local.IntegrationVersion("codex"))+"\n", "", 1)
 			return map[string][]byte{"hooks.json": hooks, "config.toml": []byte(block)}
 		},
-		"paseo": func() map[string][]byte {
-			files := treeOf(t, func() (map[string][]byte, error) { return paseoFiles("/x/piggery") })
-			delete(files, "VERSION")
-			return files
-		},
 	}
 	for _, want := range []struct {
 		name    string
 		version int
 		digest  string
 	}{
-		{"pi", 12, "67a234c4c09f"},
-		{"omp", 12, "d0ed9c7c126c"},
-		{"dsh", 13, "12a19df971ca"},
+		{"pi", 13, "c34b709cfafd"},
+		{"omp", 13, "1b90961df7b8"},
+		{"dsh", 14, "53b417b50f7c"},
 		{"claude", 1, "ca51aeba0c80"},
 		{"codex", 1, "c914fad6023c"},
-		{"paseo", 4, "489ba22e2c79"},
 	} {
 		if runtime.GOOS == "windows" && (want.name == "claude" || want.name == "codex") {
 			continue // their hook commands are written in another form there (hookcmd_windows.go): the unix run holds the digest

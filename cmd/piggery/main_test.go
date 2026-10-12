@@ -30,7 +30,7 @@ func TestAdminTeamUpOnCleanHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(bin, "--admin", "team", "up", "p2p", "--cwd", repo)
+	cmd := exec.Command(bin, "--admin", "team", "up", "lead-peer", "--cwd", repo)
 	cmd.Env = append(os.Environ(), homeEnv(home)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("team up on clean home: %v\n%s", err, out)
@@ -83,12 +83,12 @@ func TestMCPThroughMain(t *testing.T) {
 		}
 		return out
 	}
-	run(nil, "", "--admin", "team", "up", "p2p", "--cwd", repo, "--name", "p2p")
+	run(nil, "", "--admin", "team", "up", "lead-peer", "--cwd", repo, "--name", "lp")
 	var j struct {
 		ID, Token string
 		RunID     string `json:"run_id"`
 	}
-	if err := json.Unmarshal(run(nil, "", "--admin", "--json", "join", "--team", "p2p", "--role", "peer", "--name", "w1"), &j); err != nil {
+	if err := json.Unmarshal(run(nil, "", "--admin", "--json", "join", "--team", "lp", "--role", "lead", "--name", "w1"), &j); err != nil {
 		t.Fatal(err)
 	}
 	out := run([]string{"PIGGERY_ID=" + j.ID, "PIGGERY_TOKEN=" + j.Token, "PIGGERY_RUN_ID=" + j.RunID}, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}

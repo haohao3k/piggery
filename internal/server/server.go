@@ -34,7 +34,7 @@ type Config struct {
 	// Integrations, when set (the daemon of the real binary; tests leave it nil, since the
 	// harness directories are the user's), makes the start bring the pi, omp, dsh and opencode extensions
 	// setup installed up to this binary's integration version, and log one warning for each
-	// outdated part it returns (claude, codex, paseo: only `piggery setup --outdated` changes
+	// outdated part it returns (claude, codex: only `piggery setup --outdated` changes
 	// them). ps reports the same list, read again on each call (files only).
 	Integrations func(dir string) []proto.Outdated
 	// Latest, when set, is the newest release's tag: the call `piggery update --check` makes. A release
@@ -212,10 +212,10 @@ func Run(ctx context.Context, cfg Config) error {
 			log.Warn("outdated integration: " + o.String() + ": piggery setup --outdated")
 		}
 	}
-	// A solo uses the limits of the built-in p2p template.
-	soloTemplate, err := manifests.Builtin("p2p")
+	// A solo uses the limits of the built-in lead-peer template.
+	soloTemplate, err := manifests.Builtin("lead-peer")
 	if err != nil {
-		return fmt.Errorf("built-in p2p: %w", err)
+		return fmt.Errorf("built-in lead-peer: %w", err)
 	}
 	runtimes := make([]core.Option, len(drivers))
 	for i, d := range drivers {

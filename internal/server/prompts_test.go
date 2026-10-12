@@ -94,8 +94,8 @@ prompts:
   - {file: rules.md, roles: [solo, "a/b/c"]}
   - {file: rules.md}
   - {roles: [solo]}
-  - {file: rules.md, roles: [solo, p2p/peer]}
-  - {file: rules.md, roles: ["*", "p2p/*", "exec*", "*/peer"]}
+  - {file: rules.md, roles: [solo, lead-peer/peer]}
+  - {file: rules.md, roles: ["*", "lead-peer/*", "exec*", "*/peer"]}
 `)
 	set, err := LoadSettings(dir)
 	if err != nil || set.Harness != "pi" || len(set.Warnings) != 5 {
@@ -106,18 +106,18 @@ prompts:
 			t.Errorf("warning %d = %q; want it to name %s", i, set.Warnings[i], want)
 		}
 	}
-	if len(set.Prompts) != 3 || !slices.Equal(set.Prompts[0].Roles, []string{"solo"}) || !slices.Equal(set.Prompts[2].Roles, []string{"*", "p2p/*"}) {
+	if len(set.Prompts) != 3 || !slices.Equal(set.Prompts[0].Roles, []string{"solo"}) || !slices.Equal(set.Prompts[2].Roles, []string{"*", "lead-peer/*"}) {
 		t.Fatalf("kept %+v; want the good entry and the good role of the first", set.Prompts)
 	}
 	kept, warns := CheckPrompts(dir, []PromptEntry{
-		{File: "rules.md", Roles: []string{"solo", "p2p/peer", "supervisor"}},
+		{File: "rules.md", Roles: []string{"solo", "lead-peer/peer", "supervisor"}},
 		{File: "nope.md", Roles: []string{"solo"}},
-		{File: "rules.md", Roles: []string{"solo", "nosuch/peer", "p2p/supervisor", "executr", "*", "p2p/*", "nosuch/*"}},
+		{File: "rules.md", Roles: []string{"solo", "nosuch/peer", "lead-peer/supervisor", "executr", "*", "lead-peer/*", "nosuch/*"}},
 	})
-	if len(kept) != 2 || len(kept[0].Roles) != 3 || !slices.Equal(kept[1].Roles, []string{"solo", "*", "p2p/*"}) || len(warns) != 5 {
+	if len(kept) != 2 || len(kept[0].Roles) != 3 || !slices.Equal(kept[1].Roles, []string{"solo", "*", "lead-peer/*"}) || len(warns) != 5 {
 		t.Fatalf("kept %+v, warnings %q", kept, warns)
 	}
-	for i, want := range []string{"prompts[1]", "nosuch", "p2p/supervisor", "executr", "nosuch/*"} {
+	for i, want := range []string{"prompts[1]", "nosuch", "lead-peer/supervisor", "executr", "nosuch/*"} {
 		if !strings.Contains(warns[i], want) {
 			t.Errorf("warning %d = %q; want it to name %s", i, warns[i], want)
 		}

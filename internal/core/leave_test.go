@@ -2,7 +2,6 @@ package core_test
 
 import (
 	"errors"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -17,10 +16,7 @@ import (
 // With no live member left, the mail is held and notify is told; when a member comes back the
 // engine moves it to that gate.
 func TestLeave(t *testing.T) {
-	man, err := os.ReadFile("../../manifests/p2p.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	man := peersManifest
 	db, err := store.OpenMemory()
 	if err != nil {
 		t.Fatal(err)

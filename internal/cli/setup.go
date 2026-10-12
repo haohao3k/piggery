@@ -23,24 +23,23 @@ import (
 //   - `piggery setup` writes the worker profiles (~/.piggery/harness/{pi,claude,codex,omp,dsh,opencode}.json, an
 //     existing one kept unless --force), the templates and the daemon's config.yaml (only its
 //     missing keys, with their defaults), then shows where each harness and the config stand;
-//   - `piggery setup <pi|claude|codex|omp|dsh|opencode|paseo>` adds piggery to that harness, or its plugin to
-//     Paseo (a second run changes nothing);
+//   - `piggery setup <pi|claude|codex|omp|dsh|opencode>` adds piggery to that harness (a second run
+//     changes nothing);
 //   - `piggery setup remove <name>` takes out what setup added;
 //   - `piggery setup notify [add|remove <target>]` writes or removes a notify hook in hooks/notify.d.
 func (e *env) setup(args []string) error {
 	fs := e.flags("setup")
 	ext := fs.String("ext", "", "a checkout's pi extension (extensions/pi) instead of the one in this binary")
 	force := fs.Bool("force", false, "overwrite an existing profile")
-	paseoHome := fs.String("paseo-home", "", "the Paseo daemon home setup paseo installs into (default: Paseo's own)")
 	outdated := fs.Bool("outdated", false, "bring every installed piggery integration that is outdated up to date (takes no other argument)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if *outdated && len(pos) != 0 {
-		return fmt.Errorf("%w: setup --outdated takes no argument (only --paseo-home)", errUsage)
+		return fmt.Errorf("%w: setup --outdated takes no argument", errUsage)
 	}
-	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode|paseo] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode|paseo> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
+	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode> [--ext PATH] [--force]", errUsage)
 	self, err := selfPath()
 	if err != nil {
 		return err
@@ -51,12 +50,7 @@ func (e *env) setup(args []string) error {
 			return err
 		}
 	}
-	o := setupOpts{dir: e.dir, self: self, ext: extDir, paseoHome: *paseoHome}
-	if o.paseoHome != "" {
-		if o.paseoHome, err = filepath.Abs(o.paseoHome); err != nil {
-			return err
-		}
-	}
+	o := setupOpts{dir: e.dir, self: self, ext: extDir}
 	// Windows: the file the Node clients read the daemon's pipe name from (nothing on unix).
 	if err := server.WritePipeFile(e.dir); err != nil {
 		return err
@@ -384,14 +378,14 @@ func writeJSON(path string, v any, force bool) (bool, error) {
 	return true, os.Rename(tmp, path)
 }
 
-// template new <name> [--from <built-in>]: a copy of the current built-in (default p2p) as a new
+// template new <name> [--from <built-in>]: a copy of the current built-in (default lead-peer) as a new
 // template in ~/.piggery/templates for the user to edit. Local, no daemon; refused if it exists.
 func (e *env) template(args []string) error {
 	if len(args) == 0 || args[0] != "new" {
 		return fmt.Errorf("%w: template new <name> [--from <built-in>]", errUsage)
 	}
 	fs := e.flags("template new")
-	from := fs.String("from", "p2p", "built-in to copy ("+strings.Join(manifests.Builtins(), ", ")+")")
+	from := fs.String("from", "lead-peer", "built-in to copy ("+strings.Join(manifests.Builtins(), ", ")+")")
 	pos, err := parse(fs, args[1:])
 	if err != nil {
 		return err

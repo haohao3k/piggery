@@ -25,8 +25,7 @@ type harnessProfile struct {
 	channel string
 }
 
-// setupTarget is one place `piggery setup` adds piggery to: a harness, or a host that only shows
-// piggery (Paseo). install, remove and status: `piggery setup <name>`, `setup remove <name>`,
+// setupTarget is one place `piggery setup` adds piggery to: a harness. install, remove and status: `piggery setup <name>`, `setup remove <name>`,
 // `setup` alone; cmd is the command it needs on PATH, and version (nil: local.HarnessVersion, which
 // reads x.y.z) how to read its version, for one whose versions have a suffix (dsh 0.2.0-rc.1).
 type setupTarget struct {
@@ -38,14 +37,14 @@ type setupTarget struct {
 }
 
 // setupOpts: dir is piggery's (~/.piggery), self this executable, ext --ext (a checkout's pi
-// extension, "" for the binary's own) and paseoHome --paseo-home ("" for Paseo's default).
-type setupOpts struct{ dir, self, ext, paseoHome string }
+// extension, "" for the binary's own).
+type setupOpts struct{ dir, self, ext string }
 
 // harnesses is the registry, in the order setup reports them.
 var harnesses = []harnessProfile{piHarness, claudeHarness, codexHarness, ompHarness, dshHarness, opencodeHarness}
 
 // setupTargets are the harnesses and the other places setup installs to, in the order it reports them.
-var setupTargets = []setupTarget{piHarness.setupTarget, claudeHarness.setupTarget, codexHarness.setupTarget, ompHarness.setupTarget, dshHarness.setupTarget, opencodeHarness.setupTarget, paseoTarget}
+var setupTargets = []setupTarget{piHarness.setupTarget, claudeHarness.setupTarget, codexHarness.setupTarget, ompHarness.setupTarget, dshHarness.setupTarget, opencodeHarness.setupTarget}
 
 // targetNamed is the setup target called name.
 func targetNamed(name string) (setupTarget, bool) {

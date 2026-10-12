@@ -152,7 +152,7 @@ func (e *env) root() *cobra.Command {
 	template := &cobra.Command{Use: "template", Short: "Make your own team template", GroupID: grpTeams}
 	template.AddCommand(e.cmd("list", "The templates a team can be founded from, with their summaries", "",
 		"piggery template list", authLocal, e.templateList))
-	template.AddCommand(e.cmd("new <name> [--from <built-in>]", "Copy a built-in (default p2p) to ~/.piggery/templates/<name>", "",
+	template.AddCommand(e.cmd("new <name> [--from <built-in>]", "Copy a built-in (default lead-peer) to ~/.piggery/templates/<name>", "",
 		"piggery template new review --from lead-peer", authLocal,
 		func(args []string) error { return e.template(append([]string{"new"}, args...)) }))
 	archive := &cobra.Command{Use: "archive", Short: "Read a gc archive", GroupID: grpMaintain}
@@ -160,7 +160,7 @@ func (e *env) root() *cobra.Command {
 		"piggery archive show ~/.piggery/archive/demo-1790000000.jsonl --table messages", authLocal, e.archiveShow))
 
 	root.AddCommand(
-		e.cmd("setup [--outdated] | setup <pi|claude|codex|omp|dsh|opencode|paseo> | setup remove <harness> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] [--ext PATH] [--force]", "Add piggery to a harness or take it out; alone: profiles, templates, and where each harness stands; --outdated: update every installed integration that is outdated", grpStart,
+		e.cmd("setup [--outdated] | setup <pi|claude|codex|omp|dsh|opencode> | setup remove <harness> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] [--ext PATH] [--force]", "Add piggery to a harness or take it out; alone: profiles, templates, and where each harness stands; --outdated: update every installed integration that is outdated", grpStart,
 			"piggery setup", authLocal, e.setup),
 		e.cmd("skills", "Print the guide for agents (a SKILL.md)", grpStart,
 			"piggery skills", authLocal, func(args []string) error {

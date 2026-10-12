@@ -88,7 +88,7 @@ func TestServerAuth(t *testing.T) {
 		t.Fatal("second server.Run succeeded while the lock was held")
 	}
 
-	team, alice, bob := p2pTeam(t, dir)
+	team, alice, bob := peersTeam(t, dir)
 
 	// A wrong participant token is unauthorized even when a valid admin token rides along.
 	raw, err := server.Dial(dir)
@@ -146,17 +146,20 @@ func TestServerAuth(t *testing.T) {
 	}
 }
 
-// p2pTeam brings up the p2p team with alice and bob through the admin verbs.
-func p2pTeam(t *testing.T, dir string) (core.Team, core.JoinResult, core.JoinResult) {
+// peersManifest is the fixture team: one role whose members talk freely.
+const peersManifest = "template: peers\nauto_join_role: peer\nroles:\n" +
+	"  peer: {tools: [send, inbox, who, agent], can_spawn: [peer], can_pin: true}\n" +
+	"routing:\n  - {from: peer, to: peer, allow: true}\n" +
+	"limits: {depth: 2, concurrency: 10, messages_per_participant_per_minute: 30}\n"
+
+// peersTeam brings up the peers team with alice and bob through the admin verbs.
+func peersTeam(t *testing.T, dir string) (core.Team, core.JoinResult, core.JoinResult) {
 	t.Helper()
 	adminTok, err := os.ReadFile(server.AdminTokenPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := os.ReadFile("../../manifests/p2p.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	manifest := peersManifest
 	admin := dial(t, dir)
 	admin.AsAdmin(strings.TrimSpace(string(adminTok)))
 	var team core.Team
@@ -176,7 +179,7 @@ func p2pTeam(t *testing.T, dir string) (core.Team, core.JoinResult, core.JoinRes
 // An identified connection gets a wake push for new mail; closing it marks the participant gone.
 func TestIdentifiedConnectionWakeAndGone(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir)
+	_, alice, bob := peersTeam(t, dir)
 
 	raw, err := server.Dial(dir)
 	if err != nil {
@@ -267,7 +270,7 @@ func (r *rawConn) call(verb string, args any) proto.Response {
 // team down pushes retire to the team's identified connections (the harness leaves at once).
 func TestTeamDownPushesRetire(t *testing.T) {
 	dir := startServer(t)
-	team, _, bob := p2pTeam(t, dir)
+	team, _, bob := peersTeam(t, dir)
 	raw, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +307,7 @@ func TestTeamDownPushesRetire(t *testing.T) {
 // team down.
 func TestGateCloseRetiresTheOthers(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir) // alice joined first: the gate
+	_, alice, bob := peersTeam(t, dir) // alice joined first: the gate
 	open := func(j core.JoinResult) (net.Conn, *json.Decoder) {
 		raw, err := server.Dial(dir)
 		if err != nil {
@@ -348,7 +351,7 @@ func TestGateCloseRetiresTheOthers(t *testing.T) {
 
 func TestSupersededConnectionIsStale(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir)
+	_, alice, bob := peersTeam(t, dir)
 	old, cur := rawDial(t, dir, bob), rawDial(t, dir, bob)
 	for _, c := range []*rawConn{old, cur} {
 		if r := c.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true}); !r.OK {
@@ -403,7 +406,7 @@ func TestSpawnedWorkerExitEndsGone(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "harness", "pi.json"), prof, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, alice, _ := p2pTeam(t, dir)
+	_, alice, _ := peersTeam(t, dir)
 	a := dial(t, dir)
 	a.AsParticipant(alice.ID, alice.Token)
 	var r core.AgentResult
@@ -466,7 +469,7 @@ func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
 		t.Fatal(err)
 	}
 	stop := runServer(t, dir)
-	_, alice, _ := p2pTeam(t, dir)
+	_, alice, _ := peersTeam(t, dir)
 	a := dial(t, dir)
 	a.AsParticipant(alice.ID, alice.Token)
 	var r core.AgentResult
@@ -592,7 +595,7 @@ func TestTemplatesAction(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	put(filepath.Join(cwd, "manifests", "p2p.yaml"), "template: p2p\nsummary: repo peers\nroles: {peer: {tools: [send]}}\n")
+	put(filepath.Join(cwd, "manifests", "lead-peer.yaml"), "template: lead-peer\nsummary: repo peers\nroles: {peer: {tools: [send]}}\n")
 	put(filepath.Join(cwd, "manifests", "repo.yaml"), "template: repo\nroles: {peer: {tools: [send]}}\n")
 	put(filepath.Join(manifests.Dir(dir), "mine", manifests.ManifestFile),
 		"template: mine\nsummary: my flow\nroles:\n  peer: {description: me, tools: [send, inbox, who, agent]}\n")
@@ -612,11 +615,11 @@ func TestTemplatesAction(t *testing.T) {
 		names = append(names, tpl.Name)
 		byName[tpl.Name] = tpl
 	}
-	if strings.Join(names, " ") != "advisor amp-like council dual-lens gastown-like lead-peer mine p2p slp" {
+	if strings.Join(names, " ") != "advisor amp-like council dual-lens gastown-like lead-peer mine slp" {
 		t.Fatalf("templates = %v; want the home's only", names)
 	}
-	if p := byName["p2p"]; p.Summary == "repo peers" || p.From != filepath.Join(manifests.Dir(dir), "p2p") {
-		t.Fatalf("p2p = %+v; want the unpacked built-in, not <cwd>/manifests", p)
+	if p := byName["lead-peer"]; p.Summary == "repo peers" || p.From != filepath.Join(manifests.Dir(dir), "lead-peer") {
+		t.Fatalf("lead-peer = %+v; want the unpacked built-in, not <cwd>/manifests", p)
 	}
 	if m := byName["mine"]; m.Summary != "my flow" || len(m.Roles) != 1 || m.Roles[0].Description != "me" {
 		t.Fatalf("mine = %+v", m)
@@ -635,7 +638,7 @@ func TestTemplatesAction(t *testing.T) {
 // new connection closes it unacked).
 func TestIdentifyAgainKeepsTheTurn(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir)
+	_, alice, bob := peersTeam(t, dir)
 	b := rawDial(t, dir, bob)
 	identify := func(a core.IdentifyArgs) core.IdentifyResult {
 		t.Helper()
@@ -670,7 +673,7 @@ func TestIdentifyAgainKeepsTheTurn(t *testing.T) {
 // runs the old MCP server ~30 s after /clear; two nudges would be two turns).
 func TestWakeGoesToTheNewestConnection(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir)
+	_, alice, bob := peersTeam(t, dir)
 	old, cur := rawDial(t, dir, bob), rawDial(t, dir, bob)
 	var id core.IdentifyResult
 	r := old.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "claude"})
@@ -716,7 +719,7 @@ func TestNestedHarnessCannotSpeakForTheWorker(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "harness", "pi.json"), prof, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, alice, _ := p2pTeam(t, dir)
+	_, alice, _ := peersTeam(t, dir)
 	a := dial(t, dir)
 	a.AsParticipant(alice.ID, alice.Token)
 	if _, err := a.Call(proto.VerbAgent, core.AgentArgs{Action: core.AgentSpawn, Role: "peer", Name: "w1", Task: "t"}); err != nil {

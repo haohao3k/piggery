@@ -1,31 +1,73 @@
 # Changelog
 
-## Unreleased
+## v0.10.0 - 2026-10-12
+
+piggery runs on Windows (experimental), a team or solo can close its gate to other teams, and `lead-peer` replaces `p2p` as the default template.
+
+Before you upgrade:
+
+- **`p2p` is no longer built in; `lead-peer` is the default.** A session asked to set up a team
+  without a template now founds a `lead-peer` team and becomes its lead, `piggery template new`
+  copies `lead-peer`, and a solo takes its limits from it (the same numbers as before). Teams
+  already founded from `p2p` keep running: a team keeps the template it started with. The copy in
+  `~/.piggery/templates/p2p` is deleted when the daemon starts, unless you edited it: an edited
+  file stays, with its directory, as your own template.
+- **piggery's own Paseo plugin is gone, and so is `piggery setup paseo`.** In Paseo, use
+  [PigMonitor](https://github.com/Patruxs/PigMonitor), which does more. To remove the old plugin:
+  `paseo plugin uninstall piggery`, then delete `~/.piggery/paseo`. `ps --view`, `ps --json`,
+  `tail --view` and `--no-start`, which such a plugin reads, are unchanged.
+
+After upgrading, run `piggery restart`. The daemon updates the integrations it installed: pi to 13,
+omp to 13, dsh to 14 and opencode to 10. Then restart the sessions that were open, or run `/reload`
+in pi. Claude Code and Codex need nothing. The database moves to schema 28 at the first start (a
+copy of the old one is kept in `~/.piggery/backups/`).
+
+Closed gate:
+
+- **A team or a solo session can close its gate to other teams.** Others no longer see it in
+  `who`, and a send to it (by id, by name or as a reply) fails like an unknown name; it sees none
+  of them and cannot send to them. Unread outside mail is held while the gate is closed, neither
+  delivered nor acked nor deleted, and arrives when it opens. Nothing changes inside a team, and a
+  caller and its taskforce always reach each other.
+- **`gate: open|closed` in `config.yaml`** sets the gate of a new solo (default `open`). A solo,
+  or a team's gate, closes or opens it when you ask with `agent action=gate_close` /
+  `gate_open`. A team it founds or reopens, a taskforce it calls, and a session left solo when its
+  team closes start with the same state.
+- **`who`, `ps` and `top` show `[gate closed]`**; `ps --json` has `gate_closed`.
 
 Windows (experimental, amd64 and arm64):
 
+- **The daemon, workers and harnesses run natively.** The daemon listens on a named pipe that only
+  your user can open (`piggery.pipe` in `~/.piggery` holds its name). Each worker runs in a Job
+  Object, so a worker, the `.cmd` shim it was started through and its children end together, and a
+  daemon that restarts after a crash finds and ends the ones it left.
 - **Install and update.** Releases carry `piggery-windows-<arch>.exe`. `install.ps1` installs it
   (`irm https://raw.githubusercontent.com/sting8k/piggery/main/install.ps1 | iex`), and `piggery
   update` works there: the binary it replaces, which may be running, is kept beside the new one as
   `piggery.exe.old` until the next update.
+- **`piggery setup claude` and `setup codex` write hook commands each one runs on Windows.** Claude
+  Code gets piggery's path with forward slashes (it does not run a hook whose path has
+  backslashes). Codex gets the path's 8.3 short name when the path has a space, since some Codex
+  versions run no hook command with a quote in it.
 - **`piggery setup notify add desktop` and `add ntfy:<topic>`** write PowerShell hooks on Windows (a
-  toast, a push through ntfy.sh) that need nothing installed. `herdr` has no Windows script.
-- **A harness installed with pnpm, or whose script is not run by node, starts as a worker.** The
-  `.cmd` shim of pnpm (and of npm before 7) is seen through like npm's, and a shim's script runs
-  with the interpreter the shim names (bun for omp) instead of always node.
-- **A worker's agent directory shares the human's without Developer Mode.** Where a symlink cannot
-  be made, pi's and omp's entries become junctions and hard links, not a copy of the whole
-  directory at each spawn: a worker's sessions and a login it refreshed are the human's own again.
+  toast, a push through ntfy.sh) that need nothing installed. `herdr` has no Windows script. Your
+  own hooks in `notify.d` may be `.exe`, `.cmd`, `.bat` or `.ps1`; a `.sh` hook is skipped there.
+- **A harness installed with npm or pnpm starts as a worker.** Its `.cmd` shim is seen through,
+  and the script runs with the interpreter the shim names (bun for omp), not always node.
+- **A worker's agent directory shares yours without Developer Mode.** Where a symlink cannot be
+  made, pi's and omp's entries become junctions and hard links, not a copy of the whole directory
+  at each spawn: a worker's sessions and a login it refreshed are your own.
 - **A Claude worker starts whatever the length of its role card.** Windows limits a command line
   to 32,767 characters, which a card carrying your own `prompts` rules can pass; the card goes to
   Claude Code in a file of the run's directory there (`--append-system-prompt-file`).
-- **A worker that stops reading its stdin no longer hangs the daemon's write to it** (a Windows
-  pipe takes no deadline); the write is given up on after two seconds, as on Linux and macOS.
-- **`piggery setup codex` quotes piggery's path in the hook command only when it has a space** or
-  another character `cmd.exe` reads specially: a Codex that escapes a command's quotes runs none
-  that has any. Run `piggery setup codex` again if you set it up from an earlier Windows build.
-- **The Paseo view matches a Windows workspace** to the directories under it (paths were compared
-  by `/` and by case). Integration version: paseo 4; `piggery setup --outdated` updates it.
+
+Also:
+
+- Built with Go 1.26.9, which fixes GO-2026-6617 in `net/http`.
+
+Thanks to @dinhhung893, whose piggery-winport the Windows port learned from; to @KiraKas-Tr, who
+tested it on a real Windows machine and found what CI could not; to @haohao3k, whose report and
+reproduction (#11) led to the closed gate; and to @Patruxs for PigMonitor.
 
 ## v0.9.1 - 2026-10-07
 

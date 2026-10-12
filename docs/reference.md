@@ -10,17 +10,17 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 
 | Command | What it does |
 |---|---|
-| `setup [pi\|claude\|codex\|omp\|dsh\|opencode\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys (the daemon does the same at start), and show where each harness stands) |
-| `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, opencode, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
+| `setup [pi\|claude\|codex\|omp\|dsh\|opencode]` | Add piggery to a harness (alone: write missing profiles, templates and config keys (the daemon does the same at start), and show where each harness stands) |
+| `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, opencode, claude, codex): runs `setup <harness>` for each and says what to do after (reopen Codex sessions); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
 | `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it. On Windows the targets are `desktop` and `ntfy:TOPIC`, written as `desktop.ps1` and `ntfy-<topic>.ps1` with the marker on the first line; they need nothing on PATH |
 | `setup remove <harness>` | Take out exactly what `setup` added; `--ext PATH` (setup pi) uses a checkout's extension |
 | `skills` | Print the guide for agents |
 | `team down <team>` | Close a team: workers stopped, nothing acked; a session that was a member goes on as a solo under its old name (`name-2` when a live solo or an open team has it) |
 | `template list` | The templates a team can be founded from: name, origin (`built-in` or `yours`), `taskforce` for one a session can call up (a column that is there when any is) and summary, from `~/.piggery/templates` (the built-ins before the first `setup`); on a terminal the summary is cut to the window, piped it is whole |
-| `template new <name> [--from <built-in>]` | Copy a built-in (default `p2p`) to `~/.piggery/templates/<name>` |
-| `ps [--json\|--view]` | Daemon, teams (each with the template it was founded from, `teams[].template` in `--json`; a taskforce is listed right under its caller, a step in, as `taskforce NAME ... caller=<name>`, and has `parent` and `parent_id` in `--json`, and `under` on its unit in `projects`), members, solo sessions and pending mail, once; `--view` prints what `top` shows (rows, header counts, events, the latest notices as `notices`, the update notice as `daemon.update`, each row's actions and Overview) as one JSON document with a `version` field, for the Paseo plugin (a taskforce's block has `under`, its caller's id, and `depth`; its head has `taskforce` and `caller`) |
+| `template new <name> [--from <built-in>]` | Copy a built-in (default `lead-peer`) to `~/.piggery/templates/<name>` |
+| `ps [--json\|--view]` | Daemon, teams (each with the template it was founded from, `teams[].template` in `--json`; a taskforce is listed right under its caller, a step in, as `taskforce NAME ... caller=<name>`, and has `parent` and `parent_id` in `--json`, and `under` on its unit in `projects`), members, solo sessions and pending mail, once; `--view` prints what `top` shows (rows, header counts, events, the latest notices as `notices`, the update notice as `daemon.update`, each row's actions and Overview) as one JSON document with a `version` field, for a UI that draws it, such as PigMonitor (a taskforce's block has `under`, its caller's id, and `depth`; its head has `taskforce` and `caller`) |
 | `top` | The same, live (a taskforce sits a step in under its caller, with a `taskforce` label and `for <caller>` after its name; once closed it is only in the Closed tab until gc), with context, turns and the latest events and notices (Notices at the bottom left once there is a notice, Events on the right, split where the list and the Overview are; stacked in a narrow window); tabs: All, then one per project (a directory; ones with someone alive first), then Closed, switched with `←/→`, `tab`/`shift+tab` or a click; a tab is named by its directory's last name, with parent names added when two clash (`a/api`, `b/api`), and when they do not all fit the bar slides, with `‹ +N` and `+N ›` for the ones left out. All lists only what is alive: no team whose members are all gone, no gone solo, no closed team (a project tab lists all of its directory, and Closed the closed teams). A taskforce has no tab of its own (`ps` has no tabs); the header says `vX available: piggery update` when a newer release is out; `↑/↓` select (`PgUp`/`PgDn`, `Home`/`End` in a long list, which scrolls under its header; `↑ N`/`↓ N` on the border count hidden lines), `enter` opens or closes (a member's details, a team's members, a team's gone-members line; kept for the next `top`), `t` switches Overview and Tail, `e` opens the events list (folded to the latest event by default; kept for the next `top`), `n` opens or closes the Notices box (the latest notices; folded to the newest one by default, kept for the next `top`, like `e`), `x` kills the selected headless worker (asks once); a click on the model (blue, `▾`) in a live headless worker's Overview, or `M`, opens a picker for its model and thinking level (`enter` or a double-click applies, `esc` closes) |
-| `tail <worker> [-n N] [-f] [--team T]` | A worker's log or a session's transcript, readable; `--json` raw; `--view` the readable lines with their kind, for the Paseo plugin |
+| `tail <worker> [-n N] [-f] [--team T]` | A worker's log or a session's transcript, readable; `--json` raw; `--view` the readable lines with their kind, as JSON |
 | `log [--after SEQ] [--team T] [--limit N]` | Decisions and lifecycle events |
 | `abort <x> [--team T]` | Cancel x's current turn; it stays alive |
 | `kill <worker> [--team T]` (short: `x`) | Kill a worker: SIGTERM so its harness cleans up, then after up to 2s SIGKILL for it and every process left in its tree; `x` on the selected worker in `top` asks `kill <name>? y/n` and does the same |
@@ -36,7 +36,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `update [--check] [--force]` | Install the latest release in place; `--force` for a build from source (`dev`, `dev-<sha>`); `--check` prints the current and latest versions and `vX available` when a newer one is out. On Windows the replaced binary is kept as `piggery.exe.old` (a running program cannot be deleted there) until the next update replaces it |
 
 `ps` and `top` show a line such as `outdated: codex (v0 < v1): piggery setup --outdated` in their header
-when a claude, codex or paseo install is outdated (`ps --json` has the same list as `outdated`).
+when a claude or codex install is outdated (`ps --json` has the same list as `outdated`).
 
 Flags on every command: `-a/--admin`, `--json` (raw JSON result), `--no-start` (fail instead of
 starting the daemon), `-h/--help`; `-v/--version` on `piggery`. In a shell where `PIGGERY_ID` and
@@ -138,7 +138,7 @@ at your next prompt.
 exactly that. Copies piggery unpacks start with a `managed by piggery` line: do not edit them, and a directory
 there that is not piggery's is left alone. Each installed thing has an integration version, raised
 only when what is installed changes, so a new build alone never makes an install outdated. pi, omp,
-dsh and opencode copies with a lower version are updated by the daemon at its start; claude, codex and paseo
+dsh and opencode copies with a lower version are updated by the daemon at its start; claude and codex
 are never changed on their own, only reported: `piggery setup --outdated` updates them. `piggery setup` alone (and `doctor`) shows each
 harness's version and problems, each with its fix, and `vN < vM` for an outdated install.
 
@@ -150,7 +150,6 @@ harness's version and problems, each with its fix, and `vN < vM` for an outdated
 | omp | the extension unpacked into omp's agent dir (`~/.omp/agent/extensions/piggery/`; `$PI_CODING_AGENT_DIR` or a profile in `OMP_PROFILE`/`PI_PROFILE` moves it) |
 | opencode | the plugin in `~/.piggery/plugins/opencode/`, and one entry for it in `plugin` of `opencode.json` in opencode's config dir (`$XDG_CONFIG_HOME/opencode`, default `~/.config/opencode`); your other entries and keys stay as they are. A config that is not plain JSON (`opencode.jsonc`, comments) is not touched: setup writes nothing and prints the line to add |
 | dsh | the plugin in `~/.piggery/plugins/dsh/`, and one block between `# BEGIN piggery` and `# END piggery` in dsh's home patch (`$DSH_HOME/cordis.patch.yml`, default `~/.dsh`); your rows stay |
-| paseo | the plugin in `~/.piggery/paseo/`, installed with `paseo plugin install`; the Paseo daemon must run and every app showing it must be Paseo 0.9.1 or newer |
 
 Before `setup` writes a config file of yours (codex `config.toml` and `hooks.json`, dsh's home patch,
 opencode's `opencode.json`, pi's `settings.json`) it copies it to `~/.piggery/backups/setup/<harness>/<file name>` (mode 0600, since

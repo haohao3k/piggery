@@ -8,13 +8,12 @@ import "strings"
 // was keeps it. Status compares these integers, never the build version, and what is installed
 // carries its integer as PIGGERY_INTEGRATION_VERSION=N.
 var integrationVersions = map[string]int{
-	"pi":       12,
-	"omp":      12,
-	"dsh":      13,
-	"opencode": 9,
+	"pi":       13,
+	"omp":      13,
+	"dsh":      14,
+	"opencode": 10,
 	"claude":   1,
 	"codex":    1,
-	"paseo":    4,
 }
 
 // IntegrationMarker precedes the integer in what is installed.

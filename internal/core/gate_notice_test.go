@@ -73,7 +73,7 @@ func TestGateNotice(t *testing.T) {
 	start(alice, "a1")
 	end(alice, "a1", ok)
 	got := notices()
-	if len(got) != 1 || got[0].Kind != "reply" || got[0].Gate != "alice" || got[0].Team != "p2p" || got[0].Dir == "" || got[0].FromLabel != "engine" {
+	if len(got) != 1 || got[0].Kind != "reply" || got[0].Gate != "alice" || got[0].Team != "peers" || got[0].Dir == "" || got[0].FromLabel != "engine" {
 		t.Fatalf("reply = %+v", got)
 	}
 

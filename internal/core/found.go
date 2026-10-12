@@ -16,7 +16,7 @@ func WithTemplates(f func(name, cwd string) (string, error)) Option {
 	return func(e *Engine) { e.templates = f }
 }
 
-// found is `agent action=found`: the caller founds a team from a.Template (default p2p), rooted at
+// found is `agent action=found`: the caller founds a team from a.Template (default lead-peer), rooted at
 // its cwd and named after the cwd's base name (-2, -3… while an open team has it), and becomes its
 // first member (the gate) as the template's auto_join_role or only role. A solo moves into the
 // team: same participant, run and token (Token is empty: keep yours, identify again with the same
@@ -24,7 +24,7 @@ func WithTemplates(f func(name, cwd string) (string, error)) Option {
 // run and token.
 func (e *Engine) found(ctx context.Context, c Caller, a AgentArgs) (AgentResult, error) {
 	if a.Template == "" {
-		a.Template = "p2p"
+		a.Template = "lead-peer"
 	}
 	var cwd, prefix string
 	err := e.readOnly(ctx, func(t *txn) error {

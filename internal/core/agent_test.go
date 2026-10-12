@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -352,10 +351,7 @@ func TestSpawnStartFailureKeepsTaskForResume(t *testing.T) {
 // taken over.
 func TestJoinAuto(t *testing.T) {
 	dir := t.TempDir()
-	man, err := os.ReadFile("../../manifests/p2p.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	man := peersManifest
 	db, err := store.OpenMemory()
 	if err != nil {
 		t.Fatal(err)

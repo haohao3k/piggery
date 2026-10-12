@@ -84,8 +84,6 @@ on Windows).
   your PATH.
 - With Go 1.26+: `go install github.com/sting8k/piggery/cmd/piggery@latest`.
 - Later: `piggery update` installs a newer release. What changed is in [CHANGELOG.md](CHANGELOG.md).
-- Using [Paseo](https://paseo.sh)? `piggery setup paseo` adds a Piggery view (the same as
-  `piggery top`) to the app. Turn on plugins in Paseo's settings once.
 
 ## Quick start
 
@@ -98,11 +96,27 @@ More:
 - [docs/guide.md](docs/guide.md): running teams, watching and stepping in, customizing `~/.piggery`.
 - [docs/reference.md](docs/reference.md): every command, config key, profile key and manifest key.
 
+## In Paseo
+
+Using [Paseo](https://paseo.sh)? [PigMonitor](https://github.com/Patruxs/PigMonitor) shows your
+teams in the app: who is working, who needs you, each agent's transcript and mail.
+
+```sh
+paseo plugin install github:Patruxs/PigMonitor
+```
+
+| | |
+|:---:|:---:|
+| [![PigMonitor: Overview](https://raw.githubusercontent.com/Patruxs/PigMonitor/v0.2.0/docs/media/overview.png)](https://github.com/Patruxs/PigMonitor) | [![PigMonitor: Graph](https://raw.githubusercontent.com/Patruxs/PigMonitor/v0.2.0/docs/media/graph.png)](https://github.com/Patruxs/PigMonitor) |
+| Overview: every team and agent on a timeline, coloured by state | Graph: each team as an org chart, with what each agent is doing |
+
+PigMonitor is made by [Patruxs](https://github.com/Patruxs), who took piggery further inside Paseo than
+our own plugin ever did. Thank you! The screenshots are from PigMonitor's README.
+
 ## Farm layouts
 
 | Template | Who does what |
 | --- | --- |
-| `p2p` | Peers that talk freely and spawn more peers. |
 | `lead-peer` | A lead owns the plan and judges the results; peers own scopes and speak up with evidence. |
 | `slp` | You steer a supervisor; each lane has a lead and peers, often in its own git worktree. |
 | `council` | A chair asks members for independent views on one hard decision. |

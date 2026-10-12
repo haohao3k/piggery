@@ -56,7 +56,7 @@ func (u Unit) Active() int64 {
 // sleeping.
 const sleepAfter = 24 * time.Hour
 
-// Where a directory sorts: live, sleeping, all gone, closed. Ordering only: top, ps and Paseo draw no
+// Where a directory sorts: live, sleeping, all gone, closed. Ordering only: top and ps draw no
 // header for them.
 const (
 	bucketLive = iota

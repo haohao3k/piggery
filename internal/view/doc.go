@@ -10,8 +10,8 @@ import (
 // when a field changes meaning or goes; a field that is added does not change it.
 const Version = 1
 
-// Doc is everything the views decide about one snapshot, for a client that draws it (the Paseo
-// plugin). Folding and tab filtering stay with the client: every team is listed open, once, with its
+// Doc is everything the views decide about one snapshot, for a client that draws it
+// (such as PigMonitor). Folding and tab filtering stay with the client: every team is listed open, once, with its
 // default (Row.Open), the tabs that list it (Tabs) and what to do to it (Row.Actions).
 type Doc struct {
 	Version     int        `json:"version"`

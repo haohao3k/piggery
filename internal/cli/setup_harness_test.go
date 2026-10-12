@@ -15,7 +15,7 @@ import (
 	"github.com/sting8k/piggery/internal/driver/local"
 )
 
-// TestMain lets this test binary stand in for `claude` (fakeClaude) and `paseo` (fakePaseo) when
+// TestMain lets this test binary stand in for `claude` (fakeClaude) when
 // a test puts it on PATH under that name.
 func TestMain(m *testing.M) {
 	// A test that autostarts a daemon would run this binary as `serve`, which a test binary takes
@@ -26,9 +26,6 @@ func TestMain(m *testing.M) {
 	}
 	if log := os.Getenv("PIGGERY_FAKE_CLAUDE"); log != "" && strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "claude" {
 		os.Exit(fakeClaude(log, os.Args[1:]))
-	}
-	if log := os.Getenv("PIGGERY_FAKE_PASEO"); log != "" && strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "paseo" {
-		os.Exit(fakePaseo(log, os.Args[1:]))
 	}
 	os.Exit(m.Run())
 }

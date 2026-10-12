@@ -20,7 +20,7 @@ import (
 // mail. --json prints the verb's result as is, with "projects" added: the same grouping.
 func (e *env) ps(args []string) error {
 	fs := e.flags("ps")
-	asView := fs.Bool("view", false, "print what top shows, as versioned JSON (for the Paseo plugin)")
+	asView := fs.Bool("view", false, "print what top shows, as versioned JSON (for a UI that draws it, such as PigMonitor)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err

@@ -20,7 +20,7 @@ func TestOpenMigratesV1File(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := v1.Exec(`INSERT INTO meta(key, value) VALUES ('schema_version', '1');
-		INSERT INTO teams(id, name, model_name, manifest, root_cwd, created_at) VALUES ('T1', 'p2p', 'p2p', 'model: p2p', '/x', 1)`); err != nil {
+		INSERT INTO teams(id, name, model_name, manifest, root_cwd, created_at) VALUES ('T1', 'old', 'old', 'model: old', '/x', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	v1.Close()
@@ -34,7 +34,7 @@ func TestOpenMigratesV1File(t *testing.T) {
 	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "28" {
 		t.Fatalf("version = %q, %v", version, err)
 	}
-	if err := db.QueryRow(`SELECT name FROM teams WHERE id='T1'`).Scan(&team); err != nil || team != "p2p" {
+	if err := db.QueryRow(`SELECT name FROM teams WHERE id='T1'`).Scan(&team); err != nil || team != "old" {
 		t.Fatalf("v1 data lost: %q, %v", team, err)
 	}
 	var n int

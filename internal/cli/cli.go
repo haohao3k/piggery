@@ -34,7 +34,7 @@ type env struct {
 	admin bool
 	json  bool
 	// noStart: fail when no daemon runs instead of starting one (--no-start, for read-only
-	// callers that poll, e.g. the Paseo plugin: they must not bring back a stopped daemon).
+	// callers that poll, e.g. a UI such as PigMonitor: they must not bring back a stopped daemon).
 	noStart bool
 	stdout  io.Writer
 	cur     *cobra.Command // the command being run (its usage follows a usage error)

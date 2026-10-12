@@ -38,7 +38,7 @@ Built-in templates: `lead-peer` (a lead owns the plan and judges the results; pe
 members for independent views on one decision), `amp-like` (a lead does the work and calls an oracle
 or a reviewer that answers once), `dual-lens` (a chair settles one hard question or review
 with two lenses on different models), `advisor` (read-only advice on a hard decision, from one agent), `gastown-like` (a mayor splits the work, polecats do each task on
-its own branch, a refinery merges them one at a time), `p2p` (peers that talk freely and spawn peers). Each one
+its own branch, a refinery merges them one at a time). Each one
 is drawn, with when to pick it, in [manifests/README.md](../manifests/README.md).
 
 **Mixing harnesses.** A role can name a harness (`spawn: {harness: claude}` in the template); a
@@ -238,7 +238,7 @@ Everything piggery keeps is in `~/.piggery`. Some of it is yours to edit; the re
 | `serve.log` | read | the daemon's log: **where problems are written** |
 | `piggery.db`, `piggery.sock`, `piggery.lock`, `admin.token` | no | state, socket, lock, your admin credential (on Windows the daemon listens on a named pipe, for your user only, and `piggery.pipe` holds its name instead of `piggery.sock`) |
 | `logs/`, `run/`, `sessions/`, `archive/`, `backups/`, `cache/`, `plugins/` | no | worker logs, scratch of running workers, session data, gc archives, database copies, cached reads, copies of piggery's adapters |
-| `claude/`, `paseo/` | no | what `setup claude` and `setup paseo` install |
+| `claude/` | no | what `setup claude` installs |
 
 `piggery setup` writes missing files and adds the keys a file lacks, keeping your values, comments
 and order. It never overwrites what you wrote.
@@ -368,9 +368,9 @@ Remove a column to hide it; the name is always shown.
   problem line. `piggery doctor` prints the same problems as warnings. Run `piggery setup <harness>`
   again after you move the `piggery` binary, and restart sessions that were open during setup.
 - **Outdated integrations.** After an upgrade the daemon brings the pi, omp, dsh and opencode extensions up to date
-  itself. Claude Code, Codex and Paseo are only reported: `ps` and `top` show `outdated: codex (v0 < v1):
+  itself. Claude Code and Codex are only reported: `ps` and `top` show `outdated: codex (v0 < v1):
   piggery setup --outdated`. Run that command: it updates every installed integration that is outdated
-  and says what to do next (restart the sessions that were open, reload the Paseo app).
+  and says what to do next (restart the sessions that were open).
 - **A worker does not start.** Its harness profile is wrong (the daemon and `piggery setup` write a missing one; `piggery setup --force` resets it),
   or the harness has no login for the daemon's `HOME`. `piggery tail <worker>` shows the harness's
   own error.

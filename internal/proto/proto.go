@@ -50,7 +50,7 @@ type PsResult struct {
 	PID       int    `json:"pid"`
 	StartedAt int64  `json:"started_at"`        // unix ms
 	Version   string `json:"version,omitempty"` // the daemon's build version (report only; "" when the binary does not set it)
-	// Outdated are the installs only `piggery setup --outdated` brings up (claude, codex, paseo),
+	// Outdated are the installs only `piggery setup --outdated` brings up (claude, codex),
 	// read from files on each call; absent when there are none.
 	Outdated []Outdated `json:"outdated,omitempty"`
 	// Update is the newest release tag when it is newer than the daemon's build (the daily check,
@@ -89,7 +89,7 @@ func (o Outdated) Detail() string {
 func (o Outdated) String() string { return o.Name + " (" + o.Detail() + ")" }
 
 // Notice is `outdated: claude (v1 < v2), codex (v0 < v1): piggery setup --outdated`, or "" for none.
-// It is the header line of ps and top and the status line of the Paseo plugin.
+// It is the header line of ps and top and the status line of a UI that shows it.
 func Notice(list []Outdated) string {
 	if len(list) == 0 {
 		return ""

@@ -1,4 +1,4 @@
-// Package view decides what top, ps and the Paseo plugin show of a ps snapshot: which rows, in what
+// Package view decides what top, ps and a UI that draws the view show of a ps snapshot: which rows, in what
 // order, with what words, and what can be done to a row. It knows core types and the standard
 // library only: no colours, no widths, no keys. The callers draw (decision D-q744).
 package view
