@@ -74,16 +74,14 @@ func (e *Engine) autoWake(id string) error {
 // becomeWorker is what a wake by mail changes in w's row inside resume's transaction: a member that
 // was a person's session (mode not headless) goes on as a headless worker (participants.person stays
 // 1; the person's join sets the mode it reports again, autojoin.go takeBack), and wake_seq moves to the
-// newest unacked mail it is woken for. It returns the harness session to resume: a person's
-// session continues in the one it had last.
-func (t *txn) becomeWorker(id, mode, ref, sessionRef string) (string, error) {
+// newest unacked mail it is woken for.
+func (t *txn) becomeWorker(id, mode string) error {
 	if mode != modeHeadless {
 		if _, err := t.ExecContext(t.ctx, `UPDATE participants SET mode=? WHERE id=?`, modeHeadless, id); err != nil {
-			return "", internal(err)
+			return internal(err)
 		}
-		ref = cmp.Or(sessionRef, ref)
 	}
 	_, err := t.ExecContext(t.ctx, `UPDATE participants SET wake_seq=MAX(wake_seq, COALESCE((SELECT MAX(seq) FROM messages
 		WHERE to_id=participants.id AND acked_at IS NULL AND held_reason IS NULL), 0)) WHERE id=?`, id)
-	return ref, internal(err)
+	return internal(err)
 }

@@ -33,13 +33,12 @@ func promptPath(dir, file string) string {
 	return filepath.Join(dir, file)
 }
 
-// promptsFor is the resolver for core.WithSharedPrompts: the text of every entry that names the
-// role of the template (in file order), each under a heading with the file as written in the
-// config. Files are read on each call, so an edit shows in the next card. A file that cannot be
-// read is warned about (warn) and left out: a card is never refused for a shared prompt.
+// promptsFor adds built-in agent guidance, then matching Human prompt files in config order.
+// Files are read for each card; an unreadable file is warned about and skipped.
 func promptsFor(dir string, entries []PromptEntry, warn func(msg string)) func(template, role string) string {
 	return func(template, role string) string {
 		var b strings.Builder
+		b.WriteString("\n" + strings.TrimSpace(manifests.AgentInstructions()) + "\n")
 		seen := map[string]bool{} // a file several entries name is added once, at its first entry
 		for _, e := range entries {
 			path := promptPath(dir, e.File)

@@ -86,12 +86,7 @@ func TestCodexHelperProcess(t *testing.T) {
 func newCodexDriver(t *testing.T, prof CodexProfile) (*Driver, string) {
 	t.Helper()
 	dir := t.TempDir()
-	wrapper := filepath.Join(dir, "codex")
-	script := fmt.Sprintf("#!/bin/sh\nexec %q -test.run='^TestCodexHelperProcess$' -- \"$@\"\n", os.Args[0])
-	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	prof.Cmd = wrapper
+	prof.Cmd = useFakeHarness(t, "TestCodexHelperProcess")
 	b, _ := json.Marshal(prof)
 	os.MkdirAll(filepath.Dir(CodexProfilePath(dir)), 0o700)
 	if err := os.WriteFile(CodexProfilePath(dir), b, 0o600); err != nil {
@@ -303,3 +298,28 @@ func TestCodexStandardRecords(t *testing.T) {
 }
 
 func must(b []byte, _ error) []byte { return b }
+
+// #26: the daemon ends a Codex turn in its Stop hook, before app-server reports turn/completed;
+// a wake in between must reach the daemon again once the turn completes (capture lines 46 and 48),
+// which wakes the worker if the mail is still unread.
+func TestCodexWakeBetweenStopHookAndTurnCompleted(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(codexFixtures, "w1-exec-hookprompt-interrupt.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.Split(bytes.TrimSpace(b), []byte("\n"))
+	w := &worker{}
+	c := &codexCodec{state: map[*worker]*codexRun{w: {thread: "01a0e5a0-499c-7593-bdf7-4ac50099542a", commands: map[string]string{}}}}
+	rewake := false
+	for i, line := range lines[:48] {
+		if i == 46 { // the Stop hook ended the turn in the daemon; the turn is not completed yet
+			if err := c.wake(w); err != nil {
+				t.Fatal(err)
+			}
+		}
+		rewake = rewake || c.record(w, line).rewake
+	}
+	if !rewake {
+		t.Fatal("a wake between the Stop hook and turn/completed was dropped")
+	}
+}

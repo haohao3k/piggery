@@ -76,6 +76,9 @@ func validManifest(text string) (manifest, error) {
 	if err := noDeclaredTools(text); err != nil {
 		return m, err
 	}
+	if err := noUnknownKeys(text); err != nil {
+		return m, err
+	}
 	if err := validateTimers(text, m); err != nil {
 		return m, err
 	}
@@ -91,6 +94,9 @@ func validManifest(text string) (manifest, error) {
 		}
 		if !knownLimits[k] {
 			return m, errf(CodeInvalid, "manifest: limits.%s: unknown limit", k)
+		}
+		if m.Limits[k] < 1 {
+			return m, errf(CodeInvalid, "manifest: limits.%s: %d; a limit is a number of at least 1, or none", k, m.Limits[k])
 		}
 	}
 	// Spawning without declared limits would allow unbounded recursive spawns.

@@ -1,0 +1,4 @@
+{"t": 0.0, "hook": "UserPromptSubmit"}
+{"t": 0.116, "status": "busy", "updated": -0.055}
+{"t": 1.126, "hook": "Stop"}
+{"t": 1.338, "status": "idle", "updated": 1.136}

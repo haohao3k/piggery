@@ -11,6 +11,8 @@
 //                                            assistant message with that error, then idle again
 //                                            (~200 ms later): the run ends once, interrupted, at the
 //                                            message or the second idle, never at the first idle
+//   failed before any answer                 session.error (not an abort), idle, no assistant message
+//                                            (serve/08b-bad-model: model not found): the run ends failed
 //
 // Mail the daemon hands back at the end of a run (Turns.endRun: block) is a new prompt to an idle
 // session, so there is no window in which opencode could miss it. Mail steered in at a boundary is
@@ -44,6 +46,7 @@ export class Bridge {
 		this.aborting = false; // session.error MessageAbortedError seen
 		this.abortSeen = false; // the aborted assistant message seen
 		this.deferred = false; // the first idle of an abort seen, its end waits for the message or the second idle
+		this.failed = false; // a session.error that is not an abort, with no assistant message since
 		clearTimeout(this.timer);
 	}
 
@@ -71,6 +74,7 @@ export class Bridge {
 				return this.message(p.info ?? {});
 			case "session.error":
 				if (p.error?.name === ABORTED) this.aborting = true;
+				else this.failed = true;
 				return;
 			case "session.idle":
 				return this.idle();
@@ -87,6 +91,7 @@ export class Bridge {
 		if (info.role !== "assistant") return;
 		if (info.parentID && info.parentID > this.parent) this.parent = info.parentID;
 		this.last = { id: info.id, finish: info.finish, error: info.error };
+		this.failed = false;
 		if (info.finish === "tool-calls" && !this.boundary.has(info.id)) {
 			this.boundary.add(info.id);
 			this.turns.toolBoundary();
@@ -109,6 +114,11 @@ export class Bridge {
 				return;
 			}
 			return this.endAborted();
+		}
+		if (this.failed) {
+			// Nothing answered: a nudge would fail the same way, again and again. Unread, so unacked.
+			this.mail.clear();
+			return this.turns.endRun("error");
 		}
 		if ([...this.mail].some((id) => id > this.parent)) {
 			// Delivered, never read: ending the run would ack it. One more run reads it, in this turn.

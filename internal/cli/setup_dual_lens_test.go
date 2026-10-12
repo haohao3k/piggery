@@ -10,7 +10,7 @@ import (
 
 func TestDualLensSetupRestoresShortcutIndependently(t *testing.T) {
 	home := fakeReviewCodex(t)
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	t.Setenv("CODEX_HOME", home)
 	e := &env{dir: t.TempDir(), stdout: &strings.Builder{}}
 	if err := e.setup([]string{"dual-lens"}); err != nil {
@@ -90,6 +90,7 @@ func TestLegacyReviewShortcutMigrationPreservesOwnership(t *testing.T) {
 					t.Fatal(err)
 				}
 				if mode == "symlink" {
+					skipOnWindows(t, "creating a skill symlink needs Windows developer mode or a privilege")
 					target := filepath.Join(t.TempDir(), "custom.md")
 					if err := os.WriteFile(target, content, 0600); err != nil {
 						t.Fatal(err)

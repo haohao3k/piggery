@@ -152,7 +152,7 @@ func (e *env) root() *cobra.Command {
 	template := &cobra.Command{Use: "template", Short: "Make your own team template", GroupID: grpTeams}
 	template.AddCommand(e.cmd("list", "The templates a team can be founded from, with their summaries", "",
 		"piggery template list", authLocal, e.templateList))
-	template.AddCommand(e.cmd("new <name> [--from <built-in>]", "Copy a built-in (default p2p) to ~/.piggery/templates/<name>", "",
+	template.AddCommand(e.cmd("new <name> [--from <built-in>]", "Copy a built-in (default lead-peer) to ~/.piggery/templates/<name>", "",
 		"piggery template new review --from lead-peer", authLocal,
 		func(args []string) error { return e.template(append([]string{"new"}, args...)) }))
 	archive := &cobra.Command{Use: "archive", Short: "Read a gc archive", GroupID: grpMaintain}

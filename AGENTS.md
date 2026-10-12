@@ -9,11 +9,17 @@ Read first: [README.md](README.md), then [docs/guide.md](docs/guide.md) (by task
 [docs/reference.md](docs/reference.md) (every command and key). The templates are explained in
 [manifests/README.md](manifests/README.md).
 
+Apply [Know your strength. Own the outcome.](manifests/prompts/agent-ownership.md) when working
+on Piggery. It is the same shared instruction the runtime gives every agent: use your actual
+capabilities, own execution within your authority, and verify the outcome while the Human
+sets product direction.
+
 ## Commands
 
 ```sh
 go build ./cmd/piggery
 go vet ./...
+python3 scripts/test_local_dev.py # Unix development installer
 go test -race ./...
 node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
 (cd extensions/paseo && npm ci --ignore-scripts && npm run typecheck && npm test)
@@ -21,6 +27,13 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 ```
 
 CI runs exactly these. A change is not done until they pass.
+
+On the Linux dev machine (Ubuntu, x86_64): Go comes from `~/.local/bin/go` (the toolchain in
+`go.mod` is fetched automatically), Node 24 from nvm, `python3` for `scripts/local-dev.*`. No
+services or ports: the daemon uses a unix socket under its home. Run `go test` with a private
+`HOME` (`HOME=$(mktemp -d)`, keeping `GOCACHE`/`GOMODCACHE`/`GOPATH` from `go env`).
+`TestHookClaude` fails when the test process descends from a Claude Code session (the hook
+finds the `claude` ancestor); run it detached from that process tree, e.g. `(setsid sh -c 'go test ...' &)`.
 
 ## Where things are
 
@@ -33,8 +46,8 @@ CI runs exactly these. A change is not done until they pass.
 | `internal/proto` | The socket wire format (JSON lines), shared by server and clients |
 | `internal/cli` | The `piggery <cmd>` client, `top`, `setup <harness>`, hooks and `piggery mcp` |
 | `internal/driver/local` | Headless workers: the process runner plus one codec per harness |
-| `internal/view` | What `top`, `ps` and the Paseo plugin show |
-| `extensions/` | What runs inside a harness: pi, omp and dsh extensions, the Paseo plugin |
+| `internal/view` | What `top` and `ps` show (`ps --view` and `tail --view` print it as JSON) |
+| `extensions/` | What runs inside a harness: the pi, omp, dsh and opencode extensions |
 | `manifests/` | Built-in templates (`*.yaml`) and their role prompts, embedded in the binary |
 | `testdata/fixtures/` | Real captures of each harness, by version, replayed by the tests |
 

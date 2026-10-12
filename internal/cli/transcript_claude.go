@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -127,4 +130,37 @@ func prefixed(name, status string) string {
 		return status
 	}
 	return name + " " + status
+}
+
+// claudeForkParent is the session id a Claude session was forked from ("" for none, or when its
+// transcript cannot be read): every entry a fork copies carries forkedFrom.sessionId, the first one
+// included (the SDK's forkSession, /branch). path is the transcript when the caller has it (the
+// SessionStart hook); without it (the MCP server) the file is found by the session id in any project
+// directory of the Claude config dir.
+func claudeForkParent(session, path string) string {
+	if path == "" {
+		if session == "" || strings.ContainsAny(session, `/\`) {
+			return ""
+		}
+		found, _ := filepath.Glob(filepath.Join(claudeConfigDir(), "projects", "*", session+".jsonl"))
+		if len(found) == 0 {
+			return ""
+		}
+		path = found[0]
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	line, _ := bufio.NewReaderSize(f, 1<<16).ReadBytes('\n') // the first entry only; an over-long one just fails to parse
+	var first struct {
+		ForkedFrom struct {
+			SessionID string `json:"sessionId"`
+		} `json:"forkedFrom"`
+	}
+	if json.Unmarshal(line, &first) != nil {
+		return ""
+	}
+	return first.ForkedFrom.SessionID
 }

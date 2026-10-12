@@ -8,7 +8,7 @@ import (
 
 // The log cache (<dir>/cache/logs.json) keeps what ps --json read of each log between calls (its
 // offset, turns, context, mark, and a resumable reader's state), so a call reads only the bytes
-// each log gained: session transcripts run to tens of MB and the Paseo plugin calls ps --json
+// each log gained: session transcripts run to tens of MB and a UI such as PigMonitor calls ps --json
 // every few seconds. It is the CLI's own: the daemon never reads it, and losing it only costs one
 // full read.
 

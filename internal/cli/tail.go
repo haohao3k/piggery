@@ -30,7 +30,7 @@ func (e *env) tail(args []string) error {
 	n := fs.Int("n", 20, "readable lines to show")
 	follow := fs.Bool("f", false, "follow until Ctrl-C")
 	fs.StringVar(&a.Team, "team", "", "team, when the name is in more than one")
-	asView := fs.Bool("view", false, "print the readable lines as JSON, each with its kind (for the Paseo plugin)")
+	asView := fs.Bool("view", false, "print the readable lines as JSON, each with its kind (for a UI that draws it, such as PigMonitor)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err

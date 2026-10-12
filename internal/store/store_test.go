@@ -20,7 +20,7 @@ func TestOpenMigratesV1File(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := v1.Exec(`INSERT INTO meta(key, value) VALUES ('schema_version', '1');
-		INSERT INTO teams(id, name, model_name, manifest, root_cwd, created_at) VALUES ('T1', 'p2p', 'p2p', 'model: p2p', '/x', 1)`); err != nil {
+		INSERT INTO teams(id, name, model_name, manifest, root_cwd, created_at) VALUES ('T1', 'old', 'old', 'model: old', '/x', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	v1.Close()
@@ -31,10 +31,10 @@ func TestOpenMigratesV1File(t *testing.T) {
 	}
 	defer db.Close()
 	var version, team string
-	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "27" {
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "28" {
 		t.Fatalf("version = %q, %v", version, err)
 	}
-	if err := db.QueryRow(`SELECT name FROM teams WHERE id='T1'`).Scan(&team); err != nil || team != "p2p" {
+	if err := db.QueryRow(`SELECT name FROM teams WHERE id='T1'`).Scan(&team); err != nil || team != "old" {
 		t.Fatalf("v1 data lost: %q, %v", team, err)
 	}
 	var n int
@@ -166,18 +166,19 @@ func TestOpenBacksUpBeforeMigrating(t *testing.T) {
 		}
 		db.Close()
 	}
-	if got, want := names(), "mine.db pre-v18-27 pre-v19-27 pre-v20-27 pre-v3-4-by-hand.db"; got != want {
+	if got, want := names(), "mine.db pre-v18-28 pre-v19-28 pre-v20-28 pre-v3-4-by-hand.db"; got != want {
 		t.Fatalf("backups = %q; want the 3 newest upgrades, and both other files kept", got)
 	}
-	es, _ := filepath.Glob(filepath.Join(backups, "pre-v20-27-*.db"))
+	es, _ := filepath.Glob(filepath.Join(backups, "pre-v20-28-*.db"))
 	cp, err := sql.Open("sqlite", "file:"+es[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cp.Close()
 	var version, marker string
-	if err := cp.QueryRow(`SELECT (SELECT value FROM meta WHERE key='schema_version'), (SELECT value FROM meta WHERE key='marker')`).
-		Scan(&version, &marker); err != nil || version != "20" || marker != "kept" {
+	err = cp.QueryRow(`SELECT (SELECT value FROM meta WHERE key='schema_version'), (SELECT value FROM meta WHERE key='marker')`).
+		Scan(&version, &marker)
+	cp.Close() // before the dir is removed below: Windows cannot delete an open file
+	if err != nil || version != "20" || marker != "kept" {
 		t.Fatalf("backup is at v%s with marker %q, %v; want v20 with its data", version, marker, err)
 	}
 

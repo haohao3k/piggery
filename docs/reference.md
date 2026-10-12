@@ -12,7 +12,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 |---|---|
 | `setup [pi\|claude\|codex\|omp\|dsh\|opencode\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys (the daemon does the same at start), and show where each harness stands) |
 | `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, opencode, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
-| `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it |
+| `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it. On Windows the targets are `desktop` and `ntfy:TOPIC`, written as `.ps1` files with the marker on the first line; they need nothing on PATH |
 | `setup dual-lens` | Install or restore the Codex `$piggery-dual-lens` shortcut without changing hooks/MCP. The playbook and template ship in the fork; Claude and Pi entries ship with their harness integrations. Modified or unowned skills are preserved, including with `--force`. |
 | `setup remove dual-lens` | Remove the unchanged managed Codex shortcut; leave hooks/MCP and the bundled playbook/template available. |
 | `setup --refresh` | Refresh already-installed integration assets even at the same integration version, and safely unpack built-in templates; preserve custom template overrides and report their names; no new harness integration is enabled; mutually exclusive with `--outdated` and harness arguments |
@@ -20,10 +20,10 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `skills [dual-lens]` | Print the guide or the dual-lens launcher and chair playbook; no daemon or workers are started |
 | `team down <team>` | Close a team: workers stopped, nothing acked; a session that was a member goes on as a solo under its old name (`name-2` when a live solo or an open team has it) |
 | `template list` | The templates a team can be founded from: name, origin (`built-in` or `yours`), `taskforce` for one a session can call up (a column that is there when any is) and summary, from `~/.piggery/templates` (the built-ins before the first `setup`); on a terminal the summary is cut to the window, piped it is whole |
-| `template new <name> [--from <built-in>]` | Copy a built-in (default `p2p`) to `~/.piggery/templates/<name>` |
-| `ps [--json\|--view]` | Daemon, teams (each with the template it was founded from, `teams[].template` in `--json`; a taskforce is listed right under its caller, a step in, as `taskforce NAME ... caller=<name>`, and has `parent` and `parent_id` in `--json`, and `under` on its unit in `projects`), members, solo sessions and pending mail, once; `--view` prints what `top` shows (rows, header counts, events, the latest notices as `notices`, the update notice as `daemon.update`, each row's actions and Overview) as one JSON document with a `version` field, for the Paseo plugin (a taskforce's block has `under`, its caller's id, and `depth`; its head has `taskforce` and `caller`) |
+| `template new <name> [--from <built-in>]` | Copy a built-in (default `lead-peer`) to `~/.piggery/templates/<name>` |
+| `ps [--json\|--view]` | Daemon, teams (each with the template it was founded from, `teams[].template` in `--json`; a taskforce is listed right under its caller, a step in, as `taskforce NAME ... caller=<name>`, and has `parent` and `parent_id` in `--json`, and `under` on its unit in `projects`), members, solo sessions and pending mail, once; `--view` prints what `top` shows (rows, header counts, events, the latest notices as `notices`, the update notice as `daemon.update`, each row's actions and Overview) as one JSON document with a `version` field, for a UI that draws it, such as PigMonitor (a taskforce's block has `under`, its caller's id, and `depth`; its head has `taskforce` and `caller`) |
 | `top` | The same, live (a taskforce sits a step in under its caller, with a `taskforce` label and `for <caller>` after its name; once closed it is only in the Closed tab until gc), with context, turns and the latest events and notices (Notices at the bottom left once there is a notice, Events on the right, split where the list and the Overview are; stacked in a narrow window); tabs: All, then one per project (a directory; ones with someone alive first), then Closed, switched with `←/→`, `tab`/`shift+tab` or a click; a tab is named by its directory's last name, with parent names added when two clash (`a/api`, `b/api`), and when they do not all fit the bar slides, with `‹ +N` and `+N ›` for the ones left out. All lists only what is alive: no team whose members are all gone, no gone solo, no closed team (a project tab lists all of its directory, and Closed the closed teams). A taskforce has no tab of its own (`ps` has no tabs); the header says `vX available: piggery update` when a newer release is out; `↑/↓` select (`PgUp`/`PgDn`, `Home`/`End` in a long list, which scrolls under its header; `↑ N`/`↓ N` on the border count hidden lines), `enter` opens or closes (a member's details, a team's members, a team's gone-members line; kept for the next `top`), `t` switches Overview and Tail, `e` opens the events list (folded to the latest event by default; kept for the next `top`), `n` opens or closes the Notices box (the latest notices; folded to the newest one by default, kept for the next `top`, like `e`), `x` kills the selected headless worker (asks once); a click on the model (blue, `▾`) in a live headless worker's Overview, or `M`, opens a picker for its model and thinking level (`enter` or a double-click applies, `esc` closes) |
-| `tail <worker> [-n N] [-f] [--team T]` | A worker's log or a session's transcript, readable; `--json` raw; `--view` the readable lines with their kind, for the Paseo plugin |
+| `tail <worker> [-n N] [-f] [--team T]` | A worker's log or a session's transcript, readable; `--json` raw; `--view` the readable lines with their kind, as JSON |
 | `log [--after SEQ] [--team T] [--limit N]` | Decisions and lifecycle events |
 | `abort <x> [--team T]` | Cancel x's current turn; it stays alive |
 | `kill <worker> [--team T]` (short: `x`) | Kill a worker: SIGTERM so its harness cleans up, then after up to 2s SIGKILL for it and every process left in its tree; `x` on the selected worker in `top` asks `kill <name>? y/n` and does the same |
@@ -33,13 +33,13 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `why <from> <to> [--team T]` | Every gate check for a send; nothing is sent |
 | `gc --closed-before DURATION [--dry-run]` | Archive, verify and delete closed teams and gone solo sessions |
 | `archive show <file> [--table T]` | Print a gc archive (local, no daemon) |
-| `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon uses when it founds a team. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
+| `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon uses when it founds a team. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an unknown top-level key in a template, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
 | `doctor` | Findings about the daemon's state; exit 1 when any |
 | `shutdown` / `restart` | Stop the daemon (workers stopped), or stop and start it again from this binary |
-| `update [--check] [--force]` | Install the latest release from `haohao3k/piggery`, with checksum verification. `--check` prints current/latest versions without changing files; `--force` replaces a dev build or reinstalls the same release. No checkout is needed. After replacement, stop the old daemon; the next command starts the new one. |
+| `update [--check] [--force]` | Install the latest release from `haohao3k/piggery`, with checksum verification. `--check` prints current/latest versions without changing files; `--force` replaces a dev build or reinstalls the same release. No checkout is needed. After replacement, stop the old daemon; the next command starts the new one. On Windows the old executable is kept as `piggery.exe.old` until the next update. |
 
 `ps` and `top` show a line such as `outdated: codex (v0 < v1): piggery setup --outdated` in their header
-when a claude, codex or paseo install is outdated (`ps --json` has the same list as `outdated`).
+when a claude or codex install is outdated (`ps --json` has the same list as `outdated`).
 
 Flags on every command: `-a/--admin`, `--json` (raw JSON result), `--no-start` (fail instead of
 starting the daemon), `-h/--help`; `-v/--version` on `piggery`. In a shell where `PIGGERY_ID` and
@@ -65,6 +65,7 @@ The legacy CLI topics `dual-lane-adjudication` and `three-review` select the sam
 | Key | Default | Meaning |
 |---|---|---|
 | `harness` | `pi` | Harness of a worker whose role and founding session name none: `pi`, `claude`, `codex`, `omp`, `dsh`, `opencode` |
+| `gate` | `open` | Gate of a new solo session: `open` (as always), or `closed`: other teams and solos neither see nor mail it, and it sees none of them (a taskforce it called is the exception). A solo, or a team's gate (a session), changes its own later with `agent action=gate_close` / `gate_open` when the Human asks; a team founded by a closed solo, a taskforce, and a reopened team take the state of who founds, calls or reopens them. `who` marks your own line `[gate closed]`, `ps` shows `[closed]` on the team and `[gate closed]` on the solo; `ps --json` has `gate_closed`. Closing holds the mail already waiting from other teams and solos (`held`, not delivered or acked) and opening releases it |
 | `gc.closed_after` | `14d` | Delete (after archiving) a team closed, or a solo session gone, longer than this: `14d`, `36h`, or `off` |
 | `gc.archive_keep` | `30d` | Delete gc archives older than this, or `off`; also for a manual gc |
 | `display.columns` | `[role, state, harness, model, ctx, turns, unacked, age, since, cwd]` | Columns `top` and `ps` show after the name, in order (`top` has no `unacked` column: its header, team lines and details give it); **live**, read on every run. An unknown name warns and shows the defaults; `-` where a row has no value, `model` is the id without its provider, `cwd` is blank in the project directory itself |
@@ -93,8 +94,11 @@ resume. Missing keys are added with their defaults; `setup --force` writes the d
 ## Manifest
 
 `~/.piggery/templates/<name>/manifest.yaml`. Frozen into a team when it is founded: a change
-applies to the next team only. A manifest with a key this list does not have, or a wrong value, is
-refused with the reason when a team is founded from it.
+applies to the next team only. A manifest with a key this list does not have inside a role, its
+`spawn` or a routing rule, a role name the manifest does not have, or a wrong value (a limit below 1
+included) is refused with the reason when a team is founded from it. A top-level key piggery does
+not know is ignored, and `piggery check` warns, so a template written for a newer piggery still
+runs. A team already founded keeps its manifest as it was.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -110,8 +114,8 @@ refused with the reason when a team is founded from it.
 | `roles.<r>.spawn.harness` | `inherit` | Harness of this role's workers; `inherit`: the founding session's, else `config.yaml` |
 | `roles.<r>.spawn.model`, `.thinking` | `inherit` | This role's worker model and thinking level |
 | `roles.<r>.spawn.allow_tools` | `[]` | Tools the harness profile turns off that this role keeps |
-| `routing[]` | none = all denied | `{from, to, allow, cc}`; the first rule matching a sender and receiver decides; `cc` roles get a copy; a `to: notify` line is ignored with a warning (`piggery check` shows it), since only piggery writes to `notify` |
-| `timers[]` | `[]` | `{on: <role>, silent_for: <duration>, notify: <role\|reports_to>}`: one notice when a working member has no turn end for that long; `notify: notify` is ignored |
+| `routing[]` | none = all denied | `{from, to, allow, cc}`; the first rule matching a sender and receiver decides; `cc` roles get a copy (a member that left the team gets none); a `to: notify` line is ignored with a warning (`piggery check` shows it), since only piggery writes to `notify` |
+| `timers[]` | `[]` | `{on: <role>, silent_for: <duration>, notify: <role\|reports_to>}`: one notice when a working member has no turn end for that long; `notify: notify` is ignored, and a member that left the team is never notified |
 | `taskforce.idle_for` | none | A top-level `taskforce:` block makes the template callable as a taskforce (`spawn template=`: a temporary team that reports to the caller). `idle_for` (a duration; the built-in `council`, `dual-lens` and `advisor` use `20m`): when every member has been idle that long, the caller gets one notice per idle stretch. Only its caller closes a taskforce (`close team=<name>`; a close from inside it, its chair included, is refused). It also closes with its caller and when its chair stops (gone, left or parked): the other members are stopped as with `team down` and the caller gets one notice; a closed taskforce is never reopened. A key in the block that piggery does not know is ignored, and `piggery check` warns. All taskforce keys live in this block, so a binary that does not know it runs the template as a normal one |
 | `limits.depth` | none | How deep spawn chains may go |
 | `limits.concurrency` | none | Live workers at once (most built-ins set 10; `dual-lens` sets 3 for its chair and two lenses) |
@@ -155,8 +159,8 @@ harness's version and problems, each with its fix, and `vN < vM` for an outdated
 | codex | piggery's hooks in `hooks.json`, after yours, and a block between `# >>> piggery` and `# <<< piggery` in `config.toml`, in `$CODEX_HOME` (default `~/.codex`) |
 | omp | the extension unpacked into omp's agent dir (`~/.omp/agent/extensions/piggery/`; `$PI_CODING_AGENT_DIR` or a profile in `OMP_PROFILE`/`PI_PROFILE` moves it) |
 | opencode | the plugin in `~/.piggery/plugins/opencode/`, and one entry for it in `plugin` of `opencode.json` in opencode's config dir (`$XDG_CONFIG_HOME/opencode`, default `~/.config/opencode`); your other entries and keys stay as they are. A config that is not plain JSON (`opencode.jsonc`, comments) is not touched: setup writes nothing and prints the line to add |
-| dsh | the plugin in `~/.piggery/plugins/dsh/`, and one block between `# BEGIN piggery` and `# END piggery` in dsh's home patch (`$DSH_HOME/cordis.patch.yml`, default `~/.dsh`); your rows stay |
 | paseo | the plugin in `~/.piggery/paseo/`, installed with `paseo plugin install`; the Paseo daemon must run and every app showing it must be Paseo 0.9.1 or newer |
+| dsh | the plugin in `~/.piggery/plugins/dsh/`, and one block between `# BEGIN piggery` and `# END piggery` in dsh's home patch (`$DSH_HOME/cordis.patch.yml`, default `~/.dsh`); your rows stay |
 
 Before `setup` writes a config file of yours (codex `config.toml` and `hooks.json`, dsh's home patch,
 opencode's `opencode.json`, pi's `settings.json`) it copies it to `~/.piggery/backups/setup/<harness>/<file name>` (mode 0600, since
@@ -179,6 +183,11 @@ runs over 10 seconds is killed with its child processes; a failure is a line in 
 the file's name and never the body. Without a hook nothing runs. `hooks/notify` (the old single
 file) is not run; `piggery check` warns about it. `setup notify` writes and lists hooks.
 
+Windows has no execute bit: a hook there is a file the daemon can run by its extension, `.exe` or
+`.com` as it is, `.cmd` or `.bat` through `cmd.exe`, `.ps1` through Windows PowerShell
+(`powershell.exe -NoProfile -ExecutionPolicy Bypass -File`; a script should read stdin as UTF-8
+bytes, as the ones `setup notify` writes do). A `.sh` file is not run, and `serve.log` says so once.
+
 | `kind` | A notice when |
 |---|---|
 | `reply` | the gate finished a turn on team mail and sent nothing: its answer is in its session |
@@ -196,8 +205,16 @@ line or `notify: notify` timer is ignored with a warning.
   and can add back a blacklisted package. Turn off `pi-peer` while using piggery.
 - **Claude Code**: workers run with your login, user settings, user MCP servers (minus the blacklist)
   and never a repo's project settings; your own hooks run in them too (make a hook that must not exit
-  when `PIGGERY_ID` is set); their sessions are in `~/.claude/projects`. `/clear` keeps a session's
-  participant. Restart Claude sessions that were open during setup.
+  when `PIGGERY_ID` is set); their sessions are in `~/.claude/projects`. `/clear`, `/branch` and a
+  `/resume` of a session no other participant has keep a session's participant; a `/resume` of
+  another participant's session goes on as that participant, and the one it left ends. A session
+  forked outside its process (Paseo's Rewind) goes on as its parent's participant when that one is
+  gone, and stays a solo of its own while the parent is live. Claude fires no hook when you press
+  Esc or an SDK client interrupts a turn: `piggery mcp` reads Claude's own session file
+  (`<config dir>/sessions/<pid>.json`), and once it has said `idle` for 3 seconds while piggery still
+  shows the turn open, piggery ends that turn as interrupted (nothing acked, the mail comes again).
+  It does nothing if the file is missing or not in the format piggery knows (seen on Claude Code
+  2.1.296). Restart Claude sessions that were open during setup.
 - **Codex**: run `piggery setup codex` before using Codex workers or sessions: Codex runs a hook only
   once trusted. Workers use the Codex home of the daemon (`$CODEX_HOME`, else `$HOME/.codex`): a daemon
   started with another `HOME` has no login there and the first turn fails with 401. A worker's
@@ -214,7 +231,10 @@ line or `notify: notify` timer is ignored with a warning.
   shell survives its server, only an abort ends it. Restart opencode sessions that were open during setup.
 - **dsh**: restart a `dsh web` that was open during setup; a session's records are kept under
   `~/.piggery/sessions/dsh/`; a worker takes several seconds to start (dsh loads its plugins); model
-  names are dsh's routes (`provider/model`); a custom provider is declared in your own dsh setup.
+  names are dsh's routes (`provider/model`); a custom provider is declared in your own dsh setup:
+  from dsh 0.2.0-rc.2 on, a row of `$DSH_HOME/cordis.patch.yml` (`id: llm-pi-ai`, its
+  `config.providers`), since rc.2 no longer reads `~/.dsh/settings.yaml` (it moves it into the
+  first profile that starts and renames it `settings.yaml.imported`).
 
 ## Harness versions
 

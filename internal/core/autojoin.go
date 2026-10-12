@@ -15,10 +15,16 @@ type JoinAutoArgs struct {
 	Cwd        string `json:"cwd"`
 	Harness    string `json:"harness,omitempty"`
 	Mode       string `json:"mode,omitempty"`
-	HarnessRef string `json:"harness_ref"`    // same session -> same participant
-	Name       string `json:"name,omitempty"` // default one word from harness_ref (names.go); suffixed on collision
-	// Source is why the harness started this session (Claude: startup|resume|clear|compact);
-	// recorded only, the host decides.
+	HarnessRef string `json:"harness_ref"` // same session -> same participant
+	// ParentRef is the session this one was forked from, when its harness says so (Claude's
+	// transcript names it): a session no participant has, forked from one whose participant is
+	// gone, goes on as that participant. A live parent is not taken over.
+	ParentRef string `json:"parent_ref,omitempty"`
+	Name      string `json:"name,omitempty"` // default one word from harness_ref (names.go); suffixed on collision
+	// Source is why the harness started this session (Claude: startup|resume|clear|compact|fork).
+	// The host decides which row; Source decides what the join may change on it: startup does
+	// not move a running row's session_ref, resume and fork may move the host to another
+	// participant's session (leaveForOwner).
 	Source string `json:"source,omitempty"`
 	// Host is the harness process the session lives in ("claude:<pid>:<start time>"), shared by
 	// its hooks and MCP server. A live participant with the same host is this session: join.auto
@@ -84,18 +90,26 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 				AND state<>'gone' AND left_at IS NULL AND COALESCE(mode,'')<>'headless'
 				ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.Host).Scan(&id, &team, &run)
 			if err == nil {
-				res = JoinResult{ID: id, TeamID: team, RunID: run} // no token: it authenticates by host
-				path, format := a.transcriptCols()
-				if _, err := t.ExecContext(t.ctx, `UPDATE participants SET session_ref=?, transcript=COALESCE(?,transcript),
-					transcript_format=COALESCE(?,transcript_format) WHERE id=?`, a.HarnessRef, path, format, id); err != nil {
+				left, err := t.leaveForOwner(a, id)
+				if err != nil {
+					return err
+				}
+				if !left {
+					res = JoinResult{ID: id, TeamID: team, RunID: run} // no token: it authenticates by host
+					path, format := a.transcriptCols()
+					// startup is the MCP server's dial (and a hook's, in a new process), with the id the
+					// process read when it started: after /clear that is not the session it runs now.
+					if _, err := t.ExecContext(t.ctx, `UPDATE participants SET
+						session_ref=CASE WHEN ?='startup' THEN COALESCE(session_ref,?) ELSE ? END, transcript=COALESCE(?,transcript),
+						transcript_format=COALESCE(?,transcript_format) WHERE id=?`, a.Source, a.HarnessRef, a.HarnessRef, path, format, id); err != nil {
+						return internal(err)
+					}
+					_, err := t.ExecContext(t.ctx, `INSERT INTO participant_refs(ref, participant_id) SELECT ?, ?
+						WHERE ? <> COALESCE((SELECT harness_ref FROM participants WHERE id=?),'') ON CONFLICT(ref) DO NOTHING`,
+						a.HarnessRef, id, a.HarnessRef, id)
 					return internal(err)
 				}
-				_, err := t.ExecContext(t.ctx, `INSERT INTO participant_refs(ref, participant_id) SELECT ?, ?
-					WHERE ? <> COALESCE((SELECT harness_ref FROM participants WHERE id=?),'') ON CONFLICT(ref) DO NOTHING`,
-					a.HarnessRef, id, a.HarnessRef, id)
-				return internal(err)
-			}
-			if !errors.Is(err, sql.ErrNoRows) {
+			} else if !errors.Is(err, sql.ErrNoRows) {
 				return internal(err)
 			}
 		}
@@ -104,10 +118,21 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 		// A row that left (found elsewhere, replaced or merged by reopen) never comes back.
 		var mode, host sql.NullString
 		var person bool
-		p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`, mode, host, person FROM participants
-			WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?)) AND left_at IS NULL
-			AND (team_id IS NULL OR team_id IN (SELECT id FROM teams WHERE closed_at IS NULL))
-			ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.HarnessRef, a.HarnessRef), &mode, &host, &person)
+		find := func(ref string) (participant, error) {
+			return scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`, mode, host, person FROM participants
+				WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?)) AND left_at IS NULL
+				AND (team_id IS NULL OR team_id IN (SELECT id FROM teams WHERE closed_at IS NULL))
+				ORDER BY created_at DESC, rowid DESC LIMIT 1`, ref, ref), &mode, &host, &person)
+		}
+		p, err := find(a.HarnessRef)
+		forked := false
+		if errors.Is(err, sql.ErrNoRows) && a.ParentRef != "" && a.ParentRef != a.HarnessRef {
+			// A session forked from one whose participant is gone (or parked, a person's): it goes on
+			// as that participant. A parent that is live, or a worker's, leaves the fork a solo of its own.
+			if pp, perr := find(a.ParentRef); perr == nil && person && (pp.state == "gone" || (pp.state == "parked" && mode.String != "headless")) {
+				p, err, forked = pp, nil, true
+			}
+		}
 		switch {
 		case err == nil && !person:
 			// A worker's session opened by hand (e.g. to inspect it) must never take the worker over.
@@ -123,11 +148,18 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 			res.ID, res.TeamID = p.id, p.team
 			path, format := a.transcriptCols()
 			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET run_id=?, token_hash=?, last_turn_end=NULL,
-				cwd=?, harness=COALESCE(?,harness), mode=COALESCE(?,CASE WHEN mode='headless' THEN 'interactive' ELSE mode END), host=?, session_ref=?,
+				cwd=?, harness=COALESCE(?,harness), mode=COALESCE(?,CASE WHEN mode='headless' THEN 'interactive' ELSE mode END),
+				session_ref=CASE WHEN ?='startup' AND host=? THEN COALESCE(session_ref,?) ELSE ? END, host=?,
 				transcript=COALESCE(?,transcript), transcript_format=COALESCE(?,transcript_format) WHERE id=?`,
-				res.RunID, hashToken(token), cwd, nullStr(a.Harness), nullStr(a.Mode), nullStr(a.Host), a.HarnessRef,
+				res.RunID, hashToken(token), cwd, nullStr(a.Harness), nullStr(a.Mode), a.Source, a.Host, a.HarnessRef, a.HarnessRef, nullStr(a.Host),
 				path, format, p.id); err != nil {
 				return internal(err)
+			}
+			if forked { // a later join by the fork's id finds this participant
+				if _, err := t.ExecContext(t.ctx, `INSERT INTO participant_refs(ref, participant_id) VALUES (?,?) ON CONFLICT(ref) DO NOTHING`,
+					a.HarnessRef, p.id); err != nil {
+					return internal(err)
+				}
 			}
 			p.run = res.RunID
 			return t.setState(&p, "idle", "join.auto")
@@ -141,6 +173,28 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 		return JoinResult{}, err
 	}
 	return res, nil
+}
+
+// leaveForOwner ends the live row id of the host a resume or fork join comes from, when the session it
+// moves to is another participant's: that participant is the one the process goes on as, and the
+// join goes on to find it (a headless worker's session is not one). It reports whether it ended the
+// row. A session no other participant has is the same participant's new id, as after /clear.
+func (t *txn) leaveForOwner(a JoinAutoArgs, id string) (bool, error) {
+	if a.Source != "resume" && a.Source != "fork" {
+		return false, nil
+	}
+	var owned bool
+	err := t.QueryRowContext(t.ctx, `SELECT EXISTS(SELECT 1 FROM participants WHERE id<>? AND person=1 AND left_at IS NULL
+		AND (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?))
+		AND (team_id IS NULL OR team_id IN (SELECT id FROM teams WHERE closed_at IS NULL)))`, id, a.HarnessRef, a.HarnessRef).Scan(&owned)
+	if err != nil || !owned {
+		return false, internal(err)
+	}
+	p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+` FROM participants WHERE id=?`, id))
+	if err != nil {
+		return false, internal(err)
+	}
+	return true, t.setState(&p, "gone", "session_end")
 }
 
 // moveSession hands what a live session reported (its host, capabilities, tool prefix, model
@@ -182,14 +236,39 @@ func (t *txn) insertSession(teamID, role, cwd, run, token string, a JoinAutoArgs
 	if err != nil {
 		return "", err
 	}
+	closed := t.soloClosed
+	if teamID == "" { // a session whose team closed takes that team's gate; else the configured default
+		err := t.QueryRowContext(t.ctx, `SELECT COALESCE((SELECT gate_closed FROM teams WHERE id=team_id), gate_closed)
+			FROM participants WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?))
+			AND person=1 ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.HarnessRef, a.HarnessRef).Scan(&closed)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", internal(err)
+		}
+	}
+	// The id this process joins with may be one it has since left (piggery mcp reads it once, at start):
+	// when the same host's former row has that id among its own, its session_ref is the one the process
+	// runs now (SessionStart after /clear moved it).
+	sessionRef := a.HarnessRef
+	if a.Host != "" {
+		var cur sql.NullString
+		err := t.QueryRowContext(t.ctx, `SELECT session_ref FROM participants WHERE host=? AND person=1 AND session_ref IS NOT NULL
+			AND (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?))
+			ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.Host, a.HarnessRef, a.HarnessRef).Scan(&cur)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", internal(err)
+		}
+		if cur.Valid {
+			sessionRef = cur.String
+		}
+	}
 	id := newID(t.now)
 	path, format := a.transcriptCols()
 	if _, err := t.ExecContext(t.ctx, `INSERT INTO participants
 		(id, run_id, kind, harness, mode, name, cwd, team_id, role, state, state_since, last_activity,
-		 token_hash, harness_ref, created_at, host, session_ref, transcript, transcript_format, person)
-		VALUES (?,?,'agent',?,?,?,?,?,?,'idle',?,?,?,?,?,?,?,?,?,1)`,
+		 token_hash, harness_ref, created_at, host, session_ref, transcript, transcript_format, person, gate_closed)
+		VALUES (?,?,'agent',?,?,?,?,?,?,'idle',?,?,?,?,?,?,?,?,?,1,?)`,
 		id, run, nullStr(a.Harness), nullStr(a.Mode), name, cwd, nullStr(teamID), nullStr(role), t.now, t.now,
-		hashToken(token), a.HarnessRef, t.now, nullStr(a.Host), a.HarnessRef, path, format); err != nil {
+		hashToken(token), a.HarnessRef, t.now, nullStr(a.Host), sessionRef, path, format, closed); err != nil {
 		return "", internal(err)
 	}
 	return id, nil

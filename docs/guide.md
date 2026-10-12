@@ -64,7 +64,7 @@ Built-in templates: `lead-peer` (a lead owns the plan and judges the results; pe
 members for independent views on one decision), `amp-like` (a lead does the work and calls an oracle
 or a reviewer that answers once), `dual-lens` (a chair settles one hard question or review
 with two lenses on different models), `advisor` (read-only advice on a hard decision, from one agent), `gastown-like` (a mayor splits the work, polecats do each task on
-its own branch, a refinery merges them one at a time), `p2p` (peers that talk freely and spawn peers). Each one
+its own branch, a refinery merges them one at a time). Each one
 is drawn, with when to pick it, in [manifests/README.md](../manifests/README.md).
 
 **Mixing harnesses.** A role can name a harness (`spawn: {harness: claude}` in the template); a
@@ -196,8 +196,10 @@ unacked mail of agents that are gone, workers without a process) and exits 1 whe
 **Notifications.** piggery tells you what only it knows: when the mail flow of a team needs you.
 `piggery setup notify add desktop`, `add herdr` or `add ntfy:<topic>` writes a hook for you into
 `~/.piggery/hooks/notify.d/` (it needs `jq`; `piggery setup notify` lists what is there and what each
-target lacks; `remove <target>` takes one out; it works from the next notice, no restart). Or write
-your own: each executable file in `~/.piggery/hooks/notify.d/` is run, all of them in parallel, with
+target lacks; `remove <target>` takes one out; it works from the next notice, no restart). On
+Windows `desktop` (a toast) and `ntfy:<topic>` are PowerShell scripts that need nothing installed.
+Or write your own: each executable file in `~/.piggery/hooks/notify.d/` (on Windows a `.ps1`,
+`.cmd`, `.bat` or `.exe` file) is run, all of them in parallel, with
 one JSON line on stdin: `id, kind, team, gate, dir, body, created_at`. `gate` is your team's gate (your session; for a solo, itself),
 `dir` the team's root (a solo's directory) and `body` one short sentence. `kind` is one of:
 
@@ -232,6 +234,18 @@ leaves the team; then the member that joined next whose role has `send` takes ov
 A session can leave a team by founding a new one: its workers and unread mail move to the team's
 gate.
 
+### Closing your gate
+
+When unrelated projects share a machine, their sessions see and can mail each other. A solo session,
+or a team's gate, can close its gate when you ask (`agent action=gate_close`; `gate_open` undoes it).
+A closed gate is closed both ways: other teams and solos do not see it in `who` and cannot mail it
+(the send fails as if the name did not exist), and it sees and mails none of them (its send says the
+gate is closed). Mail that was already waiting from other teams or solos is held, not lost or
+acknowledged, and arrives when the gate opens. A taskforce and the session that called it reach each
+other whatever either gate says, and inside a team nothing changes. A team founded by a closed
+session, its taskforces, and a team it reopens are closed too. To start every new solo session closed,
+set `gate: closed` in `config.yaml`.
+
 ## A member that is gone gets its mail
 
 A member of an open team whose session you closed is `gone`. Mail for it does not wait for you to
@@ -245,6 +259,9 @@ sender sees nothing.
   again. A solo session, a member that left, and a closed team are never woken.
 - **Once per mail.** A woken worker that stops with the mail unread is not woken again by that
   mail; a newer message wakes it again.
+- **A worker that dies is woken at once.** A headless worker whose process ends on its own (a crash,
+  not `agent stop`, `team down` or a daemon shutdown) is woken right away for mail it had not
+  finished, its task included; once per mail, as above. A session of yours waits for new mail.
 - **Opening the session yourself takes it back.** If you open, by hand, a session that was woken, the
   worker is stopped (it gets half a second to finish its turn, then it is killed, about 2.5 seconds at
   most: a turn can be cut, and its unread mail comes again) and the session is yours again, with the same
@@ -265,7 +282,9 @@ sender sees nothing.
   `~/.piggery/archive/`, read back, and deleted with their logs and scratch files; archives older
   than `gc.archive_keep` (30 days) are deleted. By hand: `piggery gc --closed-before 168h
   --dry-run`, then without `--dry-run`; `piggery archive show <file>` reads an archive. Your
-  harnesses' own session files are never touched.
+  harnesses' own session files are never touched. A closed team or gone solo that sent mail still
+  unread by someone who can read it (a live session, or a member of a team that is still open or
+  closed more recently) is kept until that mail is read.
 
 ## Customize piggery (`~/.piggery`)
 
@@ -279,9 +298,9 @@ Everything piggery keeps is in `~/.piggery`. Some of it is yours to edit; the re
 | `hooks/notify.d/` | yes | your notification hooks (above) |
 | `rules/*.md`, any file you name | yes | your own rules for `prompts:` (below); `rules/general-policy.md` comes with piggery for `lead-peer` and `slp` |
 | `serve.log` | read | the daemon's log: **where problems are written** |
-| `piggery.db`, `piggery.sock`, `piggery.lock`, `admin.token` | no | state, socket, lock, your admin credential |
+| `piggery.db`, `piggery.sock`, `piggery.lock`, `admin.token` | no | state, socket, lock, your admin credential (on Windows the daemon listens on a named pipe, for your user only, and `piggery.pipe` holds its name instead of `piggery.sock`) |
 | `logs/`, `run/`, `sessions/`, `archive/`, `backups/`, `cache/`, `plugins/` | no | worker logs, scratch of running workers, session data, gc archives, database copies, cached reads, copies of piggery's adapters |
-| `claude/`, `paseo/` | no | what `setup claude` and `setup paseo` install |
+| `claude/` | no | what `setup claude` installs |
 
 `piggery setup` writes missing files and adds the keys a file lacks, keeping your values, comments
 and order. It never overwrites what you wrote.
@@ -338,6 +357,15 @@ out. A profile can also switch off a harness's own tools that would reach you or
 outside piggery (`disallowed_tools` for Claude, `disabled_tools` for Codex, dsh and opencode); a role gets one
 back with `spawn: {allow_tools: [...]}`.
 
+**Agent ownership in every role.** Every role card includes the built-in
+[Know your strength. Own the outcome.](../manifests/prompts/agent-ownership.md) instructions:
+use actual agent capabilities to plan and estimate, own execution within the role's authority,
+and verify outcomes while the Human directs product goals, priorities and trade-offs. This applies
+to every harness, built-in or custom template, and solo session. Role-specific instructions and
+the team's routing and permissions still apply. The daemon adds the shared text when it renders
+a card, including for existing teams; sessions already holding a card receive it when their
+harness next requests a fresh card, such as on reconnect or session start.
+
 **Rules that follow you** (how you want code written, how to split work), added to the cards of the
 roles you name, in every project and harness:
 
@@ -352,8 +380,9 @@ prompts:
 
 A role is `<role>` (in every template), `<template>/<role>` (that template only; the template is the
 `template:` line of its manifest) or `solo`; `<template>/*` is every role of that template and `*` is
-every role of every template, solo included (a file several entries name is added once). The text goes right after the role's own instructions,
-under a heading naming the file. Files are read when a session starts, so edits need no restart, but
+every role of every template, solo included (a file several entries name is added once). The text
+follows the role's own instructions and the built-in agent ownership guidance, under a heading
+naming the file. Files are read when a session starts, so edits need no restart, but
 a session already running keeps its card. The list itself needs a restart.
 
 **Your own template.**
@@ -411,9 +440,9 @@ Remove a column to hide it; the name is always shown.
   problem line. `piggery doctor` prints the same problems as warnings. Run `piggery setup <harness>`
   again after you move the `piggery` binary, and restart sessions that were open during setup.
 - **Outdated integrations.** After an upgrade the daemon brings the pi, omp, dsh and opencode extensions up to date
-  itself. Claude Code, Codex and Paseo are only reported: `ps` and `top` show `outdated: codex (v0 < v1):
+  itself. Claude Code and Codex are only reported: `ps` and `top` show `outdated: codex (v0 < v1):
   piggery setup --outdated`. Run that command: it updates every installed integration that is outdated
-  and says what to do next (restart the sessions that were open, reload the Paseo app).
+  and says what to do next (restart the sessions that were open).
 - **A worker does not start.** Its harness profile is wrong (the daemon and `piggery setup` write a missing one; `piggery setup --force` resets it),
   or the harness has no login for the daemon's `HOME`. `piggery tail <worker>` shows the harness's
   own error.
@@ -425,7 +454,8 @@ Remove a column to hide it; the name is always shown.
   `~/.piggery/backups/` (the three newest are kept). For development activation and source verification,
   use the explicit [local workflow](local-development.md). Once a day a release daemon checks for
   a newer fork release; nothing is installed automatically. `update.check: false` disables the check.
-  No release in the fork means no downloadable update; there is no upstream fallback.
+  On Windows the replaced executable is kept beside the new one as `piggery.exe.old` until the
+  next update. No release in the fork means no downloadable update; there is no upstream fallback.
 - **After a crash or a restart.** State and mail are in SQLite, so nothing is lost. The next command
   starts the daemon again and open sessions reconnect by themselves. It marks every agent whose
   process or connection is gone as `gone`, never respawns workers because of the restart and never

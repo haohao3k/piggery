@@ -96,11 +96,11 @@ func TestClaudeSessionJoinsByHost(t *testing.T) {
 	// first moves in as the same one); its host and session ids must follow, or every later call
 	// by host is refused.
 	c, _ = e.AuthenticateHost(ctx, "claude:100:1")
-	if r, err := e.Agent(ctx, c, core.AgentArgs{Action: core.AgentFound, Template: "p2p"}); err != nil || r.ParticipantID != mcp.ID {
+	if r, err := e.Agent(ctx, c, core.AgentArgs{Action: core.AgentFound, Template: "lead-peer"}); err != nil || r.ParticipantID != mcp.ID {
 		t.Fatalf("found by the solo = %+v, %v", r, err)
 	}
 	c, _ = e.AuthenticateHost(ctx, "claude:100:1")
-	founded, err := e.Agent(ctx, c, core.AgentArgs{Action: core.AgentFound, Template: "p2p"})
+	founded, err := e.Agent(ctx, c, core.AgentArgs{Action: core.AgentFound, Template: "lead-peer"})
 	if err != nil || founded.ParticipantID == mcp.ID {
 		t.Fatalf("found by a member = %+v, %v; want a new participant", founded, err)
 	}

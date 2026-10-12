@@ -39,15 +39,9 @@ func TestWriteClaudePluginInstallsDualLensSkill(t *testing.T) {
 
 func TestRefreshClaudeRefreshesDualLensSkillCache(t *testing.T) {
 	home, bin := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("PATH", bin)
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(exe, filepath.Join(bin, "claude")); err != nil {
-		t.Fatal(err)
-	}
+	linkExe(t, bin, "claude")
 	log := filepath.Join(home, "claude-argv")
 	t.Setenv("PIGGERY_FAKE_CLAUDE", log)
 	root := filepath.Join(home, ".piggery", "claude")
@@ -87,15 +81,9 @@ func TestRefreshClaudeRefreshesDualLensSkillCache(t *testing.T) {
 
 func TestRefreshClaudeSkipsDisabledPluginSkill(t *testing.T) {
 	home, bin := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("PATH", bin)
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(exe, filepath.Join(bin, "claude")); err != nil {
-		t.Fatal(err)
-	}
+	linkExe(t, bin, "claude")
 	log := filepath.Join(home, "claude-argv")
 	t.Setenv("PIGGERY_FAKE_CLAUDE", log)
 	root := filepath.Join(home, ".piggery", "claude")

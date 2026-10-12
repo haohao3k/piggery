@@ -111,6 +111,32 @@ limits: {depth: 2, max_respawn_per_hour: none}
 	}
 }
 
+// A template is refused at found for what would otherwise load and quietly mean something else
+// (#20): a key a role, its spawn or a routing rule does not have, a role name the manifest does not
+// have, a limit below 1. An unknown top-level key loads with a warning: a template written for a
+// newer piggery may carry a block this one does not know (as taskforce: was). A stored legacy
+// model: with an empty tools: loads as before.
+func TestManifestTyposAreRefused(t *testing.T) {
+	const lead = "template: x\nroles:\n  lead: {tools: [send, agent], can_spawn: [lead]}\nlimits: {depth: 1, concurrency: 1}\n"
+	for name, text := range map[string]string{
+		"unknown role key":        "template: x\nroles:\n  lead: {tools: [send], can_spwan: [lead]}\n",
+		"unknown spawn key":       "template: x\nroles:\n  lead: {tools: [send], spawn: {modle: x}}\n",
+		"routing to unknown role": lead + "routing:\n  - {from: lead, to: ghost, allow: true}\n",
+		"can_spawn unknown role":  strings.Replace(lead, "can_spawn: [lead]", "can_spawn: [ghost]", 1),
+		"limit below 1":           strings.Replace(lead, "concurrency: 1", "concurrency: 0", 1),
+	} {
+		if _, err := CheckManifest(text); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if w, err := CheckManifest(lead + "limts: {concurrency: 2}\n"); err != nil || len(w) != 1 || !strings.Contains(w[0], "limts") {
+		t.Errorf("unknown top-level key: %q, %v; want it loaded with a warning naming it", w, err)
+	}
+	if w, err := CheckManifest("model: x\ntools: {}\nroles:\n  lead: {tools: [send]}\n"); err != nil || len(w) != 0 {
+		t.Errorf("legacy model: and empty tools: %q, %v; want loaded with no warning", w, err)
+	}
+}
+
 // The keys filled into a template are exactly the keys the parser reads: a field added to the
 // manifest types without its default fails here.
 func TestManifestKeysMatchTheParser(t *testing.T) {

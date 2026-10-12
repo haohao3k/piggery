@@ -20,7 +20,7 @@ var eventWhitelist = map[string]bool{
 func TestEventsAreMinimal(t *testing.T) {
 	f := newLiveFixture(t) // leadWorker, lead joined
 	f.spawn(t)
-	s := f.rt.starts[0]
+	s := f.rt.Starts()[0]
 	worker, err := f.e.Authenticate(ctx, s.ParticipantID, s.Token)
 	if err != nil {
 		t.Fatal(err)

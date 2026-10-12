@@ -115,7 +115,74 @@ func (e *env) mcp(args []string) error {
 	}
 	s.harness = s.profile().name
 	go s.keepConnected()
+	if s.host != "" && s.harness == "claude" {
+		done := make(chan struct{})
+		defer close(done)
+		go s.watchInterrupts(done)
+	}
 	return s.serve(os.Stdin)
+}
+
+// watchInterrupts ends the open turn of this Claude session when Claude says it is idle (see
+// claude_status.go): a turn left open by an Esc or an SDK interrupt has no hook to end it. The
+// file is read once a second; the daemon is asked only for an idle status that has stood for a few
+// seconds, once for each such status.
+func (s *mcpServer) watchInterrupts(done <-chan struct{}) {
+	w := &interruptWatch{after: claudeIdleAfter, read: func() (claudeSession, bool) { return claudeSessionOf(s.host) },
+		alive: func() bool { return claudeAlive(s.host) }, turnOpen: s.turnOpen, end: s.endInterruptedTurn}
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case now := <-tick.C:
+			w.poll(now)
+		}
+	}
+}
+
+// connection is this server's identity and its live connection to the daemon, nil when it has none
+// (unlike identity, it does not wait for one, and does not count as the tool list being read).
+func (s *mcpServer) connection() (*core.IdentifyResult, *daemonConn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ident == nil || s.conn == nil || s.conn.isDead() {
+		return nil, nil
+	}
+	return s.ident, s.conn
+}
+
+// turnOpen is whether the daemon has a turn open for this participant: it is working, or waiting at
+// a permission prompt. A role that may not call who cannot be asked: nothing is done for it.
+func (s *mcpServer) turnOpen() (bool, error) {
+	id, c := s.connection()
+	if id == nil {
+		return false, errors.New("not connected")
+	}
+	var ps []core.Presence
+	if err := c.call(proto.VerbWho, nil, &ps); err != nil {
+		if ruleID(err) != "" {
+			return false, nil
+		}
+		return false, err
+	}
+	for _, p := range ps {
+		if p.ID == id.ParticipantID {
+			return p.State == "working" || p.State == "awaiting_permission", nil
+		}
+	}
+	return false, nil
+}
+
+// endInterruptedTurn is the end Claude does not send: the turn is over, nothing acked.
+func (s *mcpServer) endInterruptedTurn() error {
+	_, c := s.connection()
+	if c == nil {
+		return errors.New("not connected")
+	}
+	var r core.HarnessEventResult
+	return c.call(proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessTurnEnd, Outcome: core.HarnessOutcomeIntr}, &r)
 }
 
 // keepConnected holds one identified connection to the daemon for the life of the process,
@@ -167,10 +234,8 @@ func (s *mcpServer) connect() (*daemonConn, error) {
 	// Without the session's id (Codex gives its MCP server none) the SessionStart hook joins it;
 	// until then identify finds no session with this host (host.unknown) and we try again.
 	if s.host != "" && s.ref != "" {
-		wd, _ := os.Getwd()
 		var jr core.JoinResult
-		if _, err := cl.CallInto(proto.VerbJoinAuto, core.JoinAutoArgs{Cwd: wd, Harness: s.harness, Mode: "interactive",
-			HarnessRef: s.ref, Source: "startup", Host: s.host}, &jr); err != nil {
+		if _, err := cl.CallInto(proto.VerbJoinAuto, s.joinArgs("startup"), &jr); err != nil {
 			cl.Close()
 			return nil, err
 		}
@@ -192,6 +257,16 @@ func (s *mcpServer) connect() (*daemonConn, error) {
 	// connection together, and one without the other fails the call.
 	s.readyOnce.Do(func() { close(s.ready) })
 	return c, nil
+}
+
+// joinArgs joins this session by its host and id (s.ref; the caller checks both are set).
+func (s *mcpServer) joinArgs(source string) core.JoinAutoArgs {
+	wd, _ := os.Getwd()
+	a := core.JoinAutoArgs{Cwd: wd, Harness: s.harness, Mode: "interactive", HarnessRef: s.ref, Source: source, Host: s.host}
+	if s.harness == "claude" && source == "startup" { // the id this process started on may be a fork's
+		a.ParentRef = claudeForkParent(s.ref, "")
+	}
+	return a
 }
 
 func (s *mcpServer) identify(c *daemonConn) error {
@@ -585,7 +660,21 @@ func (s *mcpServer) callTool(name string, raw json.RawMessage) (string, error) {
 		if (a.Action == core.AgentFound || a.Action == core.AgentReopen || (a.Action == core.AgentClose && a.Team == "")) && s.host != "" {
 			// This session is now another participant, or the same one in another role: identify
 			// again (auth by host follows it) for its tools and card; Claude re-reads the tools.
+			// Closing its own team leaves the session no live row: join it as the solo it goes on
+			// as (what its next hook would do) first. Without its id (Codex) it cannot: its next
+			// hook joins it and the daemon rebinds this connection; identify meanwhile finds no
+			// row (host.unknown), and the close itself succeeded.
+			closed := a.Action == core.AgentClose
+			if closed && s.ref != "" {
+				var jr core.JoinResult
+				if err := c.call(proto.VerbJoinAuto, s.joinArgs("resume"), &jr); err != nil {
+					return "", err
+				}
+			}
 			if err := s.identify(c); err != nil {
+				if closed && s.ref == "" && ruleID(err) == "host.unknown" {
+					return agentText(a, r), nil
+				}
 				return "", err
 			}
 			id, _ = s.identityWithin(0)

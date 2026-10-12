@@ -27,6 +27,8 @@ func (e *Engine) Agent(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 		return e.closeTeam(ctx, c, a)
 	case AgentReopen:
 		return e.reopen(ctx, c, a)
+	case AgentGateClose, AgentGateOpen:
+		return e.gateAction(ctx, c, a.Action == AgentGateClose)
 	}
 	if len(e.runtimes) == 0 {
 		return AgentResult{}, errf(CodeUnsupported, "no runtime driver configured")
@@ -162,7 +164,11 @@ func (e *Engine) spawn(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 
 func (e *Engine) resume(ctx context.Context, c Caller, a AgentArgs) (AgentResult, error) {
 	return e.resumeWorker(ctx, func(t *txn) (participant, participant, error) {
-		return t.ownedWorker(c, a.Target, "agent.resume")
+		p, w, err := t.ownedWorker(c, a.Target, "agent.resume")
+		if err != nil {
+			return p, w, err
+		}
+		return p, w, t.requireHeadless(w, "a session is started by its Human")
 	}, a.Task, false)
 }
 
@@ -230,10 +236,20 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 			return err
 		}
 		var cwd, ref, model, thinking, spawnedBy, mode, sessionRef string
+		// The harness made or opened w's session when it is a person's session or a run of w's
+		// Start succeeded (core writes a processes row only then). A worker whose every start failed
+		// has none yet: its run starts fresh under the same ref instead of resuming one that never
+		// existed. A person's session continues in the newest one it had (session_ref, after /clear);
+		// a worker's runs only ever give back the id they were started with.
+		var person, started bool
 		if err := t.QueryRowContext(t.ctx, `SELECT cwd, COALESCE(harness_ref,''), COALESCE(model,''), COALESCE(thinking,''),
-			COALESCE(spawned_by,''), COALESCE(mode,''), COALESCE(session_ref,'') FROM participants WHERE id=?`, w.id).Scan(
-			&cwd, &ref, &model, &thinking, &spawnedBy, &mode, &sessionRef); err != nil {
+			COALESCE(spawned_by,''), COALESCE(mode,''), COALESCE(session_ref,''), person=1,
+			EXISTS (SELECT 1 FROM processes WHERE participant_id=participants.id) FROM participants WHERE id=?`, w.id).Scan(
+			&cwd, &ref, &model, &thinking, &spawnedBy, &mode, &sessionRef, &person, &started); err != nil {
 			return internal(err)
+		}
+		if person {
+			ref = cmp.Or(sessionRef, ref)
 		}
 		if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() { // never another directory in its place
 			return errf(CodeInvalid, "%s's directory %s no longer exists; restore it to resume %s there, or spawn a new worker", w.name, cwd, w.name)
@@ -255,7 +271,7 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 			return internal(err)
 		}
 		if byMail {
-			if ref, err = t.becomeWorker(w.id, mode, ref, sessionRef); err != nil {
+			if err := t.becomeWorker(w.id, mode); err != nil {
 				return err
 			}
 		}
@@ -285,7 +301,7 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 			}
 		}
 		spec = Spec{ParticipantID: w.id, RunID: run, Token: token, Cwd: cwd, HarnessRef: ref, Harness: harness, Model: model,
-			Thinking: thinking, Resume: true}
+			Thinking: thinking, Resume: person || started}
 		return nil
 	})
 	if err != nil {
@@ -453,6 +469,9 @@ func (e *Engine) stop(ctx context.Context, c Caller, a AgentArgs) (AgentResult, 
 		if _, w, err = t.ownedWorker(c, a.Target, "agent.stop"); err != nil {
 			return err
 		}
+		if err := t.requireHeadless(w, "a session can only be aborted"); err != nil {
+			return err
+		}
 		if w.state == "gone" {
 			return errf(CodeInvalid, "%s is not running", w.name)
 		}
@@ -475,6 +494,8 @@ func (e *Engine) stop(ctx context.Context, c Caller, a AgentArgs) (AgentResult, 
 // -> an error, and w stays as it is. agent stop, team down, a start into a closed team and
 // the admin kill (now: SIGKILL at once instead of the stop escalation) all stop workers here.
 func (e *Engine) stopWorker(ctx context.Context, w participant, cause string, now bool) (Exit, error) {
+	e.stopping.Store(w.run, struct{}{}) // before the stop: the driver's exit hook runs inside it
+	defer e.stopping.Delete(w.run)
 	var exit *Exit
 	how := "stop"
 	if d := e.runtimeFor(w.harness); w.state != "parked" && d != nil {
@@ -527,8 +548,13 @@ func (e *Engine) stopWorker(ctx context.Context, w participant, cause string, no
 // The hook may run before start() wrote the process row (the process died during startup):
 // then the run, if current and not gone, still goes gone, and start() records the row as exited.
 // So no order of (Start returns, exit hook) leaves a dead worker live.
+// A run that ends on its own (not stopped, the daemon not closing) is woken at once for mail it
+// has not had, such as mail held during the turn it died in; the wake rules apply (wake.go). The
+// call that records the exit of the current run decides it, whether or not the run is gone already:
+// a killed worker's connection usually closes first (presence shutdown -> gone).
 func (e *Engine) ProcessExited(ctx context.Context, participantID, runID string, exit Exit) error {
-	return e.inTx(ctx, func(t *txn) error {
+	ended := false // this call recorded the exit of the current run
+	err := e.inTx(ctx, func(t *txn) error {
 		first, err := t.markExited(participantID, runID, exit)
 		if err != nil {
 			return err
@@ -555,9 +581,17 @@ func (e *Engine) ProcessExited(ctx context.Context, participantID, runID string,
 		if !current {
 			return nil // resumed meanwhile: the new run's state is not ours
 		}
+		ended = true
 		return t.setState(&p, "gone", "exited")
 	})
+	if _, stopped := e.stopping.Load(runID); err == nil && ended && !stopped && !e.closing.Load() {
+		e.notifyAfterCommit(participantID)
+	}
+	return err
 }
+
+// Closing tells the engine the daemon is stopping its workers: their exits wake nothing.
+func (e *Engine) Closing() { e.closing.Store(true) }
 
 // markExited records the exit of (participant, run) unless already recorded; it reports
 // whether this call recorded it.
@@ -623,6 +657,19 @@ func (t *txn) ownedWorker(c Caller, target, verb string) (participant, participa
 			nil, map[string]any{"target": w.id})
 	}
 	return p, w, nil
+}
+
+// requireHeadless refuses w unless the daemon runs it (mode headless): stop and resume act on
+// the daemon's own process, and a session admitted into the team is the person's, not a worker.
+func (t *txn) requireHeadless(w participant, why string) error {
+	var mode string
+	if err := t.QueryRowContext(t.ctx, `SELECT COALESCE(mode,'') FROM participants WHERE id=?`, w.id).Scan(&mode); err != nil {
+		return internal(err)
+	}
+	if mode != modeHeadless {
+		return errf(CodeInvalid, "%s is not a headless worker; %s", w.name, why)
+	}
+	return nil
 }
 
 // gateConcurrency refuses a new live headless worker when the team is at limits.concurrency.

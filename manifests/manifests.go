@@ -86,7 +86,7 @@ func List(home string) ([]Listed, error) {
 }
 
 // Builtin returns the built-in template name as a self-contained manifest (the solo limits
-// come from p2p); none -> an error wrapping fs.ErrNotExist. found never uses it: it reads the home.
+// come from lead-peer); none -> an error wrapping fs.ErrNotExist. found never uses it: it reads the home.
 func Builtin(name string) (string, error) {
 	p := name + ".yaml"
 	raw, err := builtin.ReadFile(p)
@@ -161,7 +161,10 @@ func builtinFiles(src fs.FS) (map[string]map[string][]byte, error) {
 // has the hash Unpack recorded is updated to the current version; a file the user changed or
 // removed is left alone; a file new in this version is added. A built-in template whose
 // directory the user removed is not written again. A same-named template the user made
-// before its built-in existed is left alone.
+// before its built-in existed is left alone. A template this binary no longer has built in
+// (a release dropped it) is cleaned out: each file that still has its recorded hash is deleted,
+// then its directories when empty, and it leaves the record; a file the user changed stays, and
+// so does its directory, as the user's own template.
 func Unpack(home string) error { return unpack(home, builtin) }
 
 func unpack(home string, src fs.FS) error {
@@ -202,7 +205,42 @@ func unpack(home string, src fs.FS) error {
 			}
 		}
 	}
+	for name, rec := range record {
+		if _, still := files[name]; still {
+			continue
+		}
+		if err := dropBuiltin(filepath.Join(root, name), rec); err != nil {
+			return err
+		}
+		delete(record, name)
+	}
 	return writeRecord(filepath.Join(root, recordFile), record)
+}
+
+// dropBuiltin deletes the files of a template dir that still have the hash Unpack recorded in rec,
+// then the directories they leave empty, dir included. Anything else in dir stays.
+func dropBuiltin(dir string, rec map[string]string) error {
+	for rel, want := range rec {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		cur, err := os.ReadFile(p)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			continue
+		case err != nil:
+			return err
+		case hash(cur) != want:
+			continue
+		}
+		if err := os.Remove(p); err != nil {
+			return err
+		}
+		for d := filepath.Dir(p); d != filepath.Dir(dir) && strings.HasPrefix(d, dir); d = filepath.Dir(d) {
+			if os.Remove(d) != nil { // not empty (a file of the user's): it stays
+				break
+			}
+		}
+	}
+	return nil
 }
 
 // syncFile brings built-in file p (key in rec, the hashes Unpack wrote) to content: written when

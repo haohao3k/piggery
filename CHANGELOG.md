@@ -2,6 +2,186 @@
 
 ## Unreleased
 
+- Add shared agent ownership instructions to every role card, including solo and custom roles;
+  SLP supervisors resolve technical conflicts within the Human’s agreed goals and limits.
+
+- Merge upstream v0.10.2: mailbox and session fixes, closed gates, schema 28, and experimental Windows support.
+- Keep the fork’s Paseo plugin, dual-lens shortcuts, guarded local installer, and fork-only release downloads, including the Windows installer.
+
+## v0.10.2 - 2026-10-12
+
+A Codex worker is woken for mail that came as its turn ended, and cleanup removes closed teams it used to skip.
+
+- Fix: a Codex worker could stay idle with unread mail. A mail that came in the moment between
+  the end of its turn and Codex reporting that turn over did not wake it, and once a turn had been
+  kept going 8 times for mail that came during it, this happened every time; the mail waited for
+  a newer one. The worker
+  is now woken once the turn is over (#26).
+- Fix: cleanup never removed a closed team in which a member had been given mail on an earlier
+  run of its process (`piggery gc` reported that the team had changed since the archive was
+  written, every time). Such teams are now removed.
+
+## v0.10.1 - 2026-10-12
+
+Mail is no longer lost or held back after an interrupted, failed or crashed turn on any harness, cleanup keeps mail its recipients have not read, a team member can no longer stop a person's session, and Claude Code sessions keep their participant across `/clear`, `/branch` and forks.
+
+Before you upgrade:
+
+- **A template with a typo inside a role, its `spawn` block or a routing rule no longer founds a
+  team.** An unknown key there, a role name the manifest does not have, or a limit below 1 is
+  refused with the reason (`none` still switches a limit off). An unknown top-level key is ignored
+  with a warning, so a template written for a newer piggery still runs. Teams already founded keep
+  their manifest as it was. Run `piggery check` to see what a template of yours would hit.
+
+After upgrading, run `piggery restart`: the daemon updates the integrations it installed to pi 14,
+omp 14, dsh 15 and opencode 12. The fork also refreshes Claude/Codex integration 7 and Paseo integration 4 with
+`piggery setup --outdated` (or `setup --refresh` for local development). Then restart affected
+sessions, or run `/reload` in pi.
+
+Mail:
+
+- Fix: in omp and dsh, mail that arrived at the very last step of a reply was taken as read before
+  the model saw it. If the next step or run was stopped (Esc, `piggery abort`, a failure), that mail
+  was lost. It is now taken as read only once a model turn that shows it ends, and comes again
+  otherwise (#15).
+- Fix: a Claude Code turn interrupted with Esc, at a permission prompt or by an SDK client (Paseo)
+  held back wakes and mail until the next prompt, and a permission prompt left with Esc kept the
+  session shown as awaiting permission. Claude sends no hook for an interrupt; piggery now reads
+  Claude's own session status and ends such a turn as interrupted. As after any interrupt, nothing
+  starts on its own: the next mail, or your next prompt, brings the waiting mail (#13, #14).
+- Fix: a member that went gone in the middle of a turn (its process exited, its session ended, or
+  the daemon restarted) was never woken by mail; the mail waited until someone resumed it. Mail now
+  wakes it as it wakes any gone member (#18). A headless worker whose process ends on its own (a
+  crash, not `agent stop`, `team down` or a daemon shutdown) is also woken at once for the mail it
+  had not finished, its task included: one automatic restart per mail.
+- Fix: in opencode, a run that failed before the model answered (for example, a model that does not
+  resolve) with piggery mail in it was nudged again and again and never ended. It now ends failed:
+  the mail is not taken as read and comes again with the next mail (#27).
+- Fix: cleanup (`piggery gc`, and the daemon's own) deleted unread mail that a closed team or gone
+  solo had sent to someone outside it, and once that person had been given such mail, cleanup of
+  the team or solo failed on every run. Mail sent out now stays with its recipient until it is
+  read; the team or solo is kept until then (#17).
+- Fix: the `settled` notice ("nobody is working and no mail waits") left out mail waiting for a
+  member that had gone and could not be woken (a limit refused it), so it could tell you a team was
+  done while mail sat unread (#21).
+- Fix: `cc` copies and timer notices sent to a role still went to a member that had left the team,
+  where nobody reads them (#23).
+
+Teams and sessions:
+
+- Fix: `agent stop` and `agent resume` treated a session admitted into a team as a headless worker.
+  A member could stop a session a person runs, and one mail later the daemon ran that conversation
+  a second time in the background, while the person's own session was refused. Both now refuse a
+  session, as `piggery kill` and `piggery resume` already did (#19).
+- Fix: when a session reopened the team it had been the gate of, the taskforce it had called in the
+  meantime was closed as orphaned, its workers stopped mid-task. The taskforce now stays with the
+  session (#22).
+- Fix: after a Claude Code session's row moved (its gate closed its own team, `piggery team down`,
+  or an in-process resume), its piggery tools stayed bound to the old one: mail no longer woke it,
+  and tool calls could fail with `run.stale`. A gate closing its own team was also told
+  `refused (host.unknown)` although the close succeeded (#16).
+- Fix: Claude Code's session identity. After `/clear`, a reconnect of piggery's MCP server (a
+  daemon restart is enough) put the old session id back, so a wake by mail resumed the conversation
+  from before `/clear` (#24). `/branch` turned the session into a new solo, and its participant went
+  gone with its mail (#25). A session forked outside its process (Paseo's Rewind) became a new solo
+  with an empty inbox (#13).
+- Fix: a manifest with a typo inside a role, a `spawn` block or a routing rule founded a team, the
+  typo silently became a default, and `piggery check` said "No problems" (#20).
+- Fix: a worker whose first start failed before its harness made a session (a model or provider
+  that did not resolve) could never be brought back: `agent resume` asked the harness for a session
+  that did not exist, although the error said to fix the cause and resume. It now starts a fresh
+  session under the same id. This was true of every harness but pi.
+- Fix: a session of yours that mail had woken once, and that went gone again, was woken the next
+  time into the conversation from before your last `/clear`. It now always resumes the newest one.
+- dsh 0.2.0-rc.2 and opencode 1.19.0 are tested. dsh rc.2 no longer reads `~/.dsh/settings.yaml`:
+  a custom provider is a row of `$DSH_HOME/cordis.patch.yml` (see the reference's dsh notes).
+
+Thanks to @Patruxs for the reports, each with a test that reproduces it.
+
+## v0.10.0 - 2026-10-12
+
+piggery runs on Windows (experimental), a team or solo can close its gate to other teams, and `lead-peer` replaces `p2p` as the default template.
+
+Before you upgrade:
+
+- **`p2p` is no longer built in; `lead-peer` is the default.** A session asked to set up a team
+  without a template now founds a `lead-peer` team and becomes its lead, `piggery template new`
+  copies `lead-peer`, and a solo takes its limits from it (the same numbers as before). Teams
+  already founded from `p2p` keep running: a team keeps the template it started with. The copy in
+  `~/.piggery/templates/p2p` is deleted when the daemon starts, unless you edited it: an edited
+  file stays, with its directory, as your own template.
+- **Upstream removed its Paseo plugin; this fork retains it**, including `piggery setup paseo`
+  and safe refresh of an existing install. [PigMonitor](https://github.com/Patruxs/PigMonitor) is
+  an optional alternative. `ps --view`, `ps --json`, `tail --view` and `--no-start` are unchanged.
+
+After upgrading, run `piggery restart`. The daemon updates the integrations it installed: pi to 13,
+omp to 13, dsh to 14 and opencode to 10. Then restart the sessions that were open, or run `/reload`
+in pi. Claude Code and Codex need nothing. The database moves to schema 28 at the first start (a
+copy of the old one is kept in `~/.piggery/backups/`).
+
+Closed gate:
+
+- **A team or a solo session can close its gate to other teams.** Others no longer see it in
+  `who`, and a send to it (by id, by name or as a reply) fails like an unknown name; it sees none
+  of them and cannot send to them. Unread outside mail is held while the gate is closed, neither
+  delivered nor acked nor deleted, and arrives when it opens. Nothing changes inside a team, and a
+  caller and its taskforce always reach each other.
+- **`gate: open|closed` in `config.yaml`** sets the gate of a new solo (default `open`). A solo,
+  or a team's gate, closes or opens it when you ask with `agent action=gate_close` /
+  `gate_open`. A team it founds or reopens, a taskforce it calls, and a session left solo when its
+  team closes start with the same state.
+- **`who`, `ps` and `top` show `[gate closed]`**; `ps --json` has `gate_closed`.
+
+Windows (experimental, amd64 and arm64):
+
+- **The daemon, workers and harnesses run natively.** The daemon listens on a named pipe that only
+  your user can open (`piggery.pipe` in `~/.piggery` holds its name). Each worker runs in a Job
+  Object, so a worker, the `.cmd` shim it was started through and its children end together, and a
+  daemon that restarts after a crash finds and ends the ones it left.
+- **Install and update.** Releases carry `piggery-windows-<arch>.exe`. `install.ps1` installs it
+  (`irm https://raw.githubusercontent.com/haohao3k/piggery/main/install.ps1 | iex`), and `piggery
+  update` works there: the binary it replaces, which may be running, is kept beside the new one as
+  `piggery.exe.old` until the next update.
+- **`piggery setup claude` and `setup codex` write hook commands each one runs on Windows.** Claude
+  Code gets piggery's path with forward slashes (it does not run a hook whose path has
+  backslashes). Codex gets the path's 8.3 short name when the path has a space, since some Codex
+  versions run no hook command with a quote in it.
+- **`piggery setup notify add desktop` and `add ntfy:<topic>`** write PowerShell hooks on Windows (a
+  toast, a push through ntfy.sh) that need nothing installed. `herdr` has no Windows script. Your
+  own hooks in `notify.d` may be `.exe`, `.cmd`, `.bat` or `.ps1`; a `.sh` hook is skipped there.
+- **A harness installed with npm or pnpm starts as a worker.** Its `.cmd` shim is seen through,
+  and the script runs with the interpreter the shim names (bun for omp), not always node.
+- **A worker's agent directory shares yours without Developer Mode.** Where a symlink cannot be
+  made, pi's and omp's entries become junctions and hard links, not a copy of the whole directory
+  at each spawn: a worker's sessions and a login it refreshed are your own.
+- **A Claude worker starts whatever the length of its role card.** Windows limits a command line
+  to 32,767 characters, which a card carrying your own `prompts` rules can pass; the card goes to
+  Claude Code in a file of the run's directory there (`--append-system-prompt-file`).
+
+Also:
+
+- Built with Go 1.26.9, which fixes GO-2026-6617 in `net/http`.
+
+Thanks to @dinhhung893, whose piggery-winport the Windows port learned from; to @KiraKas-Tr, who
+tested it on a real Windows machine and found what CI could not; to @haohao3k, whose report and
+reproduction (#11) led to the closed gate; and to @Patruxs for PigMonitor.
+
+## Upstream v0.9.1 - 2026-10-07
+
+A pi session no longer misses mail that arrives just as it finishes a reply.
+
+After upgrading, run `piggery restart`: the daemon updates the pi integration it installed to 9
+(omp to 9 and dsh to 10, which share its adapter file and behave as before). Then restart the pi
+sessions that were open, or run `/reload` in them.
+
+- Fix: mail that reached a pi session at the very end of a reply was shown to the model, and pi
+  went on working with it, but piggery took the turn as finished. Mail sent after that waited,
+  unannounced, until pi stopped for good or the model checked its inbox. The turn now stays open
+  while pi works on that mail, so later mail is steered in as usual and nothing is acked before
+  the model has read it.
+- Fix: a stopped worker no longer leaves an empty directory under `~/.piggery/run/`. Existing
+  empty ones go when `piggery gc` removes their worker.
+
 ## v0.9.1 - 2026-10-11
 
 - Publish the fork's first binary release for Linux and macOS on amd64 and arm64,

@@ -56,7 +56,7 @@ func (u Unit) Active() int64 {
 // sleeping.
 const sleepAfter = 24 * time.Hour
 
-// Where a directory sorts: live, sleeping, all gone, closed. Ordering only: top, ps and Paseo draw no
+// Where a directory sorts: live, sleeping, all gone, closed. Ordering only: top and ps draw no
 // header for them.
 const (
 	bucketLive = iota
@@ -313,9 +313,11 @@ func FoldGone(ms []core.MemberState) (kept, folded []core.MemberState) {
 // deepestRoot is the longest root that is cwd or holds it; none: cwd itself.
 func deepestRoot(cwd string, roots []string) string {
 	best := ""
+	c := filepath.ToSlash(cwd) // compared with "/" whatever the OS separator is
 	for _, r := range roots {
 		r = filepath.Clean(r)
-		if (cwd == r || strings.HasPrefix(cwd, strings.TrimSuffix(r, "/")+"/")) && len(r) > len(best) {
+		s := filepath.ToSlash(r)
+		if (c == s || strings.HasPrefix(c, strings.TrimSuffix(s, "/")+"/")) && len(r) > len(best) {
 			best = r
 		}
 	}

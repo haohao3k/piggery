@@ -10,7 +10,6 @@ Anyone not connected by an arrow cannot reach the other, and that is on purpose.
 
 | Template | Pick it when |
 | --- | --- |
-| [`p2p`](#p2p) | You want no structure at all, or a starting point for your own |
 | [`lead-peer`](#lead-peer) | You have a goal that splits into checkable scopes, and you want one plan, a judge for each result, and workers that push back with evidence |
 | [`slp`](#slp) | The work is big enough for lanes, each with its own plan, and you want to steer from above |
 | [`council`](#council) (taskforce) | You face one hard decision and want independent, read-only opinions before choosing |
@@ -25,20 +24,6 @@ change it: `piggery template new mine --from <template>`.
 A template marked (taskforce) has a `taskforce:` block: besides being founded as a long-lived team,
 a solo session or a gate can call it up for one job (`spawn` with `template`); it works with
 its own chair, reports to the caller, and is closed by the caller when the job is done.
-
-## p2p
-
-No roles, no rules beyond the limits. Every peer can talk to every peer and start more peers.
-Good for trying piggery out, for a few equals working side by side, or as the plain base for a
-template of your own.
-
-```mermaid
-flowchart LR
-    A["peer"] <--> B["peer"]
-    B <--> C["peer"]
-    A <--> C
-    A -. starts .-> C
-```
 
 ## lead-peer
 

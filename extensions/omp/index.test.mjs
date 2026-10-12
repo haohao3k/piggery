@@ -2,12 +2,13 @@
 // socket and a fake omp API, and replays the event captures of testdata/fixtures/omp/ into its
 // handlers: what the daemon is told (harness.event, presence) and what is shown to the model.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { register } from "node:module";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fakeDaemonPath, setHome } from "../testutil/daemon.mjs";
 
 // pi-ai is only used for the tools' parameter schemas; Unsafe keeps tools.json's schema as is.
 const piAi = "export const Type = new Proxy({}, { get: (_, k) => (k === 'Unsafe' ? (s) => s : (...a) => ({ a })) });";
@@ -32,8 +33,7 @@ const fixture = (name) =>
 		.map((l) => JSON.parse(l));
 
 test("the omp extension against a fake daemon", async (t) => {
-	process.env.HOME = mkdtempSync(join(tmpdir(), "pgomp"));
-	mkdirSync(join(process.env.HOME, ".piggery"));
+	setHome(mkdtempSync(join(tmpdir(), "pgomp")));
 	delete process.env.PIGGERY_ID;
 	delete process.env.PIGGERY_TOKEN;
 	delete process.env.PIGGERY_DISABLED;
@@ -52,6 +52,7 @@ test("the omp extension against a fake daemon", async (t) => {
 		return {};
 	};
 	const srv = net.createServer((s) => {
+		s.on("error", () => {}); // a client that has gone makes a write fail (EPIPE on a Windows pipe): not the fake's concern
 		socks.add(s);
 		s.on("close", () => socks.delete(s));
 		let buf = "";
@@ -64,7 +65,7 @@ test("the omp extension against a fake daemon", async (t) => {
 			}
 		});
 	});
-	await new Promise((r) => srv.listen(join(process.env.HOME, ".piggery", "piggery.sock"), r));
+	await new Promise((r) => srv.listen(fakeDaemonPath(process.env.HOME), r));
 	t.after(() => srv.close());
 	const push = (frame) => socks.forEach((s) => s.write(JSON.stringify(frame) + "\n"));
 
@@ -102,10 +103,10 @@ test("the omp extension against a fake daemon", async (t) => {
 	piggery(omp);
 	handlers.session_start({}, ctx);
 	await until(() => calls.some((c) => c.verb === "identify"));
-	const turns = globalThis.__piggeryOmp.turns;
-	// Receiving identify is not readiness: its response starts an asynchronous mail check.
-	// Wait for that check and its reply before a subtest resets the observed calls.
+	// Once identified the extension checks for mail (a wake turn_start); a late one would land in a
+	// later subtest's calls.
 	await until(() => calls.some((c) => c.verb === "harness.event" && c.args.wake));
+	const turns = globalThis.__piggeryOmp.turns;
 	await turns.drain();
 
 	// What the daemon was told since the last reset, as `event[:outcome]` and `presence:<event>`.
@@ -249,6 +250,47 @@ test("the omp extension against a fake daemon", async (t) => {
 		await handlers.agent_end({ messages: [{ role: "assistant", stopReason: "stop" }] }, ctx);
 		await turns.drain();
 		assert.equal(told().at(-1), "presence:agent_settled");
+	});
+
+	await t.test("mail steered at the run's last tool boundary is not acked at session_stop; an Esc in the run that shows it leaves it unacked", async () => {
+		reset();
+		script.event = (a) => (a.event === "tool_boundary" ? { text: "MAIL-AT-LAST-BOUNDARY" } : {});
+		idle = false;
+		pending = false;
+		handlers.agent_start({}, ctx);
+		handlers.turn_end({ turnIndex: 0 }, ctx);
+		const stop = handlers.session_stop({ last_assistant_message: { role: "assistant", stopReason: "stop" } }, ctx);
+		await until(() => sent.length === 1);
+		pending = true;
+		await stop;
+		await turns.drain();
+		assert.ok(!told().includes("turn_end:ok"), `acked before the model read it: ${told()}`);
+		await handlers.agent_end({ messages: [{ role: "user" }, { role: "assistant", stopReason: "stop" }] }, ctx);
+		pending = false;
+		handlers.agent_start({}, ctx);
+		handlers.turn_start?.({}, ctx);
+		await handlers.agent_end({ messages: [{ role: "user" }, { role: "assistant", stopReason: "aborted" }] }, ctx);
+		await turns.drain();
+		assert.deepEqual(told().filter((e) => e !== "turn_start" && e !== "tool_boundary"), ["turn_end:interrupted", "presence:agent_settled"]);
+	});
+
+	await t.test("an abort before the next run's first turn_start still settles the turn", async () => {
+		reset();
+		script.event = (a) => (a.event === "tool_boundary" ? { text: "MAIL-AT-LAST-BOUNDARY" } : {});
+		pending = false;
+		handlers.agent_start({}, ctx);
+		handlers.turn_end({ turnIndex: 0 }, ctx);
+		const stop = handlers.session_stop({ last_assistant_message: { role: "assistant", stopReason: "stop" } }, ctx);
+		await until(() => sent.length === 1);
+		pending = true;
+		await stop;
+		await handlers.agent_end({ messages: [{ role: "user" }, { role: "assistant", stopReason: "stop" }] }, ctx);
+		pending = false;
+		handlers.agent_start({}, ctx);
+		await handlers.agent_end({ messages: [{ role: "user" }, { role: "assistant", stopReason: "aborted" }] }, ctx);
+		await turns.drain();
+		assert.equal(told().at(-1), "presence:agent_settled");
+		assert.ok(!told().includes("turn_end:ok"));
 	});
 
 	await t.test("a shutdown ends the session at the daemon", async () => {

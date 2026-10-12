@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -75,13 +76,16 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 		version int
 		digest  string
 	}{
-		{"pi", 9, "44bde41c420b"},
-		{"omp", 9, "a977f7c7d41d"},
-		{"dsh", 10, "c57de9143eff"},
-		{"claude", 6, "545bbd54618e"},
-		{"codex", 6, "f8b861f1f13f"},
-		{"paseo", 3, "93664ce8a897"},
+		{"pi", 14, "d95a916e28f5"},
+		{"omp", 14, "d567c69bcfc9"},
+		{"dsh", 15, "3baffa03a86d"},
+		{"claude", 7, "545bbd54618e"},
+		{"codex", 7, "f8b861f1f13f"},
+		{"paseo", 4, "489ba22e2c79"},
 	} {
+		if runtime.GOOS == "windows" && (want.name == "claude" || want.name == "codex") {
+			continue // their hook commands are written in another form there (hookcmd_windows.go): the unix run holds the digest
+		}
 		if got := digestOf(trees[want.name]()); got != want.digest || local.IntegrationVersion(want.name) != want.version {
 			t.Errorf("changed %s: bump IntegrationVersion and update this digest (now v%d %s; table has v%d %s)",
 				want.name, local.IntegrationVersion(want.name), got, want.version, want.digest)
@@ -119,7 +123,7 @@ func digestOf(files map[string][]byte) string {
 // "not installed" while ps, top and the daemon log said "claude (v0 < v1)".
 func TestClaudeLeftoverFilesAreNotAnInstall(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	dir := filepath.Join(home, ".piggery")
 	if err := writeClaudePlugin(filepath.Join(dir, "claude"), "/x/piggery"); err != nil {
@@ -135,7 +139,7 @@ func TestClaudeLeftoverFilesAreNotAnInstall(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"piggery":{"command":"/x/piggery","args":["mcp"]}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if n := proto.Notice(DaemonOutdated(dir)); !strings.Contains(n, "claude (v0 < v6)") {
+	if n := proto.Notice(DaemonOutdated(dir)); !strings.Contains(n, "claude (v0 < v7)") {
 		t.Fatalf("Claude has piggery's MCP server and the plugin files are old: notice %q", n)
 	}
 }

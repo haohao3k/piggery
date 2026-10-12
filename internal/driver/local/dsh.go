@@ -68,7 +68,7 @@ var DefaultDshProfile = DshProfile{
 	DisabledTools: []string{"subagent", "subagent_fork", "send_message", "list_agents", "interrupt_agent", "workflow",
 		"exit_plan_mode", "create_goal", "get_goal", "update_goal"},
 	Blacklist:      []string{},
-	TestedVersions: []string{"0.2.0-rc.1"},
+	TestedVersions: []string{"0.2.0-rc.1", "0.2.0-rc.2"},
 }
 
 var dshVersionRe = regexp.MustCompile(`\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?`)

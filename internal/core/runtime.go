@@ -229,6 +229,8 @@ const (
 	AgentTemplates = "templates"
 	AgentClose     = "close"
 	AgentReopen    = "reopen"
+	AgentGateClose = "gate_close"
+	AgentGateOpen  = "gate_open"
 )
 
 // AgentArgs is the `agent` tool. Fields by action:
@@ -247,7 +249,7 @@ type AgentArgs struct {
 	// unknown field.
 	Target string `json:"target,omitempty"` // worker name or id in view
 	Lines  int    `json:"lines,omitempty"`
-	// Template is found's team template (default p2p), or spawn's: the taskforce template to call up (instead of Role).
+	// Template is found's team template (default lead-peer), or spawn's: the taskforce template to call up (instead of Role).
 	Template string `json:"template,omitempty"`
 	// Team is reopen's closed team (its name), or close's: a taskforce this participant called up.
 	Team string `json:"team,omitempty"`

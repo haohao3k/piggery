@@ -14,7 +14,7 @@ import (
 
 func TestSetupRefreshRepairsSameVersionAssetAndKeepsUninstalledState(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("PI_CODING_AGENT_DIR", "")
 	t.Setenv("PI_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
@@ -105,7 +105,7 @@ func TestSetupRefreshRejectsOutdatedAndHarnessModes(t *testing.T) {
 
 func TestSetupRefreshReportsPreservedTemplateOverride(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
 	if err := manifests.Unpack(dir); err != nil {
@@ -132,16 +132,10 @@ func TestSetupRefreshReportsPreservedTemplateOverride(t *testing.T) {
 
 func TestSetupRefreshReinstallsSameVersionClaudeCache(t *testing.T) {
 	home, bin := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("PATH", bin)
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(exe, filepath.Join(bin, "claude")); err != nil {
-		t.Fatal(err)
-	}
+	linkExe(t, bin, "claude")
 	log := filepath.Join(home, "claude-argv")
 	t.Setenv("PIGGERY_FAKE_CLAUDE", log)
 	dir := filepath.Join(home, ".piggery")
@@ -196,16 +190,10 @@ func TestSetupRefreshReinstallsSameVersionClaudeCache(t *testing.T) {
 
 func TestSetupRefreshDoesNotEnableDisabledPaseo(t *testing.T) {
 	home, bin := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("PATH", bin)
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(exe, filepath.Join(bin, "paseo")); err != nil {
-		t.Fatal(err)
-	}
+	linkExe(t, bin, "paseo")
 	log := filepath.Join(home, "paseo-argv")
 	t.Setenv("PIGGERY_FAKE_PASEO", log)
 	dir := filepath.Join(home, ".piggery")
@@ -261,7 +249,7 @@ func TestSetupRefreshRepairsSameVersionCodexHookDrift(t *testing.T) {
 	codexHooksList = fakeHooksList
 	t.Cleanup(func() { codexHooksList = old })
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
@@ -302,7 +290,7 @@ func TestSetupRefreshDoesNotEnableDisabledCodexMCP(t *testing.T) {
 	codexHooksList = fakeHooksList
 	t.Cleanup(func() { codexHooksList = old })
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
@@ -335,7 +323,7 @@ func TestSetupRefreshDoesNotEnableDisabledCodexMCP(t *testing.T) {
 
 func TestSetupRefreshLeavesUnregisteredDshPlugin(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("DSH_HOME", filepath.Join(home, ".dsh"))
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
@@ -379,7 +367,7 @@ func mustReadFile(t *testing.T, path string) []byte {
 
 func TestSetupRefreshOpencodeKeepsHostConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, "codex"))
 	dir := filepath.Join(home, "piggery")

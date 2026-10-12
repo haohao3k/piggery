@@ -1,4 +1,4 @@
-# Piggery 🐖 - Lợn cày tasks
+<h1 align="center">🐖 Piggery</h1>
 
 This is the fork at [haohao3k/piggery](https://github.com/haohao3k/piggery),
 derived from [sting8k/piggery](https://github.com/sting8k/piggery). Development pushes go to this
@@ -42,8 +42,8 @@ flowchart LR
 | [Claude Code](https://claude.com/product/claude-code) | yes (plugin + MCP) | yes (`claude -p`) | 2.1.283 | `piggery setup claude` |
 | [Codex](https://github.com/openai/codex) | yes (hooks + MCP) | yes (`codex app-server`) | 0.157.1 | `piggery setup codex` |
 | [omp](https://github.com/can1357/oh-my-pi) | yes (extension) | yes (`omp --mode rpc`) | 18.4.2 | `piggery setup omp` |
-| [dsh](https://github.com/deepseek-ai/deepseek-harness) | yes (`dsh web`, plugin) | yes (`dsh --profile sdk`) | 0.2.0-rc.1 | `piggery setup dsh` |
-| [opencode](https://opencode.ai) | yes (plugin) | yes (`opencode serve`) | 1.18.34 | `piggery setup opencode` |
+| [dsh](https://github.com/deepseek-ai/deepseek-harness) | yes (`dsh web`, plugin) | yes (`dsh --profile sdk`) | 0.2.0-rc.1, 0.2.0-rc.2 | `piggery setup dsh` |
+| [opencode](https://opencode.ai) | yes (plugin) | yes (`opencode serve`) | 1.18.34, 1.19.0 | `piggery setup opencode` |
 
 - Workers run on the harness their role names (`spawn.harness`), else on the harness of the
   session that founded the team.
@@ -54,6 +54,12 @@ flowchart LR
 ```sh
 curl -fsSL https://raw.githubusercontent.com/haohao3k/piggery/main/install.sh | sh
 piggery setup pi       # and/or: claude, codex, omp, dsh, opencode
+```
+
+On Windows (experimental), run in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/haohao3k/piggery/main/install.ps1 | iex
 ```
 
 The installer downloads the binary for your OS and CPU from this fork's GitHub Releases,
@@ -86,11 +92,31 @@ More:
 - [docs/guide.md](docs/guide.md): running teams, watching and stepping in, customizing `~/.piggery`.
 - [docs/reference.md](docs/reference.md): every command, config key, profile key and manifest key.
 
+## In Paseo
+
+This fork retains its bundled plugin through `piggery setup paseo`. Existing installations
+continue to work and are included in `setup --refresh`. PigMonitor is an optional alternative;
+upgrading the fork does not remove the installed plugin or switch to PigMonitor.
+
+Using [Paseo](https://paseo.sh)? [PigMonitor](https://github.com/Patruxs/PigMonitor) shows your
+teams in the app: who is working, who needs you, each agent's transcript and mail.
+
+```sh
+paseo plugin install github:Patruxs/PigMonitor
+```
+
+| | |
+|:---:|:---:|
+| [![PigMonitor: Overview](https://raw.githubusercontent.com/Patruxs/PigMonitor/v0.2.0/docs/media/overview.png)](https://github.com/Patruxs/PigMonitor) | [![PigMonitor: Graph](https://raw.githubusercontent.com/Patruxs/PigMonitor/v0.2.0/docs/media/graph.png)](https://github.com/Patruxs/PigMonitor) |
+| Overview: every team and agent on a timeline, coloured by state | Graph: each team as an org chart, with what each agent is doing |
+
+PigMonitor is made by [Patruxs](https://github.com/Patruxs), who took piggery further inside Paseo than
+our own plugin ever did. Thank you! The screenshots are from PigMonitor's README.
+
 ## Farm layouts
 
 | Template | Who does what |
 | --- | --- |
-| `p2p` | Peers that talk freely and spawn more peers. |
 | `lead-peer` | A lead owns the plan and judges the results; peers own scopes and speak up with evidence. |
 | `slp` | You steer a supervisor; each lane has a lead and peers, often in its own git worktree. |
 | `council` | A chair asks members for independent views on one hard decision. |
@@ -115,6 +141,10 @@ go test ./...
 ./scripts/local-dev.sh apply
 ./scripts/local-dev.sh check
 ```
+
+The tests compare files byte for byte, so every file is checked out with LF line endings
+(`.gitattributes`), on Windows too. A Windows clone made before that file covered everything may
+still hold CRLF copies; check them out again with `git rm -rq --cached . && git reset -q --hard`.
 
 ## License
 

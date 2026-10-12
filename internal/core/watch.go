@@ -231,8 +231,9 @@ func (t *txn) watchTargets(teamID, notify string, p participant) ([]participant,
 	return out, nil
 }
 
+// teamRole returns the members of role in teamID; a row that left the team is not a member.
 func (t *txn) teamRole(teamID, role string) ([]participant, error) {
-	rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+` FROM participants WHERE team_id=? AND role=? ORDER BY name`,
+	rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+` FROM participants WHERE team_id=? AND role=? AND left_at IS NULL ORDER BY name`,
 		teamID, role)
 	if err != nil {
 		return nil, internal(err)

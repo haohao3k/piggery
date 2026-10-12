@@ -15,6 +15,11 @@ export class Turns {
 	 * @param {(event: string) => Promise<any>} io.presence presence events with no standard event
 	 * @param {(text: string, steer: boolean) => void} io.deliver shows mail to the model
 	 * @param {() => string} io.newKey a fresh turn key
+	 * @param {() => boolean} [io.pending] input is queued in the harness (pi: a queued steer makes
+	 *   the run go on past before_settle)
+	 * @param {boolean} [io.reads] the harness calls modelTurn() when a model turn starts (omp, dsh), so
+	 *   an ok stop does not end a turn whose steered mail no model turn has read yet. A harness with
+	 *   neither (opencode) settles whatever is queued.
 	 * @param {(err: Error) => void} io.onError
 	 */
 	constructor(io) {
@@ -29,6 +34,7 @@ export class Turns {
 		this.running = false;
 		this.held = false; // a wake came after this run's turn ended, before pi settled
 		this.ended = []; // turn_ends the daemon did not get (it was down), oldest first
+		this.unread = false; // mail was steered in and no model turn has started since
 	}
 
 	enqueue(fn) {
@@ -50,8 +56,16 @@ export class Turns {
 
 	async give(args, steer) {
 		const r = await this.io.event(args);
-		if (r?.text) this.io.deliver(r.text, steer);
+		if (r?.text) {
+			this.io.deliver(r.text, steer);
+			if (steer) this.unread = true;
+		}
 		return r;
+	}
+
+	/** A model turn starts inside the run (pi's turn_start, omp's turn_start, dsh's step/start): mail steered before it is in it. */
+	modelTurn() {
+		this.unread = false;
 	}
 
 	agentStart() {
@@ -73,11 +87,19 @@ export class Turns {
 	 * pi's last actionable boundary. Awaited by pi: mail the daemon hands back (block) is steered
 	 * in and pi keeps running the same turn; its next before_settle ends it again.
 	 */
-	beforeSettle(outcome) {
+	beforeSettle(outcome, final = false) {
 		const key = this.key;
 		const o = OUTCOME[outcome];
 		if (!key || !o) return this.q;
 		return this.enqueue(async () => {
+			// Input still queued (mail steered at the last boundary, or the Human typed): pi runs on
+			// with it in this same turn, so this is not its end; the next before_settle is. Should
+			// pi settle instead, settled() ends the turn interrupted (no ack, the mail comes again).
+			// With io.reads (omp, dsh) and no io.pending an ok stop does the same for mail no model turn has read:
+			// the step or run after the stop hook shows it, and its own stop acks the turn. Any other
+			// outcome, and a run that ended for good (final), ends the turn now.
+			const unseen = this.io.pending ? this.unread || this.io.pending() : this.io.reads && o === "ok" && this.unread;
+			if (!final && unseen) return;
 			try {
 				const r = await this.io.event({ event: "turn_end", prompt_id: key, outcome: o });
 				if (r?.block && r.text) {
@@ -97,16 +119,18 @@ export class Turns {
 	 * session_stop preceded, as after an abort or a compaction dead end). The turn ends as
 	 * beforeSettle ends it, with outcome "completed" | "aborted" | "error"; mail the turn had not
 	 * seen blocks that end (the text is shown, a run with it follows and it is the same turn, so
-	 * nothing settles); else the run settles. pi does not call this.
+	 * nothing settles); else the run settles. pi does not call this. Steered mail no model turn
+	 * read ends the turn interrupted (the ack waits for a turn that shows it).
 	 */
 	async endRun(outcome) {
-		await this.beforeSettle(outcome);
+		await this.beforeSettle(this.io.reads && this.unread ? "aborted" : outcome, true);
 		if (this.key) return;
 		this.settled();
 	}
 
 	settled() {
 		this.running = false;
+		this.unread = false;
 		// An abort (Esc, piggery abort, rpc compact) has no before_settle: the turn is over all the
 		// same. End it interrupted: nothing is acked and nothing wakes, but its batch closes, so the
 		// next mail wakes this session again.

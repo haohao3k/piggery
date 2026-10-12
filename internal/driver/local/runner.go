@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -82,6 +83,9 @@ type record struct {
 	// turn is core.TurnStarted or core.TurnEnded for a turn no delivered batch started; the
 	// runner reports it (Options.OnUnbatchedTurn).
 	turn string
+	// rewake: a wake came while the harness was still in a turn the daemon had already ended,
+	// and that turn is over now; the runner reports it (Options.OnRewake).
+	rewake bool
 }
 
 // Options tunes a Driver.
@@ -98,6 +102,9 @@ type Options struct {
 	// OnUnbatchedTurn is called when a turn no delivered batch started begins or ends
 	// (core.Engine.UnbatchedTurn).
 	OnUnbatchedTurn func(participantID, runID, event string)
+	// OnRewake is called when a wake the codec could not act on may be due now
+	// (core.Engine.Rewake). It must not block: it runs on the run's stdout reader.
+	OnRewake func(participantID string)
 	// StopWait is how long Stop waits after closing stdin before SIGTERM (default 10s);
 	// TermWait how long after SIGTERM before SIGKILL (default 5s); KillWait the same for Kill
 	// (default 2s).
@@ -113,7 +120,7 @@ type Driver struct {
 	mu    sync.Mutex
 	procs map[string]*worker // by participant id; kept after exit so tail still works
 
-	kill func(pid int, sig syscall.Signal) error // syscall.Kill; replaced in tests
+	kill func(pid int, sig syscall.Signal) error // newKill (kill(2) on unix); replaced in tests
 }
 
 type worker struct {
@@ -128,7 +135,8 @@ type worker struct {
 	inMu  sync.Mutex // serializes stdin writes (replies, control commands) with its close (stop)
 	stdin *os.File
 	// inBroken: a write ran past sendWait, maybe after part of its line (a pipe write over
-	// PIPE_BUF is not atomic), so the harness's JSON stream is broken; later sends fail at once.
+	// PIPE_BUF is not atomic), so the harness's JSON stream is broken; later sends fail at once
+	// and nothing else is written.
 	inBroken bool
 
 	pendMu  sync.Mutex
@@ -136,8 +144,9 @@ type worker struct {
 
 	logMu sync.Mutex // serializes appendLog
 
-	done chan struct{} // closed when the process has been reaped
-	exit core.Exit
+	done   chan struct{} // closed when the process has been reaped
+	exit   core.Exit
+	killed atomic.Bool // a stop or kill is ending the process with SIGKILL (killedExit)
 }
 
 // Builtin is every built-in runtime driver over dir, one per harness.
@@ -164,7 +173,7 @@ func newWith(dir string, opts Options, c codec) *Driver {
 	if opts.KillWait == 0 {
 		opts.KillWait = 2 * time.Second
 	}
-	return &Driver{dir: dir, opts: opts, codec: c, procs: map[string]*worker{}, kill: syscall.Kill}
+	return &Driver{dir: dir, opts: opts, codec: c, procs: map[string]*worker{}, kill: newKill()}
 }
 
 // LogPath is the normalized stdout log of one run.
@@ -290,10 +299,18 @@ func (d *Driver) Start(_ context.Context, s core.Spec) (core.Proc, error) {
 	}
 
 	cmd := exec.Command(l.cmd, l.args...)
+	if err := prepareCommand(cmd); err != nil {
+		inR.Close()
+		inW.Close()
+		outR.Close()
+		outW.Close()
+		cleanup()
+		return core.Proc{}, err
+	}
 	cmd.Dir = s.Cwd
 	cmd.Env = workerEnv(os.Environ(), s, l.env)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = inR, outW, stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	isolate(cmd)
 	err = cmd.Start()
 	inR.Close()
 	outW.Close()
@@ -305,6 +322,7 @@ func (d *Driver) Start(_ context.Context, s core.Spec) (core.Proc, error) {
 	}
 
 	w := &worker{participantID: s.ParticipantID, runID: s.RunID, harness: d.codec.harness(), logPth: logPth, pgid: cmd.Process.Pid, cmd: cmd, stdin: inW, done: make(chan struct{})}
+	attachTree(w.pgid)
 	d.mu.Lock()
 	d.procs[s.ParticipantID] = w
 	d.mu.Unlock()
@@ -312,7 +330,8 @@ func (d *Driver) Start(_ context.Context, s core.Spec) (core.Proc, error) {
 	go d.normalize(w, outR)
 	go func() {
 		err := cmd.Wait()
-		w.exit = exitOf(cmd, err)
+		treeExited(w.pgid)
+		w.exit = killedExit(exitOf(cmd, err), w.killed.Load())
 		w.inMu.Lock()
 		w.stdin.Close()
 		w.inMu.Unlock()
@@ -334,7 +353,7 @@ func (d *Driver) Start(_ context.Context, s core.Spec) (core.Proc, error) {
 		PID:        cmd.Process.Pid,
 		PGID:       cmd.Process.Pid,
 		StartTime:  ProcessStartTime(cmd.Process.Pid),
-		Cmdline:    append([]string{l.cmd}, l.args...),
+		Cmdline:    append([]string{startedProgram(cmd.Process.Pid, l.cmd)}, l.args...),
 		HarnessRef: w.harnessRef,
 	}, nil
 }
@@ -405,13 +424,18 @@ func (d *Driver) Kill(_ context.Context, participantID string) (core.Exit, error
 // so the harness shuts its children and extensions down itself, wait up to grace (less when it
 // exits), then SIGKILL the group and whatever of the tree is still there, and its new children.
 // It returns once the worker has exited. The group is ours only while the leader is not reaped.
+// Where the OS has no SIGTERM (hasTerm false) the ask and the wait are skipped: the soft step was
+// Stop's stdin close.
 func (d *Driver) terminate(w *worker, grace time.Duration, seen []proc) {
+	stopTreeBegin(w.pgid)
+	defer stopTreeEnd(w.pgid)
 	tree := treeBelow(w.pgid, !w.exited(), seen)
-	if !w.exited() {
+	if hasTerm && !w.exited() {
 		d.kill(-w.pgid, syscall.SIGTERM)
 		w.wait(grace)
 	}
 	tree = treeBelow(w.pgid, !w.exited(), tree)
+	w.killed.Store(!w.exited())
 	d.signalTree(w.pgid, !w.exited(), tree, syscall.SIGKILL)
 	<-w.done
 }
@@ -419,6 +443,9 @@ func (d *Driver) terminate(w *worker, grace time.Duration, seen []proc) {
 // killNow SIGKILLs the worker's group and every descendant at once, for a run that has failed
 // (it cannot wait: the reaper waits for the caller).
 func (d *Driver) killNow(w *worker) {
+	stopTreeBegin(w.pgid)
+	defer stopTreeEnd(w.pgid)
+	w.killed.Store(!w.exited())
 	d.signalTree(w.pgid, !w.exited(), treeBelow(w.pgid, !w.exited(), nil), syscall.SIGKILL)
 }
 
@@ -554,13 +581,18 @@ func (d *Driver) normalize(w *worker, r io.ReadCloser) {
 			if rec.turn != "" && d.opts.OnUnbatchedTurn != nil {
 				d.opts.OnUnbatchedTurn(w.participantID, w.runID, rec.turn)
 			}
+			if rec.rewake && d.opts.OnRewake != nil {
+				d.opts.OnRewake(w.participantID)
+			}
 			if rec.fatal != "" {
 				f.Write(append(stdError(rec.fatal), '\n'))
 				d.killNow(w)
 			}
 			if rec.reply != nil {
 				w.inMu.Lock()
-				w.stdin.Write(append(rec.reply, '\n')) // fails harmlessly once stdin is closed
+				if !w.inBroken { // a write given up on may still be in the pipe's way (writeWithin)
+					w.stdin.Write(append(rec.reply, '\n')) // fails harmlessly once stdin is closed
+				}
 				w.inMu.Unlock()
 			}
 		}
@@ -602,8 +634,7 @@ func (w *worker) send(v any) error {
 	if w.inBroken {
 		return errors.New("worker stdin is broken: an earlier write timed out mid-line; stop the worker")
 	}
-	w.stdin.SetWriteDeadline(time.Now().Add(sendWait))
-	if _, err := w.stdin.Write(append(line, '\n')); err != nil {
+	if err := writeWithin(w.stdin, append(line, '\n'), sendWait); err != nil {
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 			w.inBroken = true
 			slog.Warn("worker stdin write timed out; its stdin is now broken, later commands fail",

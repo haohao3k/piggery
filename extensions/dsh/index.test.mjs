@@ -93,6 +93,7 @@ test("a dsh web agent joins piggery: tools, role card, mail in, aborts, records"
 	await t.test("mail at agent/turn-stopping is steered in before the turn ends", async () => {
 		mail = "[piggery] 3 new messages";
 		const before = agent.steered.length;
+		ctx.session(agent, { type: "step/start", data: { turn: 1, step: 2 } }); // dsh runs the step that claims the mail steered at the boundary, then stops
 		const stopping = ctx.handlers["agent/turn-stopping"][0].fn({ agent, turn: 1 });
 		await stopping;
 		assert.equal(agent.steered.length, before + 1);

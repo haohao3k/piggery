@@ -16,13 +16,13 @@
 // join.auto places the omp session. PIGGERY_DISABLED=1 makes it inert. A solo session is silent.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { closeSync, fstatSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Turns } from "../pi/adapter.mjs";
-import { Client } from "../pi/client.mjs";
+import { Client, daemonAddress, daemonUp } from "../pi/client.mjs";
 import { afterRetire, render, renderWho, sentText } from "../pi/render.mjs";
 
 // The built-in tools, defined once for every adapter (extensions/pi/tools.json); {tool:X} in a text
@@ -86,7 +86,7 @@ export default function piggery(omp: ExtensionAPI) {
 	// A spawned worker identifies as the run the daemon created for its process (processes row, tail
 	// log), not as a new run.
 	if (envAuth && workerRun) proc.runId ??= workerRun;
-	const sockPath = join(homedir(), ".piggery", "piggery.sock");
+	const sockPath = () => daemonAddress();
 
 	let ctx: ExtensionContext | undefined;
 	let roleCard = "";
@@ -112,6 +112,7 @@ export default function piggery(omp: ExtensionAPI) {
 		event: (args: object) => client!.call("harness.event", args),
 		presence: (event: string) => client!.call("presence", { event }),
 		deliver,
+		reads: true, // turn_start calls modelTurn
 		newKey: () => randomUUID(),
 		onError: (err: any) => {
 			// Outages are logged once by the client; a fatal error is reported by retire().
@@ -295,7 +296,7 @@ export default function piggery(omp: ExtensionAPI) {
 
 	const startClient = (auth: { id: string; token: string } | undefined) => {
 		const cl: Client = new Client({
-			path: sockPath,
+			path: sockPath(),
 			auth,
 			onPush: (f: any) => {
 				if (f.event === "wake") turns.wake();
@@ -338,7 +339,7 @@ export default function piggery(omp: ExtensionAPI) {
 	const ensureConnected = async () => {
 		if (proc.stale) throw new Error("this omp session no longer drives a piggery participant");
 		if (client?.ready) return;
-		if (!existsSync(sockPath)) await startDaemon();
+		if (!(await daemonUp())) await startDaemon();
 		client?.stop();
 		startClient(envAuth ?? proc.auth);
 		for (let i = 0; i < 100 && !client?.ready && !proc.stale; i++) await new Promise((r) => setTimeout(r, 100));
@@ -364,8 +365,8 @@ export default function piggery(omp: ExtensionAPI) {
 				resolve();
 			});
 		}).finally(() => closeSync(out));
-		for (let i = 0; i < 50 && !existsSync(sockPath) && !exited; i++) await new Promise((r) => setTimeout(r, 100));
-		if (existsSync(sockPath)) return;
+		for (let i = 0; i < 50 && !(await daemonUp()) && !exited; i++) await new Promise((r) => setTimeout(r, 100));
+		if (await daemonUp()) return;
 		// Its reason is the last line it wrote to the log (e.g. a bad config.yaml).
 		const lines = readFileSync(log).subarray(from).toString("utf8").trim().split("\n");
 		const why = (lines[lines.length - 1] ?? "").replace(/^piggery serve: /, "").trim() || "piggery serve exited";
@@ -391,6 +392,7 @@ export default function piggery(omp: ExtensionAPI) {
 	});
 	// omp's events -> standard adapter events (see the top of this file).
 	omp.on("agent_start", () => turns.agentStart());
+	omp.on("turn_start", () => turns.modelTurn());
 	omp.on("turn_end", () => turns.toolBoundary());
 	omp.on("session_stop", async (e: any) => {
 		// Mail the daemon hands back is steered in (deliver, in beforeSettle): omp then ends this run and
@@ -466,7 +468,7 @@ export default function piggery(omp: ExtensionAPI) {
 			return text(`founded team ${r.team_name}; you are ${res.name} (${res.role}), its gate; ${tools}`);
 		}
 		if (p.action === "templates") return text((await client!.call("agent", { action: "templates" }) as any).text);
-		if (!inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team)) throw new Error("you are a solo session: only actions templates, found, reopen, and spawn with template or close with team for a taskforce");
+		if (!inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team) && !p.action.startsWith("gate_")) throw new Error("you are a solo session: only actions templates, found, reopen, gate_close, gate_open, and spawn with template or close with team for a taskforce");
 		const r: any = await client!.call("agent", p);
 		if (p.action === "close" && !p.team) {
 			// The team is closed and this participant left it (no retire push to the caller).
@@ -484,6 +486,7 @@ export default function piggery(omp: ExtensionAPI) {
 		// Names and #N only, no ids.
 		if (p.action === "spawn") return text(p.template ? `called up taskforce ${r.team_name}; its task is #${r.task_seq}; write to it as ${r.team_name}, its result comes to you as mail` : `spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`);
 		if (p.action === "resume" && r.task_seq) return text(`resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`);
+		if (p.action === "gate_close" || p.action === "gate_open") return text(r.text);
 		if (p.action === "admit") return text(`admitted ${p.target} as ${p.role}`);
 		return text(`${p.action} ok: ${p.target}`);
 	});

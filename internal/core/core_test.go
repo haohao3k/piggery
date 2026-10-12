@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +21,13 @@ type fixture struct {
 	alice, bob core.Caller
 }
 
-// newFixture brings up the p2p team with alice and bob on db (in-memory when nil).
+// peersManifest is the fixture team of the tests: one role whose members talk freely and may spawn more.
+const peersManifest = "template: peers\nauto_join_role: peer\nroles:\n" +
+	"  peer: {tools: [send, inbox, who, agent], can_spawn: [peer], can_pin: true}\n" +
+	"routing:\n  - {from: peer, to: peer, allow: true}\n" +
+	"limits: {depth: 2, concurrency: 10, messages_per_participant_per_minute: 30}\n"
+
+// newFixture brings up the peers team with alice and bob on db (in-memory when nil).
 func newFixture(t *testing.T, db *sql.DB, opts ...core.Option) fixture {
 	t.Helper()
 	if db == nil {
@@ -33,11 +38,8 @@ func newFixture(t *testing.T, db *sql.DB, opts ...core.Option) fixture {
 		t.Cleanup(func() { db.Close() })
 	}
 	e := core.New(db, opts...)
-	man, err := os.ReadFile("../../manifests/p2p.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: string(man), Name: "p2p", Cwd: t.TempDir()})
+	man := peersManifest
+	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: string(man), Name: "peers", Cwd: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

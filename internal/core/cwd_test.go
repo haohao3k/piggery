@@ -2,9 +2,11 @@ package core_test
 
 import (
 	"database/sql"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -77,6 +79,12 @@ func git(t *testing.T, dir string, args ...string) {
 // A spawn's cwd must lie inside the team root, a git worktree of the repo at the root, or
 // spawn.allowed_roots, symlinks resolved; a role without can_set_cwd keeps its own. The spawn event
 // records where the worker runs.
+// js is s as a JSON string (a Windows path holds backslashes).
+func js(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 func TestSpawnCwdBounds(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git")
@@ -90,6 +98,9 @@ func TestSpawnCwdBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("no symlink privilege (admin or Developer Mode): %v", err)
+		}
 		t.Fatal(err)
 	}
 	f := newCwdFixture(t, root, allowed)
@@ -98,7 +109,7 @@ func TestSpawnCwdBounds(t *testing.T) {
 		if err != nil {
 			return "", err
 		}
-		return f.rt.starts[len(f.rt.starts)-1].Cwd, nil
+		return f.rt.Starts()[len(f.rt.Starts())-1].Cwd, nil
 	}
 	for _, c := range []struct{ name, cwd, want string }{
 		{"in-root", "sub", filepath.Join(root, "sub")}, // relative to the lead's cwd
@@ -116,10 +127,10 @@ func TestSpawnCwdBounds(t *testing.T) {
 	}
 	var payload string
 	if err := f.db.QueryRow(`SELECT payload FROM events WHERE type='spawned' AND payload LIKE '%in-lane%'`).Scan(&payload); err != nil ||
-		!strings.Contains(payload, `"cwd":"`+lane+`"`) {
+		!strings.Contains(payload, `"cwd":`+js(lane)) {
 		t.Fatalf("spawned event %s, %v; want its cwd", payload, err)
 	}
-	s := f.rt.starts[0] // in-root, a worker: no can_set_cwd
+	s := f.rt.Starts()[0] // in-root, a worker: no can_set_cwd
 	w, err := f.e.Authenticate(ctx, s.ParticipantID, s.Token)
 	if err != nil {
 		t.Fatal(err)
@@ -151,13 +162,13 @@ func TestResumeNeedsTheWorkersCwd(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentResume, Target: "w1"})
-	if err == nil || !strings.Contains(err.Error(), dir+" no longer exists") || len(f.rt.starts) != 1 {
-		t.Fatalf("resume without its cwd: %v, %d starts", err, len(f.rt.starts))
+	if err == nil || !strings.Contains(err.Error(), dir+" no longer exists") || len(f.rt.Starts()) != 1 {
+		t.Fatalf("resume without its cwd: %v, %d starts", err, len(f.rt.Starts()))
 	}
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentResume, Target: "w1"}); err != nil || f.rt.starts[1].Cwd != dir {
+	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentResume, Target: "w1"}); err != nil || f.rt.Starts()[1].Cwd != dir {
 		t.Fatalf("resume: %v; want it in %s", err, dir)
 	}
 }
@@ -192,7 +203,7 @@ func TestInheritedCwdIsBounded(t *testing.T) {
 	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentResume, Target: "w1"}); rule(err) != "bounds/cwd.bounds" {
 		t.Fatalf("resume in %s: %v; want bounds/cwd.bounds", parent, err)
 	}
-	if len(f.rt.starts) != 1 {
-		t.Fatalf("%d starts; want only w1's first", len(f.rt.starts))
+	if len(f.rt.Starts()) != 1 {
+		t.Fatalf("%d starts; want only w1's first", len(f.rt.Starts()))
 	}
 }

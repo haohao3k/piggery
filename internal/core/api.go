@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,6 +43,10 @@ type Engine struct {
 	sharedPrompts  func(template, role string) string // the Human's text for a role card (WithSharedPrompts)
 	minProtocol    int                                // lowest adapter protocol version identify accepts
 	deliverLocks   sync.Map                           // participant id -> *sync.Mutex: one delivery at a time, in batch order
+	// stopping holds the runs stopWorker is ending, and closing is set once the daemon stops: an
+	// exit of either is intended, so it does not wake the worker (ProcessExited).
+	stopping sync.Map // run id -> struct{}
+	closing  atomic.Bool
 	// notifySink is told about each new, not held message to notify (WithNotifySink).
 	notifySink func(messageID string)
 	// roleChanged is told when a live session's role changes under it (WithRoleChanged).
@@ -50,6 +55,8 @@ type Engine struct {
 	abortPush func(participantID string) int
 	// soloLimits are the limits of a solo (WithSoloTemplate).
 	soloLimits map[string]int
+	// soloGateClosed: a new solo's gate starts closed (WithDefaultGate).
+	soloGateClosed bool
 	// templates resolves a team.found template name (WithTemplates).
 	templates func(name, cwd string) (string, error)
 	// templateList lists the templates found for a cwd (WithTemplateList).
@@ -236,6 +243,7 @@ type Presence struct {
 	Gate         bool   `json:"gate"`           // member: the team's gate; solo: always
 	GateName     string `json:"gate_name,omitempty"`
 	Admittable   bool   `json:"admittable,omitempty"`
+	Closed       bool   `json:"gate_closed,omitempty"` // the caller's own line: its gate is closed
 }
 
 // Who line kinds.

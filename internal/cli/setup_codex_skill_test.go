@@ -109,6 +109,9 @@ func TestCodexReviewSkillPreservesCustomizationAndRemoval(t *testing.T) {
 func TestCodexReviewSkillDoesNotClaimUnownedPaths(t *testing.T) {
 	for _, mode := range []string{"directory", "skill-link", "root-link", "receipt-link", "special-directory"} {
 		t.Run(mode, func(t *testing.T) {
+			if strings.HasSuffix(mode, "-link") {
+				skipOnWindows(t, "creating a skill symlink needs Windows developer mode or a privilege")
+			}
 			home := fakeReviewCodex(t)
 			outside := t.TempDir()
 			var err error
@@ -163,7 +166,7 @@ func TestCodexReviewSkillOutdatedDoesNotRestoreDisabledIntegration(t *testing.T)
 	for _, mode := range []string{"disabled", "no-hooks"} {
 		t.Run(mode, func(t *testing.T) {
 			home := fakeReviewCodex(t)
-			t.Setenv("HOME", home)
+			setHome(t, home)
 			t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 			if _, err := installCodex(t.TempDir(), codexHome(), "/bin/piggery"); err != nil {
 				t.Fatal(err)

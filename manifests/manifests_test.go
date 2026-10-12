@@ -69,8 +69,8 @@ func TestUnpackUpgrade(t *testing.T) {
 	if err != nil || !strings.Contains(m, "lead v2") || !strings.Contains(m, "my dev") || strings.Contains(m, "instructions_file") {
 		t.Fatalf("resolve sup = %q, %v", m, err)
 	}
-	if _, err := Resolve("p2p", home); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("p2p (built into the binary, not in this home): %v; want not found", err)
+	if _, err := Resolve("lead-peer", home); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("lead-peer (built into the binary, not in this home): %v; want not found", err)
 	}
 	// A file the user edited to exactly the next version is ours again: v3 updates it.
 	if err := os.WriteFile(filepath.Join(Dir(home), "sup/prompts/dev.md"), []byte("dev v2"), 0o600); err != nil {
@@ -106,7 +106,7 @@ func TestNew(t *testing.T) {
 	if want := strings.Replace(string(orig), "template: lead-peer", "template: mine", 1); string(got) != want {
 		t.Fatalf("copied manifest:\n%s\nwant:\n%s", got, want)
 	}
-	if _, err := New(home, "mine", "p2p"); err == nil {
+	if _, err := New(home, "mine", "lead-peer"); err == nil {
 		t.Fatal("new over an existing template: want refused")
 	}
 }
@@ -153,5 +153,44 @@ func TestMigrateKey(t *testing.T) {
 	}
 	if got := read("sup"); !strings.Contains(got, "summary: v2") {
 		t.Fatalf("a migrated built-in was not updated: %q", got)
+	}
+}
+
+// A built-in a release drops is taken out of the home on the next unpack: its files that still have
+// the recorded hash are deleted, then the empty directories, and it leaves .builtin.json. A file the
+// user edited stays with its directory, now the user's own template; a template that is still built
+// in is untouched.
+func TestUnpackDropsAReleasedBuiltin(t *testing.T) {
+	home := t.TempDir()
+	v1 := fstest.MapFS{
+		"old.yaml":     {Data: []byte("template: old\nroles:\n  a: {instructions_file: prompts/a.md}\n  b: {instructions_file: prompts/b.md}\n")},
+		"prompts/a.md": {Data: []byte("a")},
+		"prompts/b.md": {Data: []byte("b")},
+		"plain.yaml":   {Data: []byte("template: plain\n")},
+		"stay.yaml":    {Data: []byte("template: stay\n")},
+	}
+	if err := unpack(home, v1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(Dir(home), "old/prompts/b.md"), []byte("my b"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v2 := fstest.MapFS{"stay.yaml": v1["stay.yaml"]} // old and plain are dropped
+	if err := unpack(home, v2); err != nil {
+		t.Fatal(err)
+	}
+	exists := func(rel string) bool { _, err := os.Stat(filepath.Join(Dir(home), rel)); return err == nil }
+	if exists("plain") || exists("old/manifest.yaml") || exists("old/prompts/a.md") {
+		t.Fatal("an unedited dropped built-in must be gone, directory included")
+	}
+	if b, _ := os.ReadFile(filepath.Join(Dir(home), "old/prompts/b.md")); string(b) != "my b" || !exists("stay/manifest.yaml") {
+		t.Fatalf("the user's edited file or a current built-in was touched: %q", b)
+	}
+	rec, _ := os.ReadFile(filepath.Join(Dir(home), recordFile))
+	if strings.Contains(string(rec), `"old"`) || strings.Contains(string(rec), `"plain"`) || !strings.Contains(string(rec), `"stay"`) {
+		t.Fatalf("record after the drop:\n%s", rec)
+	}
+	if err := unpack(home, v2); err != nil || !exists("old/prompts/b.md") { // and it stays the user's
+		t.Fatalf("second unpack: %v", err)
 	}
 }

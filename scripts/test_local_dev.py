@@ -103,9 +103,9 @@ class UpstreamDatabaseTests(unittest.TestCase):
         with local_dev._restore_upstream_database(self.root, None, None) as receipt:
             self.assertIsNone(receipt)
         self.assertEqual(local_dev._database_version(self.path), 23)
-        for n in range(24, 28):
+        for n in range(24, 29):
             self.db.executescript((self.root / f'internal/store/migrate_{n}.sql').read_text())
-        self.db.execute("UPDATE meta SET value='27' WHERE key='schema_version'")
+        self.db.execute("UPDATE meta SET value='28' WHERE key='schema_version'")
         self.db.commit()
         before = list(self.db.iterdump())
         with local_dev._restore_upstream_database(self.root, None, None) as receipt:
@@ -113,7 +113,7 @@ class UpstreamDatabaseTests(unittest.TestCase):
         self.assertEqual(list(self.db.iterdump()), before)
         self.db.execute('ALTER TABLE participants ADD COLUMN unexpected TEXT')
         self.db.commit()
-        with self.assertRaisesRegex(local_dev.LocalDevError, 'unsupported database schema 27'):
+        with self.assertRaisesRegex(local_dev.LocalDevError, 'unsupported database schema 28'):
             with local_dev._restore_upstream_database(self.root, None, None):
                 self.fail('unknown native schema accepted')
 

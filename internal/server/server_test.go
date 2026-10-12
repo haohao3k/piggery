@@ -10,12 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/sting8k/piggery/internal/cli"
 	"github.com/sting8k/piggery/internal/core"
+	"github.com/sting8k/piggery/internal/driver/local"
 	"github.com/sting8k/piggery/internal/proto"
 	"github.com/sting8k/piggery/internal/server"
 	"github.com/sting8k/piggery/internal/store"
@@ -25,7 +25,7 @@ import (
 // startServer runs a daemon in a short temp dir (unix socket paths are length-limited on macOS).
 func startServer(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "pg")
+	dir, err := os.MkdirTemp(shortTmp(), "pg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,8 +75,12 @@ func TestServerAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{server.AdminTokenPath(dir), server.SocketPath(dir)} {
-		if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o600 {
+	paths := []string{server.AdminTokenPath(dir)}
+	if sock := server.Leftover(dir); sock != "" { // the socket file (a pipe is no file)
+		paths = append(paths, sock)
+	}
+	for _, p := range paths {
+		if fi, err := os.Stat(p); err != nil || !permIs(fi.Mode().Perm(), 0o600) {
 			t.Fatalf("%s: want mode 0600, got %v %v", p, fi.Mode(), err)
 		}
 	}
@@ -86,10 +90,10 @@ func TestServerAuth(t *testing.T) {
 		t.Fatal("second server.Run succeeded while the lock was held")
 	}
 
-	team, alice, bob := p2pTeam(t, dir)
+	team, alice, bob := peersTeam(t, dir)
 
 	// A wrong participant token is unauthorized even when a valid admin token rides along.
-	raw, err := net.Dial("unix", server.SocketPath(dir))
+	raw, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,17 +148,20 @@ func TestServerAuth(t *testing.T) {
 	}
 }
 
-// p2pTeam brings up the p2p team with alice and bob through the admin verbs.
-func p2pTeam(t *testing.T, dir string) (core.Team, core.JoinResult, core.JoinResult) {
+// peersManifest is the fixture team: one role whose members talk freely.
+const peersManifest = "template: peers\nauto_join_role: peer\nroles:\n" +
+	"  peer: {tools: [send, inbox, who, agent], can_spawn: [peer], can_pin: true}\n" +
+	"routing:\n  - {from: peer, to: peer, allow: true}\n" +
+	"limits: {depth: 2, concurrency: 10, messages_per_participant_per_minute: 30}\n"
+
+// peersTeam brings up the peers team with alice and bob through the admin verbs.
+func peersTeam(t *testing.T, dir string) (core.Team, core.JoinResult, core.JoinResult) {
 	t.Helper()
 	adminTok, err := os.ReadFile(server.AdminTokenPath(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := os.ReadFile("../../manifests/p2p.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	manifest := peersManifest
 	admin := dial(t, dir)
 	admin.AsAdmin(strings.TrimSpace(string(adminTok)))
 	var team core.Team
@@ -174,9 +181,9 @@ func p2pTeam(t *testing.T, dir string) (core.Team, core.JoinResult, core.JoinRes
 // An identified connection gets a wake push for new mail; closing it marks the participant gone.
 func TestIdentifiedConnectionWakeAndGone(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir)
+	_, alice, bob := peersTeam(t, dir)
 
-	raw, err := net.Dial("unix", server.SocketPath(dir))
+	raw, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +235,7 @@ type rawConn struct {
 
 func rawDial(t *testing.T, dir string, j core.JoinResult) *rawConn {
 	t.Helper()
-	c, err := net.Dial("unix", server.SocketPath(dir))
+	c, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,8 +272,8 @@ func (r *rawConn) call(verb string, args any) proto.Response {
 // team down pushes retire to the team's identified connections (the harness leaves at once).
 func TestTeamDownPushesRetire(t *testing.T) {
 	dir := startServer(t)
-	team, _, bob := p2pTeam(t, dir)
-	raw, err := net.Dial("unix", server.SocketPath(dir))
+	team, _, bob := peersTeam(t, dir)
+	raw, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,9 +309,9 @@ func TestTeamDownPushesRetire(t *testing.T) {
 // team down.
 func TestGateCloseRetiresTheOthers(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir) // alice joined first: the gate
+	_, alice, bob := peersTeam(t, dir) // alice joined first: the gate
 	open := func(j core.JoinResult) (net.Conn, *json.Decoder) {
-		raw, err := net.Dial("unix", server.SocketPath(dir))
+		raw, err := server.Dial(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -346,7 +353,7 @@ func TestGateCloseRetiresTheOthers(t *testing.T) {
 
 func TestSupersededConnectionIsStale(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir)
+	_, alice, bob := peersTeam(t, dir)
 	old, cur := rawDial(t, dir, bob), rawDial(t, dir, bob)
 	for _, c := range []*rawConn{old, cur} {
 		if r := c.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true}); !r.OK {
@@ -394,14 +401,14 @@ func TestSupersededConnectionIsStale(t *testing.T) {
 // (driver OnExit -> core.ProcessExited) without anyone calling stop.
 func TestSpawnedWorkerExitEndsGone(t *testing.T) {
 	dir := startServer(t)
-	prof := []byte(`{"cmd": "/bin/sh", "args": ["-c", "sleep 0.3", "sh"]}`)
+	prof := workerProfile(t, "brief")
 	if err := os.MkdirAll(filepath.Join(dir, "harness"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "harness", "pi.json"), prof, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, alice, _ := p2pTeam(t, dir)
+	_, alice, _ := peersTeam(t, dir)
 	a := dial(t, dir)
 	a.AsParticipant(alice.ID, alice.Token)
 	var r core.AgentResult
@@ -451,7 +458,7 @@ func runServer(t *testing.T, dir string) (stop func()) {
 // so the next start has nothing to reconcile for them. The stop is `piggery -a shutdown`: it returns
 // once the daemon is gone and no worker is left.
 func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pg")
+	dir, err := os.MkdirTemp(shortTmp(), "pg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,12 +466,12 @@ func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "harness"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	prof := []byte(`{"cmd": "/bin/sh", "args": ["-c", "cat >/dev/null", "sh"]}`) // exits when stdin closes
+	prof := workerProfile(t, "stdin") // exits when stdin closes
 	if err := os.WriteFile(filepath.Join(dir, "harness", "pi.json"), prof, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	stop := runServer(t, dir)
-	_, alice, _ := p2pTeam(t, dir)
+	_, alice, _ := peersTeam(t, dir)
 	a := dial(t, dir)
 	a.AsParticipant(alice.ID, alice.Token)
 	var r core.AgentResult
@@ -476,8 +483,8 @@ func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
 	if code := cli.Main(dir, []string{"-a", "shutdown"}, &out, &errOut); code != 0 {
 		t.Fatalf("shutdown: exit %d: %s%s", code, out.String(), errOut.String())
 	}
-	if _, err := os.Stat(server.SocketPath(dir)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("socket after stop returned: %v", err)
+	if left := server.Leftover(dir); left != "" {
+		t.Fatalf("socket after stop returned: %s", left)
 	}
 	stop() // Run has returned; this collects its result
 	db, err := store.Open(server.DBPath(dir))
@@ -490,8 +497,8 @@ func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
-		t.Fatalf("worker pid %d after stop: %v; want no such process", pid, err)
+	if !procGone(pid) {
+		t.Fatalf("worker pid %d after stop: still there; want no such process", pid)
 	}
 
 	stop = runServer(t, dir)
@@ -544,21 +551,10 @@ func TestNotifyHooksRunInParallel(t *testing.T) {
 	}
 	leaveTeam("sess-1") // before any hook exists: runs nothing
 	out, slowDone, legacyOut := filepath.Join(dir, "fast.out"), filepath.Join(dir, "slow.done"), filepath.Join(dir, "legacy.out")
-	put := func(path, text string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(text), 0o700); err != nil {
-			t.Fatal(err)
-		}
+	writeNotifyHooks(t, server.NotifyHooksDir(dir), slowDone, out, legacyOut)
+	if err := os.WriteFile(filepath.Join(dir, "hooks", "notify"), []byte("#!/bin/sh\ntouch '"+legacyOut+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	hooks := server.NotifyHooksDir(dir)
-	put(filepath.Join(hooks, "a-slow"), "#!/bin/sh\nsleep 30\ntouch '"+slowDone+"'\n")
-	put(filepath.Join(hooks, "b-fast"), "#!/bin/sh\ncat >> '"+out+"'\n")
-	put(filepath.Join(hooks, "c-not-executable"), "#!/bin/sh\ntouch '"+legacyOut+"'\n")
-	os.Chmod(filepath.Join(hooks, "c-not-executable"), 0o600)
-	put(filepath.Join(dir, "hooks", "notify"), "#!/bin/sh\ntouch '"+legacyOut+"'\n")
 	leaveTeam("sess-2")
 	var b []byte
 	start := time.Now()
@@ -601,7 +597,7 @@ func TestTemplatesAction(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	put(filepath.Join(cwd, "manifests", "p2p.yaml"), "template: p2p\nsummary: repo peers\nroles: {peer: {tools: [send]}}\n")
+	put(filepath.Join(cwd, "manifests", "lead-peer.yaml"), "template: lead-peer\nsummary: repo peers\nroles: {peer: {tools: [send]}}\n")
 	put(filepath.Join(cwd, "manifests", "repo.yaml"), "template: repo\nroles: {peer: {tools: [send]}}\n")
 	put(filepath.Join(manifests.Dir(dir), "mine", manifests.ManifestFile),
 		"template: mine\nsummary: my flow\nroles:\n  peer: {description: me, tools: [send, inbox, who, agent]}\n")
@@ -621,11 +617,11 @@ func TestTemplatesAction(t *testing.T) {
 		names = append(names, tpl.Name)
 		byName[tpl.Name] = tpl
 	}
-	if strings.Join(names, " ") != "advisor amp-like council dual-lane-adjudication dual-lens gastown-like lead-peer mine p2p slp triple-review" {
+	if strings.Join(names, " ") != "advisor amp-like council dual-lane-adjudication dual-lens gastown-like lead-peer mine slp triple-review" {
 		t.Fatalf("templates = %v; want the home's only", names)
 	}
-	if p := byName["p2p"]; p.Summary == "repo peers" || p.From != filepath.Join(manifests.Dir(dir), "p2p") {
-		t.Fatalf("p2p = %+v; want the unpacked built-in, not <cwd>/manifests", p)
+	if p := byName["lead-peer"]; p.Summary == "repo peers" || p.From != filepath.Join(manifests.Dir(dir), "lead-peer") {
+		t.Fatalf("lead-peer = %+v; want the unpacked built-in, not <cwd>/manifests", p)
 	}
 	if m := byName["mine"]; m.Summary != "my flow" || len(m.Roles) != 1 || m.Roles[0].Description != "me" {
 		t.Fatalf("mine = %+v", m)
@@ -644,7 +640,7 @@ func TestTemplatesAction(t *testing.T) {
 // new connection closes it unacked).
 func TestIdentifyAgainKeepsTheTurn(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir)
+	_, alice, bob := peersTeam(t, dir)
 	b := rawDial(t, dir, bob)
 	identify := func(a core.IdentifyArgs) core.IdentifyResult {
 		t.Helper()
@@ -679,7 +675,7 @@ func TestIdentifyAgainKeepsTheTurn(t *testing.T) {
 // runs the old MCP server ~30 s after /clear; two nudges would be two turns).
 func TestWakeGoesToTheNewestConnection(t *testing.T) {
 	dir := startServer(t)
-	_, alice, bob := p2pTeam(t, dir)
+	_, alice, bob := peersTeam(t, dir)
 	old, cur := rawDial(t, dir, bob), rawDial(t, dir, bob)
 	var id core.IdentifyResult
 	r := old.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true, Harness: "claude"})
@@ -708,6 +704,93 @@ func TestWakeGoesToTheNewestConnection(t *testing.T) {
 	}
 }
 
+// hostSession is a Claude session of this test process: joined by host, one MCP connection
+// identified by host.
+type hostSession struct {
+	t    *testing.T
+	dir  string
+	host string
+	mcp  *rawConn
+}
+
+func newHostSession(t *testing.T) hostSession {
+	dir := startServer(t)
+	h := hostSession{t: t, dir: dir, host: fmt.Sprintf("claude:%d:%d", os.Getpid(), local.ProcessStartTime(os.Getpid()))}
+	h.join("s1", h.host, "startup")
+	h.mcp = rawDial(t, dir, core.JoinResult{})
+	h.mcp.auth = &proto.Auth{Host: h.host}
+	if r := h.mcp.call(proto.VerbIdentify, core.IdentifyArgs{Harness: "claude", Mode: "interactive",
+		Capabilities: []string{core.CapWake}, ProtocolVersion: core.ProtocolVersion}); !r.OK {
+		t.Fatalf("identify: %+v", r.Error)
+	}
+	return h
+}
+
+func (h hostSession) join(ref, host, source string) core.JoinResult {
+	var r core.JoinResult
+	if _, err := dial(h.t, h.dir).CallInto(proto.VerbJoinAuto, core.JoinAutoArgs{Cwd: h.dir, Harness: "claude", Mode: "interactive",
+		HarnessRef: ref, Source: source, Host: host}, &r); err != nil {
+		h.t.Fatal(err)
+	}
+	return r
+}
+
+// The session's connection follows its host to the row join.auto leaves live for it. Team down
+// ends its row; the next hook joins it as a new solo; mail to that solo wakes it (#16).
+func TestHostConnectionFollowsTheSessionToItsNewRow(t *testing.T) {
+	h := newHostSession(t)
+	var found core.AgentResult
+	if r := h.mcp.call(proto.VerbAgent, core.AgentArgs{Action: core.AgentFound, Template: "lead-peer"}); !r.OK || json.Unmarshal(r.Result, &found) != nil {
+		t.Fatalf("found: %+v", r.Error)
+	}
+	tok, _ := os.ReadFile(server.AdminTokenPath(h.dir))
+	admin := dial(t, h.dir)
+	admin.AsAdmin(strings.TrimSpace(string(tok)))
+	if _, err := admin.Call(proto.VerbTeamDown, core.TeamDownArgs{Team: found.TeamID}); err != nil {
+		t.Fatal(err)
+	}
+	solo := h.join("s1", h.host, "resume")
+	other := h.join("o1", "", "startup")
+	o := dial(t, h.dir)
+	o.AsParticipant(other.ID, other.Token)
+	var who []core.Presence
+	if _, err := o.CallInto(proto.VerbWho, nil, &who); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range who {
+		if p.ID == solo.ID {
+			if _, err := o.Call(proto.VerbSend, core.SendArgs{To: p.Name, Body: "hello"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	h.mcp.c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		var push proto.Push
+		if err := h.mcp.dec.Decode(&push); err != nil {
+			t.Fatalf("no wake reached the session's connection for mail to its new row: %v", err)
+		}
+		if push.Event == proto.EventWake {
+			return
+		}
+	}
+}
+
+// An in-process resume of the session's own row (SessionEnd resume, then SessionStart) gives the
+// row a new run; the session's connection follows it instead of being refused run.stale (#16).
+func TestHostConnectionFollowsAnInProcessResumeOfItsRow(t *testing.T) {
+	h := newHostSession(t)
+	hook := dial(t, h.dir)
+	hook.AsHost(h.host)
+	if _, err := hook.Call(proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionEnd, HarnessRef: "s1"}); err != nil {
+		t.Fatal(err)
+	}
+	h.join("s1", h.host, "resume")
+	if r := h.mcp.call(proto.VerbWho, nil); !r.OK {
+		t.Fatalf("a tool call on the session's connection after the resume: %+v", r.Error)
+	}
+}
+
 // A worker's identity is bound to its process: identify and harness.event with the worker's token come
 // only from the process the driver spawned or its direct child (a hook, the MCP server). A harness nested
 // in the worker inherits PIGGERY_ID and PIGGERY_TOKEN and is refused even two levels down: `zsh -lc
@@ -718,16 +801,14 @@ func TestNestedHarnessCannotSpeakForTheWorker(t *testing.T) {
 	out := t.TempDir()
 	t.Setenv("PGTEST_DIR", dir)
 	t.Setenv("PGTEST_OUT", out)
-	cl := fmt.Sprintf("%q -test.run=^TestWorkerPeerClient$", os.Args[0])
-	script := fmt.Sprintf(`PGTEST_TAG=direct %s; sh -c 'PGTEST_TAG=nested %s; :'; read x`, cl, cl)
-	prof, _ := json.Marshal(map[string]any{"cmd": "/bin/sh", "args": []string{"-c", script, "sh"}})
+	prof := workerProfile(t, "nested")
 	if err := os.MkdirAll(filepath.Join(dir, "harness"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "harness", "pi.json"), prof, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, alice, _ := p2pTeam(t, dir)
+	_, alice, _ := peersTeam(t, dir)
 	a := dial(t, dir)
 	a.AsParticipant(alice.ID, alice.Token)
 	if _, err := a.Call(proto.VerbAgent, core.AgentArgs{Action: core.AgentSpawn, Role: "peer", Name: "w1", Task: "t"}); err != nil {

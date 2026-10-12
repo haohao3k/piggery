@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -19,9 +18,12 @@ import (
 
 // fakeRuntime records starts and plays back canned results.
 type fakeRuntime struct {
+	startsMu sync.Mutex // Start may run on a wake's goroutine (wake.go) while the test reads: use Starts
 	starts   []core.Spec
 	startErr error
+	onStart  func(s core.Spec) // called in Start before it returns (a dying harness's exit hook)
 	stopped  []string
+	onStop   func(id string) // called in Stop, as the driver's exit hook runs before Stop returns
 
 	harness, profileModel, profileThinking string // Defaults
 
@@ -121,17 +123,33 @@ func (f *fakeRuntime) KillVerified(ctx context.Context, p core.Proc) (core.Exit,
 
 func (f *fakeRuntime) StopAll(context.Context) {}
 
+// Starts returns the Start calls so far.
+func (f *fakeRuntime) Starts() []core.Spec {
+	f.startsMu.Lock()
+	defer f.startsMu.Unlock()
+	return append([]core.Spec(nil), f.starts...)
+}
+
 func (f *fakeRuntime) Start(_ context.Context, s core.Spec) (core.Proc, error) {
+	f.startsMu.Lock()
 	f.starts = append(f.starts, s)
+	n := len(f.starts)
+	f.startsMu.Unlock()
+	if f.onStart != nil {
+		f.onStart(s)
+	}
 	if f.startErr != nil {
 		return core.Proc{}, f.startErr
 	}
-	return core.Proc{PID: 100 + len(f.starts), PGID: 100 + len(f.starts), StartTime: 1, Cmdline: []string{"pi", "--mode", "rpc"},
+	return core.Proc{PID: 100 + n, PGID: 100 + n, StartTime: 1, Cmdline: []string{"pi", "--mode", "rpc"},
 		HarnessRef: f.harnessRef}, nil
 }
 
 func (f *fakeRuntime) Stop(_ context.Context, id string) (core.Exit, error) {
 	f.stopped = append(f.stopped, id)
+	if f.onStop != nil {
+		f.onStop(id)
+	}
 	return core.Exit{Code: -1, Signal: "SIGTERM", At: 5}, nil
 }
 
@@ -194,7 +212,7 @@ func (f agentFixture) spawn(t *testing.T, by core.Caller, name string) core.Call
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := f.rt.starts[len(f.rt.starts)-1]
+	s := f.rt.Starts()[len(f.rt.Starts())-1]
 	c, err := f.e.Authenticate(ctx, s.ParticipantID, s.Token)
 	if err != nil || r.RunID != c.RunID {
 		t.Fatalf("worker auth: %v, run %s vs %s", err, r.RunID, c.RunID)
@@ -236,8 +254,8 @@ func TestSpawnGate(t *testing.T) {
 			denied++
 		}
 	}
-	if denied != 3 || len(f.rt.starts) != 2 {
-		t.Fatalf("denied events %d, starts %d; want 3 and 2", denied, len(f.rt.starts))
+	if denied != 3 || len(f.rt.Starts()) != 2 {
+		t.Fatalf("denied events %d, starts %d; want 3 and 2", denied, len(f.rt.Starts()))
 	}
 }
 
@@ -282,7 +300,7 @@ func TestResumeWithTaskGivesTheTask(t *testing.T) {
 	if err != nil || r.TaskSeq == 0 || r.TaskID == "" {
 		t.Fatalf("resume with a task = %+v, %v; want its task seq", r, err)
 	}
-	s := f.rt.starts[len(f.rt.starts)-1]
+	s := f.rt.Starts()[len(f.rt.Starts())-1]
 	w, err := f.e.Authenticate(ctx, s.ParticipantID, s.Token)
 	if err != nil {
 		t.Fatal(err)
@@ -321,11 +339,12 @@ func TestSpawnStartFailureKeepsTaskForResume(t *testing.T) {
 	if err != nil || r.RunID == spawned.RunID {
 		t.Fatalf("resume = %+v, %v; want a new run", r, err)
 	}
-	first, again := f.rt.starts[0], f.rt.starts[1]
+	first, again := f.rt.Starts()[0], f.rt.Starts()[1]
 	if first.Model != "X" || again.Model != "X" {
 		t.Fatalf("models spawn %q, resume %q; want X stored at spawn and reused", first.Model, again.Model)
 	}
-	if again.HarnessRef != first.HarnessRef || again.RunID != r.RunID || again.Token == first.Token {
+	// No start succeeded: the harness never made the session, so the run makes it under the same ref.
+	if again.HarnessRef != first.HarnessRef || again.Resume || again.RunID != r.RunID || again.Token == first.Token {
 		t.Fatalf("resume spec %+v vs first %+v", again, first)
 	}
 	w, err := f.e.Authenticate(ctx, again.ParticipantID, again.Token)
@@ -352,10 +371,7 @@ func TestSpawnStartFailureKeepsTaskForResume(t *testing.T) {
 // taken over.
 func TestJoinAuto(t *testing.T) {
 	dir := t.TempDir()
-	man, err := os.ReadFile("../../manifests/p2p.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	man := peersManifest
 	db, err := store.OpenMemory()
 	if err != nil {
 		t.Fatal(err)
@@ -515,8 +531,9 @@ func TestJoinAutoWordName(t *testing.T) {
 	}
 }
 
-// The driver's exit hook: a crash of the current run ends gone with one `exited` event; a
-// repeated hook, or the hook after Stop recorded the exit, adds nothing.
+// The driver's exit hook: a crash of the current run ends gone with one `exited` event (its
+// unacked task then wakes it, wake.go); a repeated hook, or the hook after Stop recorded the exit,
+// adds nothing.
 func TestProcessExitedOnce(t *testing.T) {
 	f := newAgentFixture(t)
 	crashed := f.spawn(t, f.lead, "w1")
@@ -549,10 +566,11 @@ func TestProcessExitedOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range who {
-		if (p.Name == "w1" || p.Name == "w2") && p.State != "gone" {
+		if p.Name == "w2" && p.State != "gone" {
 			t.Fatalf("%s is %s, want gone", p.Name, p.State)
 		}
 	}
+	waitFor(t, func() bool { s, _ := f.state(t, crashed.ParticipantID); return s == "starting" }) // the wake's start ends before the DB closes
 }
 
 // exitsDuringStart is a runtime whose process dies during startup: the exit hook runs before
@@ -593,7 +611,13 @@ func TestExitBeforeStartReturns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Right after spawn returns, with no further hook: already gone, row already exited.
+	// Its unacked task wakes it once, and that run dies in Start too: let it settle.
+	waitFor(t, func() bool {
+		var n int
+		db.QueryRow(`SELECT COUNT(*) FROM events WHERE type='exited'`).Scan(&n)
+		return n == 2
+	})
+	// With no further hook: already gone, row already exited.
 	who, _ := e.Who(ctx, lead)
 	var exitedAt sql.NullInt64
 	if err := db.QueryRow(`SELECT exited_at FROM processes WHERE participant_id=?`, r.ParticipantID).Scan(&exitedAt); err != nil {
@@ -605,7 +629,7 @@ func TestExitBeforeStartReturns(t *testing.T) {
 	evs, _ := e.Log(ctx, core.LogArgs{})
 	exited := 0
 	for _, ev := range evs {
-		if ev.Type == "exited" {
+		if ev.Type == "exited" && ev.RunID == r.RunID { // its unacked task may wake it again (wake.go)
 			exited++
 		}
 	}
@@ -629,7 +653,7 @@ func TestWorkerModelChain(t *testing.T) {
 		if _, err := f.e.Agent(ctx, by, a); err != nil {
 			t.Fatal(err)
 		}
-		return f.rt.starts[len(f.rt.starts)-1]
+		return f.rt.Starts()[len(f.rt.Starts())-1]
 	}
 	f := newAgentFixture(t)
 	f.rt.harness = "pi"
@@ -675,7 +699,7 @@ func TestAbortLeavesBatchUnacked(t *testing.T) {
 	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentSpawn, Role: "worker", Name: "w1", Task: "build it"}); err != nil {
 		t.Fatal(err)
 	}
-	s := f.rt.starts[0]
+	s := f.rt.Starts()[0]
 	w, _ := f.e.Authenticate(ctx, s.ParticipantID, s.Token)
 	if _, err := f.e.Identify(ctx, w, core.IdentifyArgs{RunID: s.RunID}); err != nil {
 		t.Fatal(err)
@@ -738,8 +762,8 @@ func TestAdminSetModel(t *testing.T) {
 	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentSpawn, Role: "worker", Name: "w1", Task: "t"}); err != nil {
 		t.Fatal(err)
 	}
-	id := f.rt.starts[0].ParticipantID
-	w1 := f.rt.starts[0]
+	id := f.rt.Starts()[0].ParticipantID
+	w1 := f.rt.Starts()[0]
 	wc, _ := f.e.Authenticate(ctx, w1.ParticipantID, w1.Token)
 	if _, err := f.e.Identify(ctx, wc, core.IdentifyArgs{RunID: w1.RunID, Harness: "pi", Model: "HP/start", Thinking: "low"}); err != nil {
 		t.Fatal(err)
@@ -777,15 +801,15 @@ func TestAdminSetModel(t *testing.T) {
 	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentStop, Target: "w1"}); err != nil {
 		t.Fatal(err)
 	}
-	if r, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentResume, Target: "w1"}); err != nil || f.rt.starts[1].Model != "HP/a" {
-		t.Fatalf("resume after a refused set = %+v, %v, model %q; want HP/a kept", r, err, f.rt.starts[1].Model)
+	if r, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentResume, Target: "w1"}); err != nil || f.rt.Starts()[1].Model != "HP/a" {
+		t.Fatalf("resume after a refused set = %+v, %v, model %q; want HP/a kept", r, err, f.rt.Starts()[1].Model)
 	}
 	f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentStop, Target: "w1"})
 	if r, err := set("HP/b"); err != nil || r.Live {
 		t.Fatalf("set on a stopped worker = %+v, %v; want stored for resume", r, err)
 	}
 	f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentResume, Target: "w1"})
-	if m := f.rt.starts[2].Model; m != "HP/b" {
+	if m := f.rt.Starts()[2].Model; m != "HP/b" {
 		t.Fatalf("resume after set on a stopped worker ran %q; want HP/b", m)
 	}
 	if _, err := f.e.SetModel(ctx, core.ModelArgs{AdminTarget: core.AdminTarget{Target: "lead"}, Model: "HP/x"}); err == nil {
@@ -793,7 +817,7 @@ func TestAdminSetModel(t *testing.T) {
 	}
 
 	// --thinking alone keeps the model; a level the harness does not run stores nothing.
-	id = f.rt.starts[2].ParticipantID
+	id = f.rt.Starts()[2].ParticipantID
 	think := func(level string) (core.ModelResult, error) {
 		return f.e.SetModel(ctx, core.ModelArgs{AdminTarget: core.AdminTarget{Target: "w1"}, Thinking: level})
 	}
@@ -811,7 +835,7 @@ func TestAdminSetModel(t *testing.T) {
 	f.rt.thinkErr = nil
 	f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentStop, Target: "w1"})
 	f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentResume, Target: "w1"})
-	if s := f.rt.starts[3]; s.Model != "HP/b" || s.Thinking != "high" {
+	if s := f.rt.Starts()[3]; s.Model != "HP/b" || s.Thinking != "high" {
 		t.Fatalf("resume ran %q/%q; want HP/b kept and high", s.Model, s.Thinking)
 	}
 }
@@ -861,7 +885,7 @@ func TestGateCloses(t *testing.T) {
 	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentSpawn, Role: "worker", Name: "w1", Task: "build it"}); err != nil {
 		t.Fatal(err)
 	}
-	w := f.rt.starts[0]
+	w := f.rt.Starts()[0]
 	wc, _ := f.e.Authenticate(ctx, w.ParticipantID, w.Token)
 	for who, c := range map[string]core.Caller{"lead2": f.lead2, "w1": wc} {
 		_, err := f.e.Agent(ctx, c, core.AgentArgs{Action: core.AgentClose})
@@ -939,9 +963,9 @@ limits: {depth: 2, concurrency: 4}
 	if err := spawn("worker", "w1"); err != nil {
 		t.Fatal(err)
 	}
-	if len(cc.starts) != 1 || cc.starts[0].Harness != "claude" || cc.starts[0].Model != "sonnet" ||
-		len(pi.starts) != 1 || pi.starts[0].Harness != "pi" || pi.starts[0].Model != "N" {
-		t.Fatalf("claude starts %+v, pi starts %+v", cc.starts, pi.starts)
+	if len(cc.Starts()) != 1 || cc.Starts()[0].Harness != "claude" || cc.Starts()[0].Model != "sonnet" ||
+		len(pi.Starts()) != 1 || pi.Starts()[0].Harness != "pi" || pi.Starts()[0].Model != "N" {
+		t.Fatalf("claude starts %+v, pi starts %+v", cc.Starts(), pi.Starts())
 	}
 	if err := spawn("ghost", "g1"); err == nil || !strings.Contains(err.Error(), `harness "codex"`) {
 		t.Fatalf("spawn on a harness with no driver: %v", err)
@@ -972,7 +996,7 @@ func TestDriverWakesItsWorker(t *testing.T) {
 	if ref != "thread-1" {
 		t.Fatalf("harness_ref = %q; want the driver's thread id", ref)
 	}
-	s := f.rt.starts[0]
+	s := f.rt.Starts()[0]
 	if !eq(f.rt.woken, []string{r.ParticipantID}) || slices.Contains(notified, r.ParticipantID) {
 		t.Fatalf("task mail: driver woke %v, notify %v; want the driver", f.rt.woken, notified)
 	}
@@ -1032,7 +1056,7 @@ func TestAdminResume(t *testing.T) {
 	if err != nil || r.ParticipantID != spawned.ParticipantID || r.RunID == spawned.RunID {
 		t.Fatalf("admin resume = %+v, %v; want a new run of %s", r, err, spawned.ParticipantID)
 	}
-	first, again := f.rt.starts[0], f.rt.starts[1]
+	first, again := f.rt.Starts()[0], f.rt.Starts()[1]
 	if !again.Resume || again.HarnessRef != first.HarnessRef {
 		t.Fatalf("resume spec %+v; want the same session resumed", again)
 	}
@@ -1052,7 +1076,7 @@ func TestAdminResume(t *testing.T) {
 	if _, err := f.e.Resume(ctx, core.AdminTarget{Target: "w1"}); err == nil || !strings.Contains(err.Error(), "running") {
 		t.Fatalf("resume of a running worker: %v; want an error saying it runs", err)
 	}
-	if len(f.rt.starts) != 2 {
-		t.Fatalf("starts %d; want nothing started for a running worker", len(f.rt.starts))
+	if len(f.rt.Starts()) != 2 {
+		t.Fatalf("starts %d; want nothing started for a running worker", len(f.rt.Starts()))
 	}
 }

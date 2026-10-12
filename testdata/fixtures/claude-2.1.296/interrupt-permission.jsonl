@@ -1,0 +1,6 @@
+{"t": 0.0, "hook": "UserPromptSubmit"}
+{"t": 0.18, "status": "busy", "updated": -0.089}
+{"t": 1.565, "hook": "PreToolUse"}
+{"t": 1.603, "status": "waiting", "updated": 1.597, "waiting": "permission prompt"}
+{"t": 1.696, "hook": "PermissionRequest"}
+{"t": 6.266, "status": "idle", "updated": 6.156}

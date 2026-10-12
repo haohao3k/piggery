@@ -2,10 +2,11 @@ package core_test
 
 import (
 	"errors"
-	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sting8k/piggery/internal/core"
 	"github.com/sting8k/piggery/internal/store"
@@ -17,10 +18,7 @@ import (
 // With no live member left, the mail is held and notify is told; when a member comes back the
 // engine moves it to that gate.
 func TestLeave(t *testing.T) {
-	man, err := os.ReadFile("../../manifests/p2p.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
+	man := peersManifest
 	db, err := store.OpenMemory()
 	if err != nil {
 		t.Fatal(err)
@@ -262,4 +260,62 @@ func pull(t *testing.T, e *core.Engine, c core.Caller, n int64) []string {
 		ids = append(ids, m.ID)
 	}
 	return ids
+}
+
+// A member that left its team (by founding another) gets no cc copy and no role-targeted watch
+// notice from the old team: no one reads that row any more.
+func TestLeaverGetsNoCCCopyOrRoleNotice(t *testing.T) {
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	const man = "template: cc\nauto_join_role: owner\nroles:\n" +
+		"  owner: {tools: [send, inbox, who, agent], can_spawn: [dev, rev]}\n  dev: {tools: [send, inbox]}\n  rev: {tools: [send, inbox, who, agent]}\n" +
+		"routing:\n  - {from: dev, to: owner, allow: true, cc: [rev]}\n" +
+		"limits: {depth: 2, concurrency: 2}\ntimers:\n  - {on: dev, silent_for: 1m, notify: rev}\n"
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	e := core.New(db, core.WithClock(func() time.Time { return now }),
+		core.WithTemplates(func(string, string) (string, error) { return man, nil }))
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := func(ref string) core.Caller {
+		j, err := e.JoinAuto(ctx, core.JoinAutoArgs{Cwd: root, Harness: "pi", Mode: "rpc", HarnessRef: ref})
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, _ := e.Authenticate(ctx, j.ID, j.Token)
+		return c
+	}
+	agent := func(c core.Caller, a core.AgentArgs) {
+		if _, err := e.Agent(ctx, c, a); err != nil {
+			t.Fatalf("%s: %v", a.Action, err)
+		}
+	}
+	owner, dev, rev := session("S-owner"), session("S-dev"), session("S-rev")
+	agent(owner, core.AgentArgs{Action: core.AgentFound, Template: "cc"})
+	agent(owner, core.AgentArgs{Action: core.AgentAdmit, Target: dev.ParticipantID, Role: "dev"})
+	agent(owner, core.AgentArgs{Action: core.AgentAdmit, Target: rev.ParticipantID, Role: "rev"})
+	agent(rev, core.AgentArgs{Action: core.AgentFound, Template: "cc"})
+
+	var ownerName string
+	db.QueryRow(`SELECT name FROM participants WHERE id=?`, owner.ParticipantID).Scan(&ownerName)
+	if _, err := e.Send(ctx, dev, core.SendArgs{To: ownerName, Body: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.HarnessEvent(ctx, dev, core.HarnessEventArgs{Event: core.HarnessTurnStart, PromptID: "p1"}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Minute)
+	if _, err := e.Watch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var cc, notices int
+	db.QueryRow(`SELECT COUNT(*) FROM messages WHERE to_id=? AND cc_of IS NOT NULL`, rev.ParticipantID).Scan(&cc)
+	db.QueryRow(`SELECT COUNT(*) FROM messages WHERE to_id=? AND from_id='engine'`, rev.ParticipantID).Scan(&notices)
+	if cc != 0 || notices != 0 {
+		t.Fatalf("written to the row that left: %d cc copies, %d watch notices", cc, notices)
+	}
 }

@@ -74,15 +74,16 @@ type codexCodec struct {
 
 // codexRun is what the codec keeps about one live run.
 type codexRun struct {
-	mu       sync.Mutex
-	thread   string
-	turn     string // the running turn's id ("" none known)
-	busy     bool   // a turn/start was sent and its turn has not completed
-	startID  string // the request id of the last turn/start, whose error ends busy
-	model    string // for the next turn/start ("" Codex's)
-	effort   string
-	nudges   int
-	commands map[string]string // tool name by item id, for the item's end
+	mu        sync.Mutex
+	thread    string
+	turn      string // the running turn's id ("" none known)
+	busy      bool   // a turn/start was sent and its turn has not completed
+	wakeLater bool   // a wake came while busy: the daemon checks again when the turn completes (#26)
+	startID   string // the request id of the last turn/start, whose error ends busy
+	model     string // for the next turn/start ("" Codex's)
+	effort    string
+	nudges    int
+	commands  map[string]string // tool name by item id, for the item's end
 }
 
 // codexStart is what launch hands to started.
@@ -219,8 +220,11 @@ func (c *codexCodec) started(ctx context.Context, w *worker, l launch) error {
 func (c *codexCodec) turnStart(w *worker, run *codexRun, wake bool) error {
 	run.mu.Lock()
 	if run.busy {
+		// The mail reaches the running turn at its next tool call or its Stop, unless the Stop
+		// hook has already ended the turn in the daemon: then only a new turn shows it.
+		run.wakeLater = true
 		run.mu.Unlock()
-		return nil // the mail reaches the running turn at its next tool call or its Stop
+		return nil
 	}
 	text := "[piggery] Your run started. Read your mail with the " + CodexToolPrefix + "inbox tool and do the work it asks for."
 	if wake {
@@ -372,6 +376,13 @@ func (c *codexCodec) record(w *worker, line []byte) record {
 			"message": "a piggery worker answers no requests; ask the member you report to with the piggery send tool"}})
 	default:
 		r.std, r.failed = codexStandard(run, m)
+		if m.Method == "turn/completed" && run != nil {
+			// A failed turn is closed by the driver, and that end wakes again for pending mail.
+			run.mu.Lock()
+			r.rewake = run.wakeLater && !run.busy && r.failed == ""
+			run.wakeLater = false
+			run.mu.Unlock()
+		}
 	}
 	return r
 }

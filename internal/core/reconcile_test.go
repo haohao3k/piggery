@@ -48,7 +48,7 @@ func newRecoverFixture(t *testing.T, names ...string) (recoverFixture, func(stri
 	af := agentFixture{e: e, rt: rt}
 	for _, n := range names {
 		f.workers[n] = af.spawn(t, lead, n)
-		f.pids[n] = 100 + len(rt.starts)
+		f.pids[n] = 100 + len(rt.Starts())
 		// The worker's extension identifies with the mode its pi reports; it stays headless.
 		w := f.workers[n]
 		if _, err := e.Identify(ctx, w, core.IdentifyArgs{RunID: w.RunID, Harness: "pi", Mode: "rpc"}); err != nil {
@@ -160,8 +160,8 @@ func TestResumeParkedNeedsVerifiedProcess(t *testing.T) {
 	if err := resume(); err != nil {
 		t.Fatalf("resume after the old process is dead: %v", err)
 	}
-	if len(f.rt.starts) != 2 || f.rt.starts[1].HarnessRef != f.rt.starts[0].HarnessRef {
-		t.Fatalf("starts = %+v", f.rt.starts)
+	if len(f.rt.Starts()) != 2 || f.rt.Starts()[1].HarnessRef != f.rt.Starts()[0].HarnessRef {
+		t.Fatalf("starts = %+v", f.rt.Starts())
 	}
 	if st := f.states(t)["w1"]; st != "starting" {
 		t.Fatalf("w1 after resume is %s", st)

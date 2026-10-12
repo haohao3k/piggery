@@ -48,8 +48,8 @@ func TestTaskforce(t *testing.T) {
 		t.Fatalf("a template with no taskforce block: %v", err)
 	}
 	r, err := spawn(solo, "tf")
-	if err != nil || r.TeamName != "tf" || r.TaskSeq == 0 || len(rt.starts) != 1 {
-		t.Fatalf("spawn = %+v, %v, starts %d", r, err, len(rt.starts))
+	if err != nil || r.TeamName != "tf" || r.TaskSeq == 0 || len(rt.Starts()) != 1 {
+		t.Fatalf("spawn = %+v, %v, starts %d", r, err, len(rt.Starts()))
 	}
 	st, err := e.State(ctx, core.StateArgs{})
 	if err != nil {
@@ -64,7 +64,7 @@ func TestTaskforce(t *testing.T) {
 	if !found {
 		t.Fatalf("ps does not link the taskforce to its caller: %+v", st.Teams)
 	}
-	chair, _ := e.Authenticate(ctx, rt.starts[0].ParticipantID, rt.starts[0].Token)
+	chair, _ := e.Authenticate(ctx, rt.Starts()[0].ParticipantID, rt.Starts()[0].Token)
 	if _, err := spawn(chair, "tf"); rule(err) != "permission/taskforce.nested" {
 		t.Fatalf("a chair calls a taskforce: %v", err)
 	}
@@ -132,8 +132,8 @@ func TestTaskforce(t *testing.T) {
 	}
 	var root string
 	want, _ := filepath.EvalSymlinks(sub)
-	if err := db.QueryRow(`SELECT root_cwd FROM teams WHERE name='tf' AND closed_at IS NULL`).Scan(&root); err != nil || root != want || rt.starts[len(rt.starts)-1].Cwd != want {
-		t.Fatalf("taskforce root %q (%v), chair cwd %q, want %q", root, err, rt.starts[len(rt.starts)-1].Cwd, want)
+	if err := db.QueryRow(`SELECT root_cwd FROM teams WHERE name='tf' AND closed_at IS NULL`).Scan(&root); err != nil || root != want || rt.Starts()[len(rt.Starts())-1].Cwd != want {
+		t.Fatalf("taskforce root %q (%v), chair cwd %q, want %q", root, err, rt.Starts()[len(rt.Starts())-1].Cwd, want)
 	}
 	if _, err := e.Agent(ctx, solo, core.AgentArgs{Action: core.AgentSpawn, Template: "tf", Task: "t", Cwd: t.TempDir()}); rule(err) != "bounds/cwd.bounds" {
 		t.Fatalf("a cwd outside the caller's root: %v", err)
@@ -146,11 +146,11 @@ func TestTaskforce(t *testing.T) {
 	if _, err := spawn(solo, "tf"); err != nil {
 		t.Fatal(err)
 	}
-	chair2, _ := e.Authenticate(ctx, rt.starts[len(rt.starts)-1].ParticipantID, rt.starts[len(rt.starts)-1].Token)
+	chair2, _ := e.Authenticate(ctx, rt.Starts()[len(rt.Starts())-1].ParticipantID, rt.Starts()[len(rt.Starts())-1].Token)
 	if _, err := e.Agent(ctx, chair2, core.AgentArgs{Action: core.AgentSpawn, Role: "lens", Name: "l1", Task: "look"}); err != nil {
 		t.Fatal(err)
 	}
-	lens := rt.starts[len(rt.starts)-1].ParticipantID
+	lens := rt.Starts()[len(rt.Starts())-1].ParticipantID
 	if _, err := db.Exec(`UPDATE participants SET state='gone' WHERE id=?`, chair2.ParticipantID); err != nil {
 		t.Fatal(err)
 	}
