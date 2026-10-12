@@ -5,44 +5,69 @@ package cli
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/sting8k/piggery/internal/driver/local"
 )
 
-// The hook commands `piggery setup` writes into Claude Code's plugin and Codex's hooks.json, from
-// the harnesses' documentation (not yet measured on Windows):
+// The hook commands `piggery setup` writes into Claude Code's plugin and Codex's hooks.json:
 //   - Codex runs the command string as `cmd.exe /C "<command>"` (openai/codex #38168): a quoted
 //     executable path first, then plain words, is the shape that works there. A Codex from before
 //     that passed the string as one argument, its quotes escaped as \", which cmd.exe does not read
-//     (#32402): no command with a quote in it ran. So the path is quoted only when cmd.exe would
-//     not take it as one word, and a path without a space runs on every Codex.
+//     (#32402): no command with a quote in it ran (measured on Codex 0.155.1). So a path cmd.exe
+//     would not take as one word goes in by its 8.3 name, which has no space, and is quoted only
+//     where the volume has no 8.3 names.
 //   - Claude Code runs a command string in Git Bash, or in PowerShell when Git Bash is not
-//     installed, so no one quoting is right. A handler with `args` is spawned directly with no shell
-//     (its hooks reference, "Exec form"): self and its arguments go in as they are.
+//     installed, so no one quoting is right. A handler with `args` is spawned directly (its hooks
+//     reference, "Exec form"), but Claude Code 2.1.295 does not run one whose command has a
+//     backslash, and runs it with forward slashes, a space included (measured): self goes in with
+//     forward slashes, which Windows reads as the same path.
 
 // codexHookCommand is the command string Codex runs for piggery's hook of event.
 func codexHookCommand(self, event string) string {
 	if strings.ContainsAny(self, cmdSpecial) {
-		self = `"` + self + `"`
+		if short := shortPath(self); !strings.ContainsAny(short, cmdSpecial) {
+			self = short
+		} else {
+			self = `"` + self + `"`
+		}
 	}
 	return self + " hook codex " + event
 }
 
-// cmdSpecial are the characters a file name must be quoted for in cmd.exe (its own help, cmd /?).
-const cmdSpecial = " \t&()[]{}^=;!'+,`~"
+// cmdSpecial are the characters a file name must be quoted for in cmd.exe (its own help, cmd /?,
+// which lists ~ too; cmd.exe reads a ~ in a path as it is, and every 8.3 name has one).
+const cmdSpecial = " \t&()[]{}^=;!'+,`"
+
+// shortPath is p's 8.3 name, or p when it has none (a volume with 8.3 names off, a missing file).
+func shortPath(p string) string {
+	long, err := windows.UTF16PtrFromString(p)
+	if err != nil {
+		return p
+	}
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n, err := windows.GetShortPathName(long, &buf[0], uint32(len(buf)))
+	if err != nil || n == 0 || int(n) >= len(buf) {
+		return p
+	}
+	return windows.UTF16ToString(buf[:n])
+}
 
 // claudeHookHandler is the handler piggery's hook of event is in Claude's hooks.json.
 func claudeHookHandler(self, event string) map[string]any {
-	return map[string]any{"type": "command", "command": self, "args": []string{"hook", "claude", event}, "timeout": 10}
+	return map[string]any{"type": "command", "command": filepath.ToSlash(self), "args": []string{"hook", "claude", event}, "timeout": 10}
 }
 
-// claudeHookRunsSelf: a hooks.json handler (its command and args) is piggery's hook of this binary.
+// claudeHookRunsSelf: a hooks.json handler (its command and args) is piggery's hook of this binary,
+// as setup writes it now (one with backslashes is stale: Claude Code does not run it).
 func claudeHookRunsSelf(command string, args []string, self string) bool {
-	return command == self && len(args) == 3 && slices.Equal(args[:2], []string{"hook", "claude"})
+	return command == filepath.ToSlash(self) && len(args) == 3 && slices.Equal(args[:2], []string{"hook", "claude"})
 }
 
 // claudeExecFormSince is the first Claude Code that reads `args` in a hook (its changelog, 2.1.139).

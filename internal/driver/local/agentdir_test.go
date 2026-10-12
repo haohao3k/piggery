@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -39,6 +40,9 @@ func TestBuildAgentDir(t *testing.T) {
 	write(t, filepath.Join(src, "extensions", "pi-peer", "index.ts"), "") // always
 	write(t, filepath.Join(src, "extensions", "piggery", "index.ts"), "") // setup pi's copy, by its name
 	if err := os.Symlink(filepath.Join(repo, "extensions", "pi"), filepath.Join(src, "extensions", "pig")); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("no symlink privilege (admin or Developer Mode): %v", err)
+		}
 		t.Fatal(err) // piggery itself, under another name
 	}
 	write(t, filepath.Join(src, "settings.json"), `{
@@ -54,8 +58,8 @@ func TestBuildAgentDir(t *testing.T) {
 	if err := buildAgentDir(src, dst, home, bl); err != nil {
 		t.Fatal(err)
 	}
-	if target, err := os.Readlink(filepath.Join(dst, "auth.json")); err != nil || target != filepath.Join(src, "auth.json") {
-		t.Fatalf("auth.json -> %q, %v; want a symlink to the human's", target, err)
+	if !sameFile(filepath.Join(dst, "auth.json"), filepath.Join(src, "auth.json")) {
+		t.Fatal("auth.json is not the human's own file (a link to it)")
 	}
 	exts, _ := os.ReadDir(filepath.Join(dst, "extensions"))
 	var names []string
@@ -146,8 +150,8 @@ func TestBuildOmpAgentDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"models.yml", "agent.db"} {
-		if target, err := os.Readlink(filepath.Join(dst, name)); err != nil || target != filepath.Join(src, name) {
-			t.Fatalf("%s -> %q, %v; want a symlink to the human's", name, target, err)
+		if !sameFile(filepath.Join(dst, name), filepath.Join(src, name)) {
+			t.Fatalf("%s is not the human's own file (a link to it)", name)
 		}
 	}
 	exts, _ := os.ReadDir(filepath.Join(dst, "extensions"))
@@ -211,4 +215,12 @@ func TestOmpSessionsAreFoundAfterTheMove(t *testing.T) {
 func js(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+// sameFile: a and b are one file, as a symlink or (Windows without symlink privilege) a hard link
+// makes them, not a copy.
+func sameFile(a, b string) bool {
+	fa, err1 := os.Stat(a)
+	fb, err2 := os.Stat(b)
+	return err1 == nil && err2 == nil && os.SameFile(fa, fb)
 }

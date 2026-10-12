@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -97,6 +98,9 @@ func TestSpawnCwdBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("no symlink privilege (admin or Developer Mode): %v", err)
+		}
 		t.Fatal(err)
 	}
 	f := newCwdFixture(t, root, allowed)

@@ -123,6 +123,10 @@ go build ./cmd/piggery
 go test ./...
 ```
 
+The tests compare files byte for byte, so every file is checked out with LF line endings
+(`.gitattributes`), on Windows too. A Windows clone made before that file covered everything may
+still hold CRLF copies; check them out again with `git rm -rq --cached . && git reset -q --hard`.
+
 ## License
 
 MIT
