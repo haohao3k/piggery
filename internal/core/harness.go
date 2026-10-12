@@ -86,6 +86,9 @@ func (e *Engine) HarnessEvent(ctx context.Context, c Caller, a HarnessEventArgs)
 			}
 			return t.newCard(p, &res)
 		case HarnessTurnEnd:
+			if a.Outcome != HarnessOutcomeOK {
+				held = false // like an abort: an Esc at a permission prompt does not wake it
+			}
 			res, wake, notice, err = t.endTurn(p, a)
 			return err
 		case HarnessPermission:

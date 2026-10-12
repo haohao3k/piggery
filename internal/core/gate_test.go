@@ -126,7 +126,7 @@ func TestClosedGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chair, _ := e.Authenticate(ctx, rt.starts[len(rt.starts)-1].ParticipantID, rt.starts[len(rt.starts)-1].Token)
+	chair, _ := e.Authenticate(ctx, rt.Starts()[len(rt.Starts())-1].ParticipantID, rt.Starts()[len(rt.Starts())-1].Token)
 	var aName string
 	if err := db.QueryRow(`SELECT name FROM participants WHERE id=?`, a2.ParticipantID).Scan(&aName); err != nil {
 		t.Fatal(err)

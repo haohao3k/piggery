@@ -148,16 +148,18 @@ func (t *txn) gateNotice(p participant, n int64, outcome string, left int) (stri
 		payload: map[string]any{"kind": kind, "to": AddrNotify}})
 }
 
-// teamSettled: no live member of the team is requested, starting, working or awaiting a permission,
-// and no mail waits (unacked, not held) for any of them. The mail count is ps's (pendingMail).
+// teamSettled: no member of the team is requested, starting, working or awaiting a permission, and
+// no mail waits (unacked, not held) for any member that has not left, gone ones included: mail wakes
+// a gone member, so its unread mail is a wake on its way or a refused one. The mail count is ps's
+// (pendingMail).
 func (t *txn) teamSettled(team string) (bool, error) {
 	var busy int
 	if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM participants WHERE team_id=?
 		AND state IN ('requested','starting','working','awaiting_permission')`, team).Scan(&busy); err != nil || busy > 0 {
 		return false, internal(err)
 	}
-	live := map[string]bool{}
-	rows, err := t.QueryContext(t.ctx, `SELECT id FROM participants WHERE team_id=? AND state<>'gone'`, team)
+	members := map[string]bool{}
+	rows, err := t.QueryContext(t.ctx, `SELECT id FROM participants WHERE team_id=? AND left_at IS NULL`, team)
 	if err != nil {
 		return false, internal(err)
 	}
@@ -167,7 +169,7 @@ func (t *txn) teamSettled(team string) (bool, error) {
 			rows.Close()
 			return false, internal(err)
 		}
-		live[id] = true
+		members[id] = true
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -184,7 +186,7 @@ func (t *txn) teamSettled(team string) (bool, error) {
 		if err := mail.Scan(&to, &unacked, &held); err != nil {
 			return false, internal(err)
 		}
-		if live[to] && unacked > 0 {
+		if members[to] && unacked > 0 {
 			return false, nil
 		}
 	}

@@ -35,6 +35,8 @@ func TestRespawnLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := w.RunID
+	// Its task is done: a crash leaves no mail waiting, so only the resumes below start it.
+	db.Exec(`UPDATE messages SET acked_at=1 WHERE to_id=?`, w.ParticipantID)
 	crash := func() {
 		t.Helper()
 		if err := e.ProcessExited(ctx, w.ParticipantID, run, core.Exit{Code: 1}); err != nil {
@@ -65,8 +67,8 @@ func TestRespawnLimit(t *testing.T) {
 	if err := resume(31 * time.Minute); rule(err) != "limit/"+core.RuleRespawn {
 		t.Fatalf("third resume in the hour: %v", err)
 	}
-	if l, h := notices(); l != 1 || h != 0 || len(rt.starts) != 3 {
-		t.Fatalf("after the limit: %d lead / %d notify notices, %d starts", l, h, len(rt.starts))
+	if l, h := notices(); l != 1 || h != 0 || len(rt.Starts()) != 3 {
+		t.Fatalf("after the limit: %d lead / %d notify notices, %d starts", l, h, len(rt.Starts()))
 	}
 	if err := resume(40 * time.Minute); rule(err) != "limit/"+core.RuleRespawn {
 		t.Fatalf("resume of the parked worker inside the hour: %v", err)
@@ -75,8 +77,8 @@ func TestRespawnLimit(t *testing.T) {
 		t.Fatalf("second refusal notified again: %d lead / %d notify", l, h)
 	}
 	// The resume at 0 is out of the hour at 61m (only the one at 30m is left).
-	if err := resume(61 * time.Minute); err != nil || len(rt.starts) != 4 {
-		t.Fatalf("resume after the window slid: %v, %d starts", err, len(rt.starts))
+	if err := resume(61 * time.Minute); err != nil || len(rt.Starts()) != 4 {
+		t.Fatalf("resume after the window slid: %v, %d starts", err, len(rt.Starts()))
 	}
 
 	// A parked worker still holds a concurrency slot; agent stop frees it the way team down

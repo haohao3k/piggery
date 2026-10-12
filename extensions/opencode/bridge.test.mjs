@@ -1,6 +1,7 @@
 // The turn mapping (bridge.mjs onto pi's Turns) against opencode's real events: the probe's captures
 // (testdata/fixtures/opencode/1.18.34/plugin/captures, README there) played as opencode sent them.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { Turns } from "../pi/adapter.mjs";
 import { Bridge } from "./bridge.mjs";
@@ -104,4 +105,13 @@ test("mail steered in and never read is not acked: the session is nudged and the
 	bridge.delivered("msg_zzzz"); // a user message newer than every assistant message's parent
 	await play(evs.slice(0, idle + 1));
 	assert.deepEqual([calls, nudges], [["turn_start"], ["nudge"]]);
+});
+
+test("a run that fails before the model answers ends failed, not nudged, with or without mail (serve/08b-bad-model)", async () => {
+	const { calls, nudges, bridge, play } = rig();
+	const sse = new URL("../../testdata/fixtures/opencode/1.18.34/serve/08b-bad-model.sse.jsonl", import.meta.url);
+	const evs = readFileSync(sse, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l).data).filter(Boolean); // the first line is the HTTP header
+	bridge.delivered("msg_1"); // mail in the first run: no assistant message ever reads it
+	await play(evs);
+	assert.deepEqual([calls.filter((c) => c.startsWith("turn_end")), nudges], [["turn_end failed", "turn_end failed", "turn_end failed"], []]);
 });

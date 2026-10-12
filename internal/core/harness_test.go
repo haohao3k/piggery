@@ -97,10 +97,15 @@ func TestAdapterTurnAcksOnlyItsOwnEnd(t *testing.T) {
 		t.Fatalf("idle participant not woken: %v", woken)
 	}
 
-	// The daemon restarted: the adapter reconnects with the same run and the turn ends it could not
-	// send. A queued ok end acks its turn; a turn with no end sent is closed unacked, a late end of
-	// it acks nothing, and new mail wakes the participant again.
+	// The daemon restarted: reconcile marks the session gone, then the adapter reconnects with the
+	// same run and the turn ends it could not send. A queued ok end acks its turn; a turn with no
+	// end sent is closed unacked, a late end of it acks nothing, and new mail wakes the participant
+	// again.
+	f.db.Exec(`UPDATE participants SET harness='pi', mode='interactive' WHERE id=?`, f.bob.ParticipantID)
 	turn("p5a") // gets six; its end is queued
+	if err := f.e.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.e.Identify(ctx, f.bob, core.IdentifyArgs{RunID: f.bob.RunID,
 		Ended: []core.EndedTurn{{Key: "p5a", Outcome: core.HarnessOutcomeOK}}}); err != nil {
 		t.Fatal(err)
@@ -258,5 +263,37 @@ func TestAdapterPermissionHoldAndIdle(t *testing.T) {
 	}
 	if err := f.e.Presence(ctx, f.bob, core.PresenceArgs{Event: core.PresenceUIPromptEnd}); err != nil || len(woken) != 1 {
 		t.Fatalf("ui prompt end: %v, woken %v; want the held wake", err, woken)
+	}
+}
+
+// An Esc at a permission prompt sends no hook; the end an adapter sends for it (turn_end interrupted,
+// no key) takes the participant out of awaiting_permission and closes the turn without acking its mail (#14),
+// and does not wake it: the person took control (seen live: a wake 3 s after the Esc).
+func TestInterruptedEndLeavesAPermissionPrompt(t *testing.T) {
+	var woken []string
+	f := newFixture(t, nil, core.WithNotify(func(id string) { woken = append(woken, id) }))
+	ev := func(a core.HarnessEventArgs) {
+		t.Helper()
+		if _, err := f.e.HarnessEvent(ctx, f.bob, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.send(t, f.alice, core.SendArgs{To: "bob", Body: "while it waits"})
+	ev(core.HarnessEventArgs{Event: core.HarnessTurnStart, PromptID: "p1"})
+	ev(core.HarnessEventArgs{Event: core.HarnessPermission})
+	var state string
+	f.db.QueryRow(`SELECT state FROM participants WHERE id=?`, f.bob.ParticipantID).Scan(&state)
+	if state != "awaiting_permission" {
+		t.Fatalf("setup: state %q", state)
+	}
+	woken = nil
+	ev(core.HarnessEventArgs{Event: core.HarnessTurnEnd, Outcome: core.HarnessOutcomeIntr})
+	var open, unacked int
+	f.db.QueryRow(`SELECT state FROM participants WHERE id=?`, f.bob.ParticipantID).Scan(&state)
+	f.db.QueryRow(`SELECT COUNT(*) FROM batches WHERE run_id=? AND ended_at IS NULL AND completed_at IS NULL`, f.bob.RunID).Scan(&open)
+	f.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE to_id=? AND acked_at IS NULL`, f.bob.ParticipantID).Scan(&unacked)
+	if state != "idle" || open != 0 || unacked != 1 || len(woken) != 0 {
+		t.Fatalf("after the interrupted end: state %q, open batches %d, unacked %d, woken %v; want idle, 0, 1, none",
+			state, open, unacked, woken)
 	}
 }

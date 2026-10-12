@@ -107,7 +107,7 @@ func TestTeamDown(t *testing.T) {
 	}
 
 	var tok string // the worker's token from the driver spec
-	for _, s := range f.rt.starts {
+	for _, s := range f.rt.Starts() {
 		if s.ParticipantID == w.ParticipantID {
 			tok = s.Token
 		}
@@ -296,18 +296,7 @@ func TestGCRemovesTheEntriesOfDeletedParticipantsOnly(t *testing.T) {
 func TestGCDropsAGoneSolo(t *testing.T) {
 	f := newGCFixture(t)
 	root := t.TempDir()
-	join := func(ref string) core.Caller {
-		t.Helper()
-		j, err := f.e.JoinAuto(ctx, core.JoinAutoArgs{Cwd: root, Harness: "pi", Mode: "rpc", HarnessRef: ref})
-		if err != nil {
-			t.Fatal(err)
-		}
-		c, err := f.e.Authenticate(ctx, j.ID, j.Token)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return c
-	}
+	join := soloJoin(t, f, root)
 	end := func(c core.Caller) {
 		t.Helper()
 		if err := f.e.Presence(ctx, c, core.PresenceArgs{Event: core.PresenceShutdown}); err != nil {
@@ -357,6 +346,100 @@ func TestGCDropsAGoneSolo(t *testing.T) {
 	j, err := f.e.JoinAuto(ctx, core.JoinAutoArgs{Cwd: root, Harness: "pi", Mode: "rpc", HarnessRef: "old-1"})
 	if err != nil || j.ID == old.ParticipantID || j.TeamID != "" {
 		t.Fatalf("the dropped session coming back: %+v %v; want a new solo", j, err)
+	}
+}
+
+// soloJoin joins pi sessions with no team, in root.
+func soloJoin(t *testing.T, f gcFixture, root string) func(ref string) core.Caller {
+	return func(ref string) core.Caller {
+		t.Helper()
+		j, err := f.e.JoinAuto(ctx, core.JoinAutoArgs{Cwd: root, Harness: "pi", Mode: "rpc", HarnessRef: ref})
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := f.e.Authenticate(ctx, j.ID, j.Token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+}
+
+// Mail a gone solo sent to a live outsider, given to the outsider in a batch and acked, does not
+// keep the solo from being collected, and the outsider's batch is not the solo's (issue #17 (a)).
+func TestGCOfASoloWhoseMailAnOutsiderReadCompletes(t *testing.T) {
+	f := newGCFixture(t)
+	join := soloJoin(t, f, t.TempDir())
+	a, o := join("a-1"), join("o-1")
+	if _, err := f.e.Send(ctx, a, core.SendArgs{To: o.Name, Body: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []core.HarnessEventArgs{{Event: core.HarnessTurnStart, PromptID: "p1"}, {Event: core.HarnessTurnEnd, PromptID: "p1", Outcome: core.HarnessOutcomeOK}} {
+		if _, err := f.e.HarnessEvent(ctx, o, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.e.Presence(ctx, a, core.PresenceArgs{Event: core.PresenceShutdown}); err != nil {
+		t.Fatal(err)
+	}
+	*f.now = f.now.Add(2 * time.Hour)
+	res, err := f.e.GC(ctx, core.GCPlace{ArchiveDir: f.dir}, core.GCArgs{ClosedBeforeMs: time.Hour.Milliseconds()})
+	if err != nil || len(res.Solos) != 1 {
+		t.Fatalf("gc: %+v %v", res, err)
+	}
+	if g := res.Solos[0]; !g.Deleted {
+		t.Fatalf("gone solo not collected: %q, counts %v", g.Skipped, g.Counts)
+	}
+	if n := f.count(t, `SELECT COUNT(*) FROM batches b JOIN participants p ON p.run_id=b.run_id WHERE p.id=?`, o.ParticipantID); n != 1 {
+		t.Fatalf("the live outsider's batch is gone: %d", n)
+	}
+}
+
+// Unread mail a gone solo sent to a live outsider is the outsider's: gc does not delete it (#17 (b)).
+func TestGCKeepsUnreadMailToALiveOutsider(t *testing.T) {
+	f := newGCFixture(t)
+	join := soloJoin(t, f, t.TempDir())
+	a, o := join("a-1"), join("o-1")
+	if _, err := f.e.Send(ctx, a, core.SendArgs{To: o.Name, Body: "unread"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.e.Presence(ctx, a, core.PresenceArgs{Event: core.PresenceShutdown}); err != nil {
+		t.Fatal(err)
+	}
+	*f.now = f.now.Add(2 * time.Hour)
+	if _, err := f.e.GC(ctx, core.GCPlace{ArchiveDir: f.dir}, core.GCArgs{ClosedBeforeMs: time.Hour.Milliseconds()}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.e.Inbox(ctx, o, core.InboxArgs{}); err != nil || len(got) != 1 {
+		t.Fatalf("the live outsider's inbox after gc: %d messages, %v", len(got), err)
+	}
+}
+
+// Two gone solos with unread mail from each other are both collected: each recipient's unit goes
+// in the same gc, so neither waits for the other.
+func TestGCCollectsGoneSolosWithUnreadMailToEachOther(t *testing.T) {
+	f := newGCFixture(t)
+	join := soloJoin(t, f, t.TempDir())
+	a, b := join("a-1"), join("b-1")
+	for _, p := range [][2]core.Caller{{a, b}, {b, a}} {
+		if _, err := f.e.Send(ctx, p[0], core.SendArgs{To: p[1].Name, Body: "unread"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []core.Caller{a, b} {
+		if err := f.e.Presence(ctx, c, core.PresenceArgs{Event: core.PresenceShutdown}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	*f.now = f.now.Add(2 * time.Hour)
+	res, err := f.e.GC(ctx, core.GCPlace{ArchiveDir: f.dir}, core.GCArgs{ClosedBeforeMs: time.Hour.Milliseconds()})
+	if err != nil || len(res.Solos) != 2 {
+		t.Fatalf("gc: %+v %v", res, err)
+	}
+	for _, g := range res.Solos {
+		if !g.Deleted {
+			t.Fatalf("%s not collected: %q", g.Name, g.Skipped)
+		}
 	}
 }
 

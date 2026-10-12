@@ -202,6 +202,9 @@ sender sees nothing.
   again. A solo session, a member that left, and a closed team are never woken.
 - **Once per mail.** A woken worker that stops with the mail unread is not woken again by that
   mail; a newer message wakes it again.
+- **A worker that dies is woken at once.** A headless worker whose process ends on its own (a crash,
+  not `agent stop`, `team down` or a daemon shutdown) is woken right away for mail it had not
+  finished, its task included; once per mail, as above. A session of yours waits for new mail.
 - **Opening the session yourself takes it back.** If you open, by hand, a session that was woken, the
   worker is stopped (it gets half a second to finish its turn, then it is killed, about 2.5 seconds at
   most: a turn can be cut, and its unread mail comes again) and the session is yours again, with the same
@@ -222,7 +225,9 @@ sender sees nothing.
   `~/.piggery/archive/`, read back, and deleted with their logs and scratch files; archives older
   than `gc.archive_keep` (30 days) are deleted. By hand: `piggery gc --closed-before 168h
   --dry-run`, then without `--dry-run`; `piggery archive show <file>` reads an archive. Your
-  harnesses' own session files are never touched.
+  harnesses' own session files are never touched. A closed team or gone solo that sent mail still
+  unread by someone who can read it (a live session, or a member of a team that is still open or
+  closed more recently) is kept until that mail is read.
 
 ## Customize piggery (`~/.piggery`)
 

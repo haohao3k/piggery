@@ -162,7 +162,7 @@ func TestStartAfterTeamDownStopsTheWorker(t *testing.T) {
 	if err := <-spawned; code(err) != core.CodeInvalid {
 		t.Fatalf("spawn racing team down: %v", err)
 	}
-	w := f.rt.starts[0].ParticipantID
+	w := f.rt.Starts()[0].ParticipantID
 	if st, exited := f.state(t, w); st != "gone" || !exited || len(f.rt.stopped) != 1 {
 		t.Fatalf("worker %s, exited %v, stopped %v", st, exited, f.rt.stopped)
 	}

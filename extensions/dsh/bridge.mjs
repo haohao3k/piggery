@@ -4,7 +4,9 @@
 // A dsh turn is turn/start ... turn/end (session events); a step (one model call and its tools)
 // is step/start ... step/end. pi's awaited "before settle" is dsh's agent/turn-stopping: it runs
 // only when the turn ends by itself, and mail steered in there makes the same turn run another
-// step, so the turn is acked there (outcome ok) exactly as pi's before_settle acks it.
+// step, so the turn is acked there (outcome ok) exactly as pi's before_settle acks it, once no
+// steered mail is unread: mail steered at the last step/end is read by the next step (step/start),
+// whose own turn-stopping acks it.
 // turn/end then settles the run; how the turn ended decides the rest:
 //   error                          failed (the turn_end the daemon gets, no ack)
 //   aborted, blocked, interrupted  the run settles with no end of its own: Turns ends the turn
@@ -32,13 +34,18 @@ export class Bridge {
 			case "turn/start":
 				this.turns.agentStart();
 				return;
+			case "step/start": // a model call starts: mail steered before it is in it
+				this.turns.modelTurn();
+				return;
 			case "step/end":
 				this.turns.toolBoundary();
 				return;
 			case "turn/end": {
 				const kind = ev.data?.reason?.kind;
 				if (kind === "error") await this.turns.beforeSettle("error");
-				else if (kind !== "completed" && kind !== "max-tokens") this.dropMail();
+				// Mail still unread ends the turn interrupted (Turns.settled), so it comes again: the copy
+				// left in dsh's inbox is dropped whatever the reason.
+				else if ((kind !== "completed" && kind !== "max-tokens") || this.turns.unread) this.dropMail();
 				this.turns.settled();
 				return;
 			}

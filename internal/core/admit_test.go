@@ -1,6 +1,8 @@
 package core_test
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -57,7 +59,7 @@ func TestAdmit(t *testing.T) {
 	if _, err := e.Agent(ctx, lead, core.AgentArgs{Action: core.AgentSpawn, Role: "lead", Name: "w1", Task: "t"}); err != nil {
 		t.Fatal(err)
 	}
-	w1, _ := e.Authenticate(ctx, rt.starts[0].ParticipantID, rt.starts[0].Token)
+	w1, _ := e.Authenticate(ctx, rt.Starts()[0].ParticipantID, rt.Starts()[0].Token)
 	if _, err := e.Agent(ctx, w1, core.AgentArgs{Action: core.AgentAdmit, Target: name(b), Role: "peer"}); rule(err) != "permission/admit.headless" {
 		t.Fatalf("admit by a headless worker: %v", err)
 	}
@@ -144,5 +146,70 @@ func TestAdmitAfterReopenLeavesOneRowOfTheSession(t *testing.T) {
 	f.db.QueryRow(`SELECT COUNT(*) FROM participants WHERE harness_ref='x-2' AND left_at IS NULL AND team_id=(SELECT id FROM teams WHERE name=?)`, f.team).Scan(&n)
 	if n != 1 {
 		t.Fatalf("%d live rows of the session in the team; want 1", n)
+	}
+}
+
+type stopsOnlyStarted struct{ *fakeRuntime }
+
+func (s stopsOnlyStarted) Stop(ctx context.Context, id string) (core.Exit, error) {
+	for _, st := range s.Starts() {
+		if st.ParticipantID == id {
+			return s.fakeRuntime.Stop(ctx, id)
+		}
+	}
+	return core.Exit{}, errors.New("no worker for participant " + id)
+}
+
+// An admitted session stays the person's: its admitter's agent stop and resume refuse it (they
+// act on headless workers), so no mail later starts a second process on that session and the
+// session's own next turn is still its run's.
+func TestAgentStopAndResumeRefuseAnAdmittedSession(t *testing.T) {
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	const man = "template: m\nauto_join_role: head\nroles:\n  head: {tools: [send, inbox, who, agent], can_spawn: [member]}\n" +
+		"  member: {tools: [send, inbox, who]}\nlimits: {depth: 2, concurrency: 2}\n" +
+		"routing: [{from: head, to: member, allow: true}, {from: member, to: head, allow: true}]\n"
+	rt := &fakeRuntime{}
+	e := core.New(db, core.WithTemplates(func(string, string) (string, error) { return man, nil }), core.WithRuntime(stopsOnlyStarted{rt}))
+	root := t.TempDir()
+	session := func(ref string) core.Caller {
+		t.Helper()
+		j, err := e.JoinAuto(ctx, core.JoinAutoArgs{Cwd: root, Harness: "pi", Mode: "rpc", HarnessRef: ref})
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, _ := e.Authenticate(ctx, j.ID, j.Token)
+		return c
+	}
+	a := session("s1")
+	if _, err := e.Agent(ctx, a, core.AgentArgs{Action: core.AgentFound, Template: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	b := session("s2")
+	var name string
+	db.QueryRow(`SELECT name FROM participants WHERE id=?`, b.ParticipantID).Scan(&name)
+	if _, err := e.Agent(ctx, a, core.AgentArgs{Action: core.AgentAdmit, Target: name, Role: "member"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Agent(ctx, a, core.AgentArgs{Action: core.AgentStop, Target: name}); err == nil {
+		var state string
+		db.QueryRow(`SELECT state FROM participants WHERE id=?`, b.ParticipantID).Scan(&state)
+		t.Errorf("agent stop of the admitted live session succeeded; it is now %s", state)
+	}
+	if _, err := e.Send(ctx, a, core.SendArgs{To: name, Body: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if len(rt.Starts()) != 0 {
+		t.Errorf("one mail after the stop started a headless process on the session (ref %q)", rt.Starts()[0].HarnessRef)
+	}
+	if _, err := e.HarnessEvent(ctx, b, core.HarnessEventArgs{Event: core.HarnessTurnStart, PromptID: "p1"}); err != nil {
+		t.Errorf("the session's own next turn is refused: %v", err)
+	}
+	if _, err := e.Agent(ctx, a, core.AgentArgs{Action: core.AgentResume, Target: name}); err == nil {
+		t.Errorf("agent resume of the session succeeded")
 	}
 }

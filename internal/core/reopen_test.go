@@ -44,7 +44,7 @@ func TestReopen(t *testing.T) {
 	lead := solo("lead-1", root)
 	agent(lead, core.AgentArgs{Action: core.AgentFound})
 	agent(lead, core.AgentArgs{Action: core.AgentSpawn, Role: "worker", Name: "w1", Task: "build"})
-	w, _ := e.Authenticate(ctx, rt.starts[0].ParticipantID, rt.starts[0].Token)
+	w, _ := e.Authenticate(ctx, rt.Starts()[0].ParticipantID, rt.Starts()[0].Token)
 	var leadName string
 	if err := db.QueryRow(`SELECT name FROM participants WHERE id=?`, lead.ParticipantID).Scan(&leadName); err != nil {
 		t.Fatal(err)

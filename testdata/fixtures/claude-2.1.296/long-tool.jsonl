@@ -1,0 +1,10 @@
+{"t": 0.0, "hook": "UserPromptSubmit"}
+{"t": 0.046, "status": "busy", "updated": -0.084}
+{"t": 1.262, "hook": "PreToolUse"}
+{"t": 121.7, "hook": "PostToolUse"}
+{"t": 123.724, "hook": "Stop"}
+{"t": 123.932, "status": "shell", "updated": 123.751}
+{"t": 151.679, "status": "busy", "updated": 151.601}
+{"t": 151.712, "hook": "UserPromptSubmit"}
+{"t": 152.814, "hook": "Stop"}
+{"t": 153.006, "status": "idle", "updated": 152.838}

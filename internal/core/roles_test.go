@@ -47,11 +47,11 @@ func TestRoleGrantsAndSpawnModel(t *testing.T) {
 	if _, err := e.Agent(ctx, planner, core.AgentArgs{Action: core.AgentSpawn, Role: "dev", Name: "dev1", Task: "t"}); err != nil {
 		t.Fatal(err)
 	}
-	dev, err := e.Authenticate(ctx, rt.starts[0].ParticipantID, rt.starts[0].Token)
+	dev, err := e.Authenticate(ctx, rt.Starts()[0].ParticipantID, rt.Starts()[0].Token)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s := rt.starts[0]; s.Model != "small" || s.Thinking != "max" {
+	if s := rt.Starts()[0]; s.Model != "small" || s.Thinking != "max" {
 		t.Fatalf("spawn used %q/%q, want the role's small/max over the profile's", s.Model, s.Thinking)
 	}
 	if _, err := e.Agent(ctx, planner, core.AgentArgs{Action: core.AgentSpawn, Role: "dev", Name: "dev2", Task: "t"}); err != nil {

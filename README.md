@@ -54,8 +54,8 @@ flowchart LR
 | [Claude Code](https://claude.com/product/claude-code) | yes (plugin + MCP) | yes (`claude -p`) | 2.1.283 | `piggery setup claude` |
 | [Codex](https://github.com/openai/codex) | yes (hooks + MCP) | yes (`codex app-server`) | 0.157.1 | `piggery setup codex` |
 | [omp](https://github.com/can1357/oh-my-pi) | yes (extension) | yes (`omp --mode rpc`) | 18.4.2 | `piggery setup omp` |
-| [dsh](https://github.com/deepseek-ai/deepseek-harness) | yes (`dsh web`, plugin) | yes (`dsh --profile sdk`) | 0.2.0-rc.1 | `piggery setup dsh` |
-| [opencode](https://opencode.ai) | yes (plugin) | yes (`opencode serve`) | 1.18.34 | `piggery setup opencode` |
+| [dsh](https://github.com/deepseek-ai/deepseek-harness) | yes (`dsh web`, plugin) | yes (`dsh --profile sdk`) | 0.2.0-rc.1, 0.2.0-rc.2 | `piggery setup dsh` |
+| [opencode](https://opencode.ai) | yes (plugin) | yes (`opencode serve`) | 1.18.34, 1.19.0 | `piggery setup opencode` |
 
 - Workers run on the harness their role names (`spawn.harness`), else on the harness of the
   session that founded the team.

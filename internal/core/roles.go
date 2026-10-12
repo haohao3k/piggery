@@ -42,8 +42,19 @@ func validateRoles(m manifest) error {
 				return errf(CodeInvalid, "manifest: roles.%s.tools: unknown tool %q (send, inbox, who or agent)", name, tool)
 			}
 		}
+		for _, s := range r.CanSpawn {
+			if _, ok := m.Roles[s]; !ok {
+				return errf(CodeInvalid, "manifest: roles.%s.can_spawn: unknown role %q", name, s)
+			}
+		}
 	}
 	for i, r := range m.Routing {
+		if _, ok := m.Roles[r.From]; !ok {
+			return errf(CodeInvalid, "manifest: routing[%d].from: unknown role %q", i, r.From)
+		}
+		if _, ok := m.Roles[r.To]; !ok && r.To != AddrNotify { // to: notify loads with a warning
+			return errf(CodeInvalid, "manifest: routing[%d].to: unknown role %q", i, r.To)
+		}
 		for _, cc := range r.CC {
 			if _, ok := m.Roles[cc]; !ok {
 				return errf(CodeInvalid, "manifest: routing[%d].cc: unknown role %q", i, cc)

@@ -111,6 +111,19 @@ func (e *Engine) reopen(ctx context.Context, c Caller, a AgentArgs) (AgentResult
 				WHERE acked_at IS NULL AND to_id=?`, gate.id, p.id); err != nil {
 				return internal(err)
 			}
+			// Its open taskforces move too: the session did not go away, so they are not orphans.
+			// The chair keeps reporting to (and being owned by) its caller, now the gate row.
+			if _, err := t.ExecContext(t.ctx, `UPDATE teams SET parent_id=? WHERE parent_id=? AND closed_at IS NULL`,
+				gate.id, p.id); err != nil {
+				return internal(err)
+			}
+			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET
+				reports_to=CASE WHEN reports_to=? THEN ? ELSE reports_to END,
+				spawned_by=CASE WHEN spawned_by=? THEN ? ELSE spawned_by END
+				WHERE team_id IN (SELECT id FROM teams WHERE parent_id=? AND closed_at IS NULL)`,
+				p.id, gate.id, p.id, gate.id, gate.id); err != nil {
+				return internal(err)
+			}
 		} else {
 			// Another session: its solo row moves in (same id, run and token) and replaces the old
 			// gate, which stays gone and is marked left for the reroute.

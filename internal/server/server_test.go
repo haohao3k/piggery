@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/sting8k/piggery/internal/cli"
 	"github.com/sting8k/piggery/internal/core"
+	"github.com/sting8k/piggery/internal/driver/local"
 	"github.com/sting8k/piggery/internal/proto"
 	"github.com/sting8k/piggery/internal/server"
 	"github.com/sting8k/piggery/internal/store"
@@ -699,6 +701,93 @@ func TestWakeGoesToTheNewestConnection(t *testing.T) {
 	old.c.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
 	if err := old.dec.Decode(&push); err == nil {
 		t.Fatalf("older connection got %+v; want nothing", push)
+	}
+}
+
+// hostSession is a Claude session of this test process: joined by host, one MCP connection
+// identified by host.
+type hostSession struct {
+	t    *testing.T
+	dir  string
+	host string
+	mcp  *rawConn
+}
+
+func newHostSession(t *testing.T) hostSession {
+	dir := startServer(t)
+	h := hostSession{t: t, dir: dir, host: fmt.Sprintf("claude:%d:%d", os.Getpid(), local.ProcessStartTime(os.Getpid()))}
+	h.join("s1", h.host, "startup")
+	h.mcp = rawDial(t, dir, core.JoinResult{})
+	h.mcp.auth = &proto.Auth{Host: h.host}
+	if r := h.mcp.call(proto.VerbIdentify, core.IdentifyArgs{Harness: "claude", Mode: "interactive",
+		Capabilities: []string{core.CapWake}, ProtocolVersion: core.ProtocolVersion}); !r.OK {
+		t.Fatalf("identify: %+v", r.Error)
+	}
+	return h
+}
+
+func (h hostSession) join(ref, host, source string) core.JoinResult {
+	var r core.JoinResult
+	if _, err := dial(h.t, h.dir).CallInto(proto.VerbJoinAuto, core.JoinAutoArgs{Cwd: h.dir, Harness: "claude", Mode: "interactive",
+		HarnessRef: ref, Source: source, Host: host}, &r); err != nil {
+		h.t.Fatal(err)
+	}
+	return r
+}
+
+// The session's connection follows its host to the row join.auto leaves live for it. Team down
+// ends its row; the next hook joins it as a new solo; mail to that solo wakes it (#16).
+func TestHostConnectionFollowsTheSessionToItsNewRow(t *testing.T) {
+	h := newHostSession(t)
+	var found core.AgentResult
+	if r := h.mcp.call(proto.VerbAgent, core.AgentArgs{Action: core.AgentFound, Template: "lead-peer"}); !r.OK || json.Unmarshal(r.Result, &found) != nil {
+		t.Fatalf("found: %+v", r.Error)
+	}
+	tok, _ := os.ReadFile(server.AdminTokenPath(h.dir))
+	admin := dial(t, h.dir)
+	admin.AsAdmin(strings.TrimSpace(string(tok)))
+	if _, err := admin.Call(proto.VerbTeamDown, core.TeamDownArgs{Team: found.TeamID}); err != nil {
+		t.Fatal(err)
+	}
+	solo := h.join("s1", h.host, "resume")
+	other := h.join("o1", "", "startup")
+	o := dial(t, h.dir)
+	o.AsParticipant(other.ID, other.Token)
+	var who []core.Presence
+	if _, err := o.CallInto(proto.VerbWho, nil, &who); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range who {
+		if p.ID == solo.ID {
+			if _, err := o.Call(proto.VerbSend, core.SendArgs{To: p.Name, Body: "hello"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	h.mcp.c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		var push proto.Push
+		if err := h.mcp.dec.Decode(&push); err != nil {
+			t.Fatalf("no wake reached the session's connection for mail to its new row: %v", err)
+		}
+		if push.Event == proto.EventWake {
+			return
+		}
+	}
+}
+
+// An in-process resume of the session's own row (SessionEnd resume, then SessionStart) gives the
+// row a new run; the session's connection follows it instead of being refused run.stale (#16).
+func TestHostConnectionFollowsAnInProcessResumeOfItsRow(t *testing.T) {
+	h := newHostSession(t)
+	hook := dial(t, h.dir)
+	hook.AsHost(h.host)
+	if _, err := hook.Call(proto.VerbHarnessEvent, core.HarnessEventArgs{Event: core.HarnessSessionEnd, HarnessRef: "s1"}); err != nil {
+		t.Fatal(err)
+	}
+	h.join("s1", h.host, "resume")
+	if r := h.mcp.call(proto.VerbWho, nil); !r.OK {
+		t.Fatalf("a tool call on the session's connection after the resume: %+v", r.Error)
 	}
 }
 

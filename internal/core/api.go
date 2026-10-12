@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,6 +43,10 @@ type Engine struct {
 	sharedPrompts  func(template, role string) string // the Human's text for a role card (WithSharedPrompts)
 	minProtocol    int                                // lowest adapter protocol version identify accepts
 	deliverLocks   sync.Map                           // participant id -> *sync.Mutex: one delivery at a time, in batch order
+	// stopping holds the runs stopWorker is ending, and closing is set once the daemon stops: an
+	// exit of either is intended, so it does not wake the worker (ProcessExited).
+	stopping sync.Map // run id -> struct{}
+	closing  atomic.Bool
 	// notifySink is told about each new, not held message to notify (WithNotifySink).
 	notifySink func(messageID string)
 	// roleChanged is told when a live session's role changes under it (WithRoleChanged).

@@ -100,6 +100,7 @@ type conn struct {
 	// participant verb on this connection, so a superseded process gets run.stale.
 	caller *core.Caller
 	ident  uint64 // order of its identify (server.idents); the newest gets the wake
+	host   string // the host it identified by (peerHostOK passed), or ""; join.auto rebinds it (rebindHost)
 
 	hmu   sync.Mutex
 	hosts map[string]bool // peerHostOK results by host
@@ -284,6 +285,7 @@ func Run(ctx context.Context, cfg Config) error {
 	s.wg.Wait()
 	// Graceful stop: end every worker (agent stop escalation) and record the exits before the
 	// DB closes.
+	s.eng.Closing()
 	var stopping sync.WaitGroup
 	for _, d := range drivers {
 		stopping.Add(1)
@@ -370,6 +372,32 @@ func (s *server) closeConn(ctx context.Context, c *conn) {
 	}
 }
 
+// rebindHost binds the connections that identified by host to the row and run the host now
+// resolves to, when join.auto moved the session (a new solo after its team closed, or a new run of
+// its row after an in-process resume): the process is the same, so its wakes, tool calls and
+// close follow it. Only a binding that differs is touched, and it keeps its identify order
+// (ident), so an adapter that already identified on the new row stays the newest for the wake.
+// The row's card and capabilities come with the adapter's next identify.
+func (s *server) rebindHost(ctx context.Context, host string) {
+	c, err := s.eng.AuthenticateHost(ctx, host)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	moved := false
+	for cn := range s.conns {
+		if cn.host == host && cn.caller != nil && (cn.caller.ParticipantID != c.ParticipantID || cn.caller.RunID != c.RunID) {
+			bound := c
+			cn.caller = &bound
+			moved = true
+		}
+	}
+	if moved {
+		s.runs[c.ParticipantID] = c.RunID
+	}
+}
+
 // retireTeam tells every connection identified in the (now closed) team to stop driving,
 // except (a gate closing its own team: its response is its signal).
 func (s *server) retireTeam(teamID string, except *conn) {
@@ -439,7 +467,13 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 	case proto.VerbJoinAuto:
 		// No token: a pi session outside PIGGERY_* registers as a solo, or resumes its participant
 		// of an open team. The socket's 0600 mode is the boundary.
-		return call(req, func(a core.JoinAutoArgs) (any, error) { return s.eng.JoinAuto(ctx, a) })
+		return call(req, func(a core.JoinAutoArgs) (any, error) {
+			r, err := s.eng.JoinAuto(ctx, a)
+			if err == nil && a.Host != "" {
+				s.rebindHost(ctx, a.Host)
+			}
+			return r, err
+		})
 	case proto.VerbTeamUp, proto.VerbJoin, proto.VerbLog, proto.VerbRelease,
 		proto.VerbWhy, proto.VerbDoctor, proto.VerbLabels, proto.VerbTeamDown, proto.VerbGC, proto.VerbPs, proto.VerbTail, proto.VerbShutdown, proto.VerbAbort, proto.VerbKill, proto.VerbResume, proto.VerbModel, proto.VerbModels:
 		if !s.isAdmin(req.AdminToken) {
@@ -594,6 +628,10 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 			cn.caller = &bound
 			s.idents++
 			cn.ident = s.idents
+			cn.host = ""
+			if byHost {
+				cn.host = req.Auth.Host
+			}
 			s.runs[bound.ParticipantID] = bound.RunID
 			s.mu.Unlock()
 			return res, nil

@@ -137,12 +137,8 @@ func (e *Engine) Resume(ctx context.Context, a AdminTarget) (AgentResult, error)
 		if err != nil {
 			return participant{}, w, err
 		}
-		var mode string
-		if err := t.QueryRowContext(t.ctx, `SELECT COALESCE(mode,'') FROM participants WHERE id=?`, w.id).Scan(&mode); err != nil {
-			return participant{}, w, internal(err)
-		}
-		if mode != modeHeadless {
-			return participant{}, w, errf(CodeInvalid, "%s is not a headless worker; a session is started by its Human", w.name)
+		if err := t.requireHeadless(w, "a session is started by its Human"); err != nil {
+			return participant{}, w, err
 		}
 		var closed sql.NullInt64
 		if err := t.QueryRowContext(t.ctx, `SELECT closed_at FROM teams WHERE id=?`, w.team).Scan(&closed); err != nil {

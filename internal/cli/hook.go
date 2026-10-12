@@ -85,9 +85,11 @@ func claudeHookEvent(hook string, in claudeHookInput) (core.HarnessEventArgs, bo
 	case "PostModelSwitch":
 		a.Event, a.Model = core.HarnessModelChanged, in.ToModel
 	case "SessionEnd":
-		if in.Reason == "clear" {
+		if in.Reason == "clear" || in.Reason == "resume" {
 			// /clear ends the old session id inside the same claude process, right before
-			// SessionStart source=clear: the participant lives on (fixture hooks-session.jsonl).
+			// SessionStart source=clear: the participant lives on (fixture hooks-session.jsonl). So does
+			// an in-process switch (/branch, /resume: reason resume): the process goes on, and the
+			// SessionStart that follows says with which session; the daemon decides what it is.
 			return a, false
 		}
 		a.Event = core.HarnessSessionEnd
@@ -223,6 +225,10 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 			if in.TranscriptPath != "" {
 				a.Transcript = &core.Transcript{Path: in.TranscriptPath, Format: harness}
 			}
+			// A process that starts on a session (startup, or --resume of one) may start on a fork.
+			if harness == "claude" && (source == "startup" || source == "resume") {
+				a.ParentRef = claudeForkParent(in.SessionID, in.TranscriptPath)
+			}
 			_, err := c.CallInto(proto.VerbJoinAuto, a, &jr)
 			return err
 		}
@@ -237,7 +243,9 @@ func (e *env) runHook(harness, hook string, stdin io.Reader, stderr io.Writer) {
 	_, err = c.CallInto(proto.VerbHarnessEvent, a, &r)
 	// The daemon does not know this session (it restarted: sessions are gone). A Codex session's
 	// MCP server has no session id to join with, so the hook joins, and sends its event again.
-	if join != nil && ruleID(err) == "host.unknown" && hook != "SessionStart" && in.SessionID != "" && join("resume") == nil {
+	// Not for SessionEnd: a session the daemon no longer knows has nothing to end, and the rejoin would
+	// bring its participant back only to end it again.
+	if join != nil && ruleID(err) == "host.unknown" && hook != "SessionStart" && hook != "SessionEnd" && in.SessionID != "" && join("resume") == nil {
 		_, err = c.CallInto(proto.VerbHarnessEvent, a, &r)
 	}
 	if err != nil {

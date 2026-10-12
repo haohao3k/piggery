@@ -133,6 +133,17 @@ func TestGateNotice(t *testing.T) {
 	end(alice, "a9", core.HarnessOutcomeIntr)
 	want("interrupted", kinds())
 
+	// rule 4: mail waiting for a member that is gone but still in the team (its wake is refused or not
+	// yet started) is mail that waits: not settled
+	send(bob, "alice", "bye")
+	if err := f.e.Presence(ctx, bob, core.PresenceArgs{Event: core.PresenceShutdown}); err != nil {
+		t.Fatal(err)
+	}
+	start(alice, "a10")
+	send(alice, "bob", "one more thing")
+	end(alice, "a10", ok)
+	want("mail waits for a gone member", kinds())
+
 	// a solo is its own gate: its notice has no team, and its directory is its cwd
 	cwd := t.TempDir()
 	j, err := f.e.JoinAuto(ctx, core.JoinAutoArgs{Cwd: cwd, Harness: "pi", Mode: "rpc", HarnessRef: "solo-1"})
@@ -159,7 +170,7 @@ func TestHeadlessGateNeverNotifies(t *testing.T) {
 	var sunk []string
 	core.WithNotifySink(func(id string) { sunk = append(sunk, id) })(f.e)
 	f.spawn(t)
-	s := f.rt.starts[0]
+	s := f.rt.Starts()[0]
 	w, err := f.e.Authenticate(ctx, s.ParticipantID, s.Token)
 	if err != nil {
 		t.Fatal(err)

@@ -9,11 +9,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/sting8k/piggery/internal/yamlfill"
 	"gopkg.in/yaml.v3"
 )
 
@@ -77,14 +80,16 @@ func (e *Engine) inTx(ctx context.Context, fn func(t *txn) error) error {
 // notifyAfterCommit tells the notify hook about new mail for a participant. Call only after
 // the message's transaction committed.
 // A participant in a turn the daemon counts (adapter events) is not woken: the turn gets the
-// mail at its next tool call or at its end, and a wake now would queue a turn of its own. One
+// mail at its next tool call or at its end, and a wake now would queue a turn of its own. A gone
+// participant's turn is dead, so a batch it left open holds nothing: the wake starts a new run,
+// and the old batch stays open only for a queued end of that run (session.go). One
 // waiting on a permission prompt is not woken either; the wake comes when the prompt ends. With
 // no mail waiting there is nothing to wake for. Mail for a gone member that mail wakes starts its
 // worker instead (wake.go).
 func (e *Engine) notifyAfterCommit(participantID string) {
 	var hold int
 	if err := e.db.QueryRow(`SELECT
-		(SELECT COUNT(*) FROM batches b WHERE b.run_id=p.run_id AND b.prompt_id IS NOT NULL
+		(p.state<>'gone') * (SELECT COUNT(*) FROM batches b WHERE b.run_id=p.run_id AND b.prompt_id IS NOT NULL
 			AND b.ended_at IS NULL AND b.completed_at IS NULL)
 		+ (p.state='awaiting_permission')
 		+ NOT EXISTS (SELECT 1 FROM messages m WHERE m.to_id=p.id AND m.acked_at IS NULL AND m.held_reason IS NULL)
@@ -308,6 +313,41 @@ func noDeclaredTools(text string) error {
 	return nil
 }
 
+// noUnknownKeys refuses a key that a role, its spawn or a routing rule does not have: a typo there
+// would load as a default and show up later as an unrelated denial, or never. Like noDeclaredTools it
+// guards the ways in, not parseManifest, so a team founded before keeps working. The top level is
+// not checked here (topLevelWarnings): a template for a newer piggery may carry a block this one
+// does not know, and must still load, as a template with taskforce: loads on a binary without it.
+func noUnknownKeys(text string) error {
+	var known struct {
+		Roles   map[string]roleSpec  `yaml:"roles"`
+		Routing []routeRule          `yaml:"routing"`
+		Rest    map[string]yaml.Node `yaml:",inline"`
+	}
+	dec := yaml.NewDecoder(strings.NewReader(text))
+	dec.KnownFields(true)
+	if err := dec.Decode(&known); err != nil {
+		return errf(CodeInvalid, "manifest: %v", err)
+	}
+	return nil
+}
+
+// topLevelWarnings names the top-level keys this binary does not know: they load and are ignored.
+// model: (the old template:) and tools: (removed, refused unless empty) are known.
+func topLevelWarnings(text string) []string {
+	var raw map[string]any
+	_ = yaml.Unmarshal([]byte(text), &raw)
+	var out []string
+	for _, k := range slices.Sorted(maps.Keys(raw)) {
+		known := k == "taskforce" || k == "model" || k == "tools" ||
+			slices.ContainsFunc(manifestKeys, func(f yamlfill.Key) bool { return f.Name == k })
+		if !known {
+			out = append(out, fmt.Sprintf("%s: unknown key, ignored by this piggery", k))
+		}
+	}
+	return out
+}
+
 // notifyWarnings are the lines of a manifest that name notify as a target: they load and have no
 // effect, because only the engine writes to notify (an agent's send to it is refused, and a watch
 // rule never fires there). Not refused, so a user's edited template keeps working.
@@ -333,14 +373,14 @@ func notifyWarnings(text string) []string {
 
 // loadManifest is everything a manifest load runs: it parses the manifest, refuses what team up
 // refuses (validManifest: removed tools, timers, roles, limits) and returns what loads but is
-// probably not meant (manifestWarnings, the notify lines). Team up, found and the templates listing
-// read a manifest through it, so they hold one rule set.
+// probably not meant (manifestWarnings, unknown top-level keys, the notify lines). Team up, found
+// and the templates listing read a manifest through it, so they hold one rule set.
 func loadManifest(text string) (manifest, []string, error) {
 	m, err := validManifest(text)
 	if err != nil {
 		return m, nil, err
 	}
-	return m, append(append(manifestWarnings(m), notifyWarnings(text)...), taskforceWarnings(text)...), nil
+	return m, slices.Concat(manifestWarnings(m), topLevelWarnings(text), notifyWarnings(text), taskforceWarnings(text)), nil
 }
 
 // CheckManifest is loadManifest for a caller that has no use for the parsed manifest (piggery

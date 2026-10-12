@@ -252,6 +252,47 @@ test("the omp extension against a fake daemon", async (t) => {
 		assert.equal(told().at(-1), "presence:agent_settled");
 	});
 
+	await t.test("mail steered at the run's last tool boundary is not acked at session_stop; an Esc in the run that shows it leaves it unacked", async () => {
+		reset();
+		script.event = (a) => (a.event === "tool_boundary" ? { text: "MAIL-AT-LAST-BOUNDARY" } : {});
+		idle = false;
+		pending = false;
+		handlers.agent_start({}, ctx);
+		handlers.turn_end({ turnIndex: 0 }, ctx);
+		const stop = handlers.session_stop({ last_assistant_message: { role: "assistant", stopReason: "stop" } }, ctx);
+		await until(() => sent.length === 1);
+		pending = true;
+		await stop;
+		await turns.drain();
+		assert.ok(!told().includes("turn_end:ok"), `acked before the model read it: ${told()}`);
+		await handlers.agent_end({ messages: [{ role: "user" }, { role: "assistant", stopReason: "stop" }] }, ctx);
+		pending = false;
+		handlers.agent_start({}, ctx);
+		handlers.turn_start?.({}, ctx);
+		await handlers.agent_end({ messages: [{ role: "user" }, { role: "assistant", stopReason: "aborted" }] }, ctx);
+		await turns.drain();
+		assert.deepEqual(told().filter((e) => e !== "turn_start" && e !== "tool_boundary"), ["turn_end:interrupted", "presence:agent_settled"]);
+	});
+
+	await t.test("an abort before the next run's first turn_start still settles the turn", async () => {
+		reset();
+		script.event = (a) => (a.event === "tool_boundary" ? { text: "MAIL-AT-LAST-BOUNDARY" } : {});
+		pending = false;
+		handlers.agent_start({}, ctx);
+		handlers.turn_end({ turnIndex: 0 }, ctx);
+		const stop = handlers.session_stop({ last_assistant_message: { role: "assistant", stopReason: "stop" } }, ctx);
+		await until(() => sent.length === 1);
+		pending = true;
+		await stop;
+		await handlers.agent_end({ messages: [{ role: "user" }, { role: "assistant", stopReason: "stop" }] }, ctx);
+		pending = false;
+		handlers.agent_start({}, ctx);
+		await handlers.agent_end({ messages: [{ role: "user" }, { role: "assistant", stopReason: "aborted" }] }, ctx);
+		await turns.drain();
+		assert.equal(told().at(-1), "presence:agent_settled");
+		assert.ok(!told().includes("turn_end:ok"));
+	});
+
 	await t.test("a shutdown ends the session at the daemon", async () => {
 		reset();
 		await handlers.session_shutdown({});

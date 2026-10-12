@@ -185,11 +185,12 @@ func newGCUnit(parts string) gcUnit {
 	msgsO := `COALESCE(o.team_id,'')=:t OR o.from_id IN ({parts}) OR o.to_id IN ({parts})`
 	u := gcUnit{tables: []gcTable{
 		{"deliveries", `message_id IN (SELECT id FROM messages WHERE ` + msgs + `)`},
-		// A run is known by the participant's current run, the runs that got the unit's mail
-		// (deliveries), processes and kept events. An older run's batch with no delivery (an
-		// empty pull) is not reachable: it stays behind, harmless (no reference to the unit).
+		// A run is known by the participant's current run, the runs that got mail addressed to
+		// the unit (deliveries), processes and kept events. An older run's batch with no delivery
+		// (an empty pull) is not reachable: it stays behind, harmless (no reference to the unit).
+		// Mail the unit sent out was given on the recipient's runs: their batches are not the unit's.
 		{"batches", `run_id IN (SELECT run_id FROM participants WHERE id IN ({parts})
-		UNION SELECT run_id FROM deliveries WHERE message_id IN (SELECT id FROM messages WHERE ` + msgs + `)
+		UNION SELECT run_id FROM deliveries WHERE message_id IN (SELECT id FROM messages WHERE to_id IN ({parts}))
 		UNION SELECT run_id FROM events WHERE run_id IS NOT NULL AND participant IN ({parts})
 		UNION SELECT run_id FROM processes WHERE participant_id IN ({parts}))`},
 		{"messages", msgs},
@@ -200,14 +201,20 @@ func newGCUnit(parts string) gcUnit {
 		{"participants", `id IN ({parts})`},
 		{"teams", `id=:t`},
 	}}
-	// Rows of others that reference the unit's rows (they would dangle).
+	// Rows of others that reference the unit's rows (they would dangle), and mail the unit sent
+	// to a participant outside it that is still unread: it is the recipient's until acked, unless
+	// the recipient is itself in a unit this gc selects (:cutoff, as GC), which takes its mail.
 	u.crossRefs = `SELECT
 	(SELECT COUNT(*) FROM messages o WHERE NOT (` + msgsO + `) AND (
 		o.reply_to IN (SELECT id FROM messages WHERE ` + msgs + `) OR
 		o.target   IN (SELECT id FROM messages WHERE ` + msgs + `) OR
 		o.cc_of    IN (SELECT id FROM messages WHERE ` + msgs + `))),
 	(SELECT COUNT(*) FROM participants o WHERE o.id NOT IN ({parts}) AND (
-		o.reports_to IN ({parts}) OR o.spawned_by IN ({parts})))`
+		o.reports_to IN ({parts}) OR o.spawned_by IN ({parts}))),
+	(SELECT COUNT(*) FROM messages m WHERE m.acked_at IS NULL AND m.to_id NOT IN ({parts})
+		AND (m.team_id=:t OR m.from_id IN ({parts})) AND m.to_id IN (SELECT p.id FROM participants p
+			LEFT JOIN teams r ON r.id=p.team_id
+			WHERE NOT (COALESCE(r.closed_at < :cutoff, 0) OR (p.team_id IS NULL AND p.state='gone' AND p.state_since < :cutoff))))`
 	u.crossRefs = strings.ReplaceAll(u.crossRefs, "{parts}", parts)
 	for i := range u.tables {
 		u.tables[i].where = strings.ReplaceAll(u.tables[i].where, "{parts}", parts)
@@ -267,7 +274,7 @@ func (e *Engine) GC(ctx context.Context, place GCPlace, a GCArgs) (GCResult, err
 	}{{res.Teams, gcTeamUnit}, {res.Solos, gcSoloUnit}} {
 		for i := range list.gs {
 			g := &list.gs[i]
-			if err := e.gcUnit(ctx, place.ArchiveDir, a.DryRun, list.unit, g); err != nil {
+			if err := e.gcUnit(ctx, place.ArchiveDir, a.DryRun, cutoff, list.unit, g); err != nil {
 				return res, err
 			}
 			if err := e.removeOwn(ctx, place.Own, g); err != nil {
@@ -286,7 +293,7 @@ func (g *GCTeam) key() string {
 	return g.TeamID
 }
 
-func (e *Engine) gcUnit(ctx context.Context, dir string, dry bool, u gcUnit, g *GCTeam) error {
+func (e *Engine) gcUnit(ctx context.Context, dir string, dry bool, cutoff int64, u gcUnit, g *GCTeam) error {
 	var lines []ArchiveLine
 	err := e.inTx(ctx, func(t *txn) error { // one snapshot of the unit's rows
 		// A worker that is not gone may have a live process: its processes row is what
@@ -300,12 +307,16 @@ func (e *Engine) gcUnit(ctx context.Context, dir string, dry bool, u gcUnit, g *
 			g.Skipped = fmt.Sprintf("live workers (%d not gone); run team down again", live)
 			return nil
 		}
-		var msgs, parts int
-		if err := t.QueryRowContext(t.ctx, u.crossRefs, sql.Named("t", g.key())).Scan(&msgs, &parts); err != nil {
+		var msgs, parts, unread int
+		if err := t.QueryRowContext(t.ctx, u.crossRefs, sql.Named("t", g.key()), sql.Named("cutoff", cutoff)).Scan(&msgs, &parts, &unread); err != nil {
 			return internal(err)
 		}
 		if msgs+parts > 0 {
 			g.Skipped = fmt.Sprintf("referenced by others (%d messages, %d participants)", msgs, parts)
+			return nil
+		}
+		if unread > 0 {
+			g.Skipped = fmt.Sprintf("sent mail still unread by others (%d messages)", unread)
 			return nil
 		}
 		var err error

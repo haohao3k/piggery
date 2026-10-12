@@ -77,7 +77,7 @@ func OpencodeProfilePath(dir string) string { return filepath.Join(dir, "harness
 var DefaultOpencodeProfile = OpencodeProfile{
 	Cmd: "opencode", Args: []string{}, Env: []string{}, Model: Inherit, Thinking: Inherit,
 	DisabledTools: []string{"question", "task"}, Blacklist: []string{},
-	TestedVersions: []string{"1.18.34"},
+	TestedVersions: []string{"1.18.34", "1.19.0"},
 }
 
 // opencodeStartWait bounds how long Start waits for the listening line and for the session.

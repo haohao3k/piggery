@@ -106,6 +106,7 @@ export function apply(ctx, config) {
 				event: (args) => call("harness.event", args),
 				presence: (event) => call("presence", { event }),
 				deliver: (text, steer) => this.deliver(text, steer),
+				reads: true, // step/start calls modelTurn
 				newKey: () => randomUUID(),
 				onError: (err) => {
 					if (!err?.notConnected && !err?.fatal) log(`piggery: ${err?.message ?? err}`);

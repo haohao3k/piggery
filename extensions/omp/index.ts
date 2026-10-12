@@ -112,6 +112,7 @@ export default function piggery(omp: ExtensionAPI) {
 		event: (args: object) => client!.call("harness.event", args),
 		presence: (event: string) => client!.call("presence", { event }),
 		deliver,
+		reads: true, // turn_start calls modelTurn
 		newKey: () => randomUUID(),
 		onError: (err: any) => {
 			// Outages are logged once by the client; a fatal error is reported by retire().
@@ -391,6 +392,7 @@ export default function piggery(omp: ExtensionAPI) {
 	});
 	// omp's events -> standard adapter events (see the top of this file).
 	omp.on("agent_start", () => turns.agentStart());
+	omp.on("turn_start", () => turns.modelTurn());
 	omp.on("turn_end", () => turns.toolBoundary());
 	omp.on("session_stop", async (e: any) => {
 		// Mail the daemon hands back is steered in (deliver, in beforeSettle): omp then ends this run and

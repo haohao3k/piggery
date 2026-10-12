@@ -1,5 +1,80 @@
 # Changelog
 
+## v0.10.1 - 2026-10-12
+
+Mail is no longer lost or held back after an interrupted, failed or crashed turn on any harness, cleanup keeps mail its recipients have not read, a team member can no longer stop a person's session, and Claude Code sessions keep their participant across `/clear`, `/branch` and forks.
+
+Before you upgrade:
+
+- **A template with a typo inside a role, its `spawn` block or a routing rule no longer founds a
+  team.** An unknown key there, a role name the manifest does not have, or a limit below 1 is
+  refused with the reason (`none` still switches a limit off). An unknown top-level key is ignored
+  with a warning, so a template written for a newer piggery still runs. Teams already founded keep
+  their manifest as it was. Run `piggery check` to see what a template of yours would hit.
+
+After upgrading, run `piggery restart`: the daemon updates the integrations it installed to pi 14,
+omp 14, dsh 15 and opencode 12. Then restart the sessions that were open, or run `/reload` in pi.
+
+Mail:
+
+- Fix: in omp and dsh, mail that arrived at the very last step of a reply was taken as read before
+  the model saw it. If the next step or run was stopped (Esc, `piggery abort`, a failure), that mail
+  was lost. It is now taken as read only once a model turn that shows it ends, and comes again
+  otherwise (#15).
+- Fix: a Claude Code turn interrupted with Esc, at a permission prompt or by an SDK client (Paseo)
+  held back wakes and mail until the next prompt, and a permission prompt left with Esc kept the
+  session shown as awaiting permission. Claude sends no hook for an interrupt; piggery now reads
+  Claude's own session status and ends such a turn as interrupted. As after any interrupt, nothing
+  starts on its own: the next mail, or your next prompt, brings the waiting mail (#13, #14).
+- Fix: a member that went gone in the middle of a turn (its process exited, its session ended, or
+  the daemon restarted) was never woken by mail; the mail waited until someone resumed it. Mail now
+  wakes it as it wakes any gone member (#18). A headless worker whose process ends on its own (a
+  crash, not `agent stop`, `team down` or a daemon shutdown) is also woken at once for the mail it
+  had not finished, its task included: one automatic restart per mail.
+- Fix: in opencode, a run that failed before the model answered (for example, a model that does not
+  resolve) with piggery mail in it was nudged again and again and never ended. It now ends failed:
+  the mail is not taken as read and comes again with the next mail (#27).
+- Fix: cleanup (`piggery gc`, and the daemon's own) deleted unread mail that a closed team or gone
+  solo had sent to someone outside it, and once that person had been given such mail, cleanup of
+  the team or solo failed on every run. Mail sent out now stays with its recipient until it is
+  read; the team or solo is kept until then (#17).
+- Fix: the `settled` notice ("nobody is working and no mail waits") left out mail waiting for a
+  member that had gone and could not be woken (a limit refused it), so it could tell you a team was
+  done while mail sat unread (#21).
+- Fix: `cc` copies and timer notices sent to a role still went to a member that had left the team,
+  where nobody reads them (#23).
+
+Teams and sessions:
+
+- Fix: `agent stop` and `agent resume` treated a session admitted into a team as a headless worker.
+  A member could stop a session a person runs, and one mail later the daemon ran that conversation
+  a second time in the background, while the person's own session was refused. Both now refuse a
+  session, as `piggery kill` and `piggery resume` already did (#19).
+- Fix: when a session reopened the team it had been the gate of, the taskforce it had called in the
+  meantime was closed as orphaned, its workers stopped mid-task. The taskforce now stays with the
+  session (#22).
+- Fix: after a Claude Code session's row moved (its gate closed its own team, `piggery team down`,
+  or an in-process resume), its piggery tools stayed bound to the old one: mail no longer woke it,
+  and tool calls could fail with `run.stale`. A gate closing its own team was also told
+  `refused (host.unknown)` although the close succeeded (#16).
+- Fix: Claude Code's session identity. After `/clear`, a reconnect of piggery's MCP server (a
+  daemon restart is enough) put the old session id back, so a wake by mail resumed the conversation
+  from before `/clear` (#24). `/branch` turned the session into a new solo, and its participant went
+  gone with its mail (#25). A session forked outside its process (Paseo's Rewind) became a new solo
+  with an empty inbox (#13).
+- Fix: a manifest with a typo inside a role, a `spawn` block or a routing rule founded a team, the
+  typo silently became a default, and `piggery check` said "No problems" (#20).
+- Fix: a worker whose first start failed before its harness made a session (a model or provider
+  that did not resolve) could never be brought back: `agent resume` asked the harness for a session
+  that did not exist, although the error said to fix the cause and resume. It now starts a fresh
+  session under the same id. This was true of every harness but pi.
+- Fix: a session of yours that mail had woken once, and that went gone again, was woken the next
+  time into the conversation from before your last `/clear`. It now always resumes the newest one.
+- dsh 0.2.0-rc.2 and opencode 1.19.0 are tested. dsh rc.2 no longer reads `~/.dsh/settings.yaml`:
+  a custom provider is a row of `$DSH_HOME/cordis.patch.yml` (see the reference's dsh notes).
+
+Thanks to @Patruxs for the reports, each with a test that reproduces it.
+
 ## v0.10.0 - 2026-10-12
 
 piggery runs on Windows (experimental), a team or solo can close its gate to other teams, and `lead-peer` replaces `p2p` as the default template.
@@ -14,7 +89,7 @@ Before you upgrade:
   file stays, with its directory, as your own template.
 - **piggery's own Paseo plugin is gone, and so is `piggery setup paseo`.** In Paseo, use
   [PigMonitor](https://github.com/Patruxs/PigMonitor), which does more. To remove the old plugin:
-  `paseo plugin uninstall piggery`, then delete `~/.piggery/paseo`. `ps --view`, `ps --json`,
+  `paseo plugin remove piggery`, then delete `~/.piggery/paseo`. `ps --view`, `ps --json`,
   `tail --view` and `--no-start`, which such a plugin reads, are unchanged.
 
 After upgrading, run `piggery restart`. The daemon updates the integrations it installed: pi to 13,

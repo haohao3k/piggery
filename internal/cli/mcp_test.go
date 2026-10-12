@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	ompext "github.com/sting8k/piggery/extensions/omp"
 	piext "github.com/sting8k/piggery/extensions/pi"
 	"github.com/sting8k/piggery/internal/core"
+	"github.com/sting8k/piggery/internal/driver/local"
 	"github.com/sting8k/piggery/internal/proto"
 	"github.com/sting8k/piggery/internal/server"
 	"gopkg.in/yaml.v3"
@@ -278,6 +280,68 @@ func TestMCPSession(t *testing.T) {
 		t.Fatalf("spawn: %s %+v", last.Verb, sp)
 	}
 	inW.Close()
+}
+
+// A session's gate closes its own team (#16): the close is not reported as refused. A Claude
+// adapter (it knows its session id) joins the session as its solo and identifies as it; a Codex one
+// (no id; its next hook joins it) cannot, and answers with the close.
+func TestMCPCloseOwnTeam(t *testing.T) {
+	dir, err := os.MkdirTemp(shortTmp(), "pg") // short: unix socket paths are limited on macOS
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Run(ctx, server.Config{Dir: dir}) }()
+	defer func() { cancel(); <-done }()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if c, err := Dial(dir, false); err == nil {
+			c.Close()
+			break
+		} else if time.Now().After(deadline) {
+			t.Fatal("server did not come up")
+		}
+	}
+	for _, h := range []struct{ harness, ref string }{{"claude", "claude-thread"}, {"codex", ""}} {
+		// This process plays the session's host: the daemon accepts its connections as the host's.
+		host := fmt.Sprintf("%s:%d:%d", h.harness, os.Getpid(), local.ProcessStartTime(os.Getpid()))
+		hook, err := Dial(dir, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var jr core.JoinResult
+		if _, err := hook.CallInto(proto.VerbJoinAuto, core.JoinAutoArgs{Cwd: dir, Harness: h.harness, Mode: "interactive",
+			HarnessRef: h.harness + "-thread", Source: "startup", Host: host}, &jr); err != nil {
+			t.Fatal(err)
+		}
+		hook.Close()
+		s := &mcpServer{dir: dir, host: host, harness: h.harness, ref: h.ref, out: io.Discard, ready: make(chan struct{})}
+		go s.keepConnected()
+		agent := func(args string) (string, bool) {
+			t.Helper()
+			res, rerr := s.handle(rpcMsg{Method: "tools/call", Params: json.RawMessage(`{"name":"agent","arguments":` + args + `}`)})
+			if rerr != nil {
+				t.Fatalf("rpc error %+v", rerr)
+			}
+			b, _ := json.Marshal(res)
+			var r struct {
+				Content []struct{ Text string }
+				IsError bool
+			}
+			json.Unmarshal(b, &r)
+			return r.Content[0].Text, r.IsError
+		}
+		if text, isErr := agent(`{"action":"found","template":"lead-peer","name":"t-` + h.harness + `"}`); isErr {
+			t.Fatalf("%s found: %s", h.harness, text)
+		}
+		if text, isErr := agent(`{"action":"close"}`); isErr {
+			t.Fatalf("%s close of its own team: %s", h.harness, text)
+		}
+		if id, _ := s.identityWithin(0); h.ref != "" && (id == nil || id.TeamID != "") {
+			t.Fatalf("%s after the close: identity %+v, want its solo", h.harness, id)
+		}
+	}
 }
 
 // piggery hook claude: Stop with mail left maps to turn_end ok with the prompt id and prints a
