@@ -56,6 +56,9 @@ jobs:
         if: ${{ !cancelled() }}
         working-directory: extensions/paseo
         run: npm ci --ignore-scripts && npm run typecheck && npm test
+      # A warning here: a new Go advisory turns it red with no change of ours. The release
+      # script runs it before a tag is made, where it blocks.
       - name: govulncheck
         if: ${{ !cancelled() }}
+        continue-on-error: true
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
