@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -39,12 +40,15 @@ func TestBuildAgentDir(t *testing.T) {
 	write(t, filepath.Join(src, "extensions", "pi-peer", "index.ts"), "") // always
 	write(t, filepath.Join(src, "extensions", "piggery", "index.ts"), "") // setup pi's copy, by its name
 	if err := os.Symlink(filepath.Join(repo, "extensions", "pi"), filepath.Join(src, "extensions", "pig")); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("no symlink privilege (admin or Developer Mode): %v", err)
+		}
 		t.Fatal(err) // piggery itself, under another name
 	}
 	write(t, filepath.Join(src, "settings.json"), `{
 		"theme": "x",
-		"extensions": ["rel/ext-x.ts", "~/tools/pi-askuserquestion.ts", "`+filepath.Join(repo, "extensions", "pi")+`",
-			"`+filepath.Join(home, "wt", "pi", "index.ts")+`"],
+		"extensions": ["rel/ext-x.ts", "~/tools/pi-askuserquestion.ts", `+js(filepath.Join(repo, "extensions", "pi"))+`,
+			`+js(filepath.Join(home, "wt", "pi", "index.ts"))+`],
 		"packages": ["npm:@scope/blocked-npm@1.2.3", "git:github.com/u/blocked-git@v1", {"source": "npm:ok-pkg", "skills": ["s"]},
 			"./local/blocked-local", "github.com/u/kept-local"]}`)
 
@@ -54,8 +58,8 @@ func TestBuildAgentDir(t *testing.T) {
 	if err := buildAgentDir(src, dst, home, bl); err != nil {
 		t.Fatal(err)
 	}
-	if target, err := os.Readlink(filepath.Join(dst, "auth.json")); err != nil || target != filepath.Join(src, "auth.json") {
-		t.Fatalf("auth.json -> %q, %v; want a symlink to the human's", target, err)
+	if !sameFile(filepath.Join(dst, "auth.json"), filepath.Join(src, "auth.json")) {
+		t.Fatal("auth.json is not the human's own file (a link to it)")
 	}
 	exts, _ := os.ReadDir(filepath.Join(dst, "extensions"))
 	var names []string
@@ -106,7 +110,7 @@ func TestBuildAgentDirFreshMachine(t *testing.T) {
 // is then the human's ~/.pi/agent, never a generated dir.
 func TestHumanAgentDirIgnoresAGeneratedDir(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	root := AgentDirRoot(filepath.Join(home, ".piggery"))
 	t.Setenv("PI_CODING_AGENT_DIR", filepath.Join(root, "p1", "r1"))
 	if got := HumanAgentDir(root); got != filepath.Join(home, ".pi", "agent") {
@@ -137,7 +141,7 @@ func TestBuildOmpAgentDir(t *testing.T) {
 	yml := "theme: dark\nmcp:\n  enableProjectConfig: true\nextensions:\n  - rel/ext-x.ts\n  - " +
 		filepath.Join(home, "wt", "omp", "index.ts") + "\n  - " + filepath.Join(home, "tools", "a.ts") + "\n"
 	write(t, filepath.Join(src, "config.yml"), yml)
-	write(t, filepath.Join(src, "settings.json"), `{"extensions": ["rel/ext-y.ts", "`+filepath.Join(home, "tools", "a.ts")+`"]}`)
+	write(t, filepath.Join(src, "settings.json"), `{"extensions": ["rel/ext-y.ts", `+js(filepath.Join(home, "tools", "a.ts"))+`]}`)
 	before, _ := os.ReadFile(filepath.Join(src, "config.yml"))
 
 	dst := filepath.Join(home, "gen", "r1")
@@ -146,8 +150,8 @@ func TestBuildOmpAgentDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"models.yml", "agent.db"} {
-		if target, err := os.Readlink(filepath.Join(dst, name)); err != nil || target != filepath.Join(src, name) {
-			t.Fatalf("%s -> %q, %v; want a symlink to the human's", name, target, err)
+		if !sameFile(filepath.Join(dst, name), filepath.Join(src, name)) {
+			t.Fatalf("%s is not the human's own file (a link to it)", name)
 		}
 	}
 	exts, _ := os.ReadDir(filepath.Join(dst, "extensions"))
@@ -205,4 +209,18 @@ func TestOmpSessionsAreFoundAfterTheMove(t *testing.T) {
 	if _, err := os.Stat(old); err != nil {
 		t.Fatalf("a worker that has sessions in the new place had the old ones moved over them: %v", err)
 	}
+}
+
+// js is s as a JSON string (a Windows path holds backslashes).
+func js(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// sameFile: a and b are one file, as a symlink or (Windows without symlink privilege) a hard link
+// makes them, not a copy.
+func sameFile(a, b string) bool {
+	fa, err1 := os.Stat(a)
+	fb, err2 := os.Stat(b)
+	return err1 == nil && err2 == nil && os.SameFile(fa, fb)
 }
