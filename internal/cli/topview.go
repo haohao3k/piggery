@@ -127,6 +127,7 @@ const (
 	gap       = 2  // cells between columns
 	sideMin   = 40 // the sidebar is at least this wide ...
 	sideRight = 110
+	listMin   = 30 // the list keeps at least this wide when the sidebar is dragged wide
 	// ... and goes right of the list from this terminal width, below it under.
 )
 
@@ -311,6 +312,11 @@ func (m *topModel) render() string {
 	default: // no sidebar, or nothing to show in it
 		main = m.listBox(width, room, y, now)
 	}
+	if beside { // the divider between the list and the Overview: a press on it starts a drag
+		for i := range main {
+			m.hits = append(m.hits, hit{y: y + i, x0: width - sw, x1: width - sw + 1, divide: true})
+		}
+	}
 	frame := append(append(head, main...), foot...)
 	if m.pick != nil {
 		frame = m.overlay(frame, width)
@@ -325,6 +331,7 @@ type hit struct {
 	tab, id   string
 	side      int
 	list      bool
+	divide    bool   // the divider between the list and the sidebar: a press here starts a drag
 	pick      string // the Overview's model row of this worker: hover tints it, a click opens the picker
 	opt       string // a choice inside the open picker (m:<row>, l:<level>)
 }
@@ -910,9 +917,12 @@ func eventStyle(tone view.Tone) lipgloss.Style {
 
 // sideSplit is the width of the Overview panel and whether it is beside the list: the one split the
 // list | Overview columns and the band below them (notices | events) share.
-func (m *topModel) sideSplit(width int) (sw int, beside bool) {
-	return max(sideMin, width/3), m.sideShown() && m.sel != "" && !m.narrow()
+func (m *topModel) sideSplit(width int) (int, bool) {
+	return clampSide(cmp.Or(m.saved.Side, max(sideMin, width/3)), width), m.sideShown() && m.sel != "" && !m.narrow()
 }
+
+// clampSide keeps the sidebar at least sideMin wide and the list at least listMin.
+func clampSide(sw, width int) int { return min(max(sw, sideMin), width-listMin) }
 
 // band is the bottom of the screen above the keys: the notices (psResult.Notices: what the notify
 // hooks received) left, at the list's width, and the events right, at the Overview's, split where the
