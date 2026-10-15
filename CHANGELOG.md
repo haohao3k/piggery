@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.10.3 - 2026-10-15
+
+On Windows, pi workers started through pi's own launcher no longer go gone about ten seconds after they start.
+
+- Fix (Windows): a pi worker went gone about ten seconds after it was spawned, with its mail
+  unread and an empty tail, when pi's `pi.cmd` names its script `"%~dp0pi-launcher.js"`, with no
+  backslash after `%~dp0` (pi's launcher writes it so); piggery did not see through such a shim, so the worker ran under
+  `cmd.exe`, one process too deep, and the daemon refused it as a harness nested in a worker
+  (#32). Thanks to @sting-lon for the report, the diagnosis and the fix.
+
 ## v0.10.2 - 2026-10-12
 
 A Codex worker is woken for mail that came as its turn ended, and cleanup removes closed teams it used to skip.

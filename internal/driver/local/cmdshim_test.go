@@ -74,6 +74,18 @@ func TestPnpmShimIsSeenThrough(t *testing.T) {
 	}
 }
 
+// %~dp0 ends in a backslash, so a shim may write none after it (pi's pi.cmd, PR #32): without
+// seeing through it the worker ran under cmd.exe, a level too deep for identify.
+func TestShimWithNoBackslashAfterDp0(t *testing.T) {
+	dir := t.TempDir()
+	script := touch(t, filepath.Join(dir, "pi-launcher.js"))
+	node := onPath(t, "node")
+	path, pre, ok := resolveShim([]byte("@node \"%~dp0pi-launcher.js\" %*\r\n"), dir)
+	if !ok || path != node || !slices.Equal(pre, []string{script}) {
+		t.Fatalf("resolveShim = %q %q %v; want %s %s", path, pre, ok, node, script)
+	}
+}
+
 // A shim whose target is a program is that program. A file that is no shim of these forms is left
 // to cmd.exe: a program named by an absolute path, a line with a variable only cmd.exe can expand,
 // and a script whose interpreter is not installed.
