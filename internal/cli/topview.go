@@ -39,21 +39,25 @@ var (
 
 func init() { usePalette(true) }
 
+// hexColor resolves a charmtone key once: charmtone.Key.RGBA builds its whole hex table on every call,
+// which a frame of styled cells would pay for thousands of times.
+func hexColor(k charmtone.Key) color.Color { return lipgloss.Color(k.Hex()) }
+
 // usePalette sets top's colours for a dark or light background: the one place they are chosen.
 // Pairs are (light, dark) as in fang; charmtone names as Crush and fang use them.
 func usePalette(dark bool) {
 	c := lipgloss.LightDark(dark)
-	colPrimary = charmtone.Charple
-	colLink = c(charmtone.Damson, charmtone.Malibu)
-	colSuccess = c(lipgloss.Color("#0CB37F"), charmtone.Guac) // fang's flag green
-	colMuted = charmtone.Squid
-	colWarning = c(charmtone.Tang, charmtone.Mustard) // Mustard is unreadable on a light background
-	colError = c(charmtone.Sriracha, charmtone.Cherry)
-	colSubtle = c(charmtone.Smoke, charmtone.Oyster)
-	colSurface = c(charmtone.Ash, charmtone.Charcoal)
-	colTool = charmtone.Dolly
-	colInk = charmtone.Pepper
-	colOnMain = charmtone.Butter
+	colPrimary = hexColor(charmtone.Charple)
+	colLink = c(hexColor(charmtone.Damson), hexColor(charmtone.Malibu))
+	colSuccess = c(lipgloss.Color("#0CB37F"), hexColor(charmtone.Guac)) // fang's flag green
+	colMuted = hexColor(charmtone.Squid)
+	colWarning = c(hexColor(charmtone.Tang), hexColor(charmtone.Mustard)) // Mustard is unreadable on a light background
+	colError = c(hexColor(charmtone.Sriracha), hexColor(charmtone.Cherry))
+	colSubtle = c(hexColor(charmtone.Smoke), hexColor(charmtone.Oyster))
+	colSurface = c(hexColor(charmtone.Ash), hexColor(charmtone.Charcoal))
+	colTool = hexColor(charmtone.Dolly)
+	colInk = hexColor(charmtone.Pepper)
+	colOnMain = hexColor(charmtone.Butter)
 	stTitle = lipgloss.NewStyle().Bold(true).Foreground(colPrimary)
 	stMuted = lipgloss.NewStyle().Foreground(colMuted)
 	stRule = lipgloss.NewStyle().Foreground(colSubtle)
