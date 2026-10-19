@@ -65,21 +65,27 @@ func TestTopWorkerStats(t *testing.T) {
 }
 
 // Switching the tail from w1 to w2 never shows w1's lines under w2, also while the fetch in
-// flight still carries w1's tail.
+// flight still carries w1's tail. A team's line shows its gate's tail.
 func TestTopTailFollowsTheSelection(t *testing.T) {
-	ps := proto.PsResult{State: core.State{Teams: []core.TeamState{{Name: "t", Members: []core.MemberState{
-		{ID: "w1", Name: "w1", Headless: true, Capabilities: []string{core.CapUsage}}, {ID: "w2", Name: "w2", Headless: true, Capabilities: []string{core.CapUsage}}}}}}}
+	ps := proto.PsResult{State: core.State{Teams: []core.TeamState{{ID: "t", Name: "t", Gate: "w1", Members: []core.MemberState{
+		{ID: "w1", Name: "w1", Headless: true, Gate: true, Capabilities: []string{core.CapUsage}}, {ID: "w2", Name: "w2", Headless: true, Capabilities: []string{core.CapUsage}}}}}}}
 	m := newTopModel(nil, "")
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	m.Update(fetched{ps: ps})
-	m.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
+	m.sel = "w1"
 	m.Update(fetched{ps: ps, tail: tailState{worker: "w1", lines: []string{"from w1"}}})
 	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if m.sel != "w2" || !m.side || m.sideTab != sideTail {
-		t.Fatalf("sel %q side %v tab %d; want w2's tail", m.sel, m.side, m.sideTab)
+	if m.sel != "w2" || !m.sideShown() {
+		t.Fatalf("sel %q side %v; want w2's tail", m.sel, m.sideShown())
 	}
 	m.Update(fetched{ps: ps, tail: tailState{worker: "w1", lines: []string{"from w1", "more from w1"}}})
 	if out := m.render(); strings.Contains(out, "from w1") {
 		t.Fatalf("w2's tail shows w1's lines:\n%s", out)
+	}
+	m.sel = closedRow + "t"
+	m.Update(fetched{ps: ps, tail: tailState{worker: "w1", lines: []string{"from w1"}}})
+	if out := m.render(); !strings.Contains(out, "from w1") || !strings.Contains(strip(out), "Tail · w1 (gate)") {
+		t.Fatalf("the team's line does not show its gate's tail:\n%s", out)
 	}
 }
 
@@ -260,9 +266,11 @@ func TestTailLineDropsControlSequences(t *testing.T) {
 // arguments as key=value.
 func TestTailLineShortensToolArgs(t *testing.T) {
 	for rec, want := range map[string]string{
-		`{"type":"tool_execution_start","toolName":"bash","args":{"command":"go test ./...","timeout":60}}`:        "> bash go test ./...",
-		`{"type":"tool_execution_start","toolName":"edit","args":{"path":"internal/core/x.go","edits":[{"a":1}]}}`: "> edit internal/core/x.go",
-		`{"type":"tool_execution_start","toolName":"grep","args":{"pattern":"TODO","path":"internal","limit":5}}`:  "> grep limit=5 path=internal pattern=TODO",
+		`{"type":"tool_execution_start","toolName":"bash","args":{"command":"go test ./...","timeout":60}}`:               "> bash go test ./...",
+		`{"type":"tool_execution_start","toolName":"edit","args":{"path":"internal/core/x.go","edits":[{"a":1}]}}`:        "> edit internal/core/x.go",
+		`{"type":"tool_execution_start","toolName":"grep","args":{"pattern":"TODO","path":"internal","limit":5}}`:         "> grep limit=5 path=internal pattern=TODO",
+		`{"type":"tool_execution_start","toolName":"edit","args":{"paths":["a.go","b.go"],"code":"p='a.go'"}}`:            "> edit a.go, b.go",
+		`{"type":"tool_execution_start","toolName":"piggery_send","args":{"body":"#3 done","reply_to":"#3","to":"lead"}}`: "> piggery_send lead #3 done",
 	} {
 		if l, ok := tailLine([]byte(rec)); !ok || l != want {
 			t.Fatalf("tail line = %q, want %q", l, want)
@@ -270,9 +278,65 @@ func TestTailLineShortensToolArgs(t *testing.T) {
 	}
 }
 
-// A member's task sits right under the header, before team/kind/model: its title on at most two
-// lines, who gave it, how its reply chain stands, and a newer unmarked mail as a "mail" row.
-func TestTopOverviewShowsTheAssignment(t *testing.T) {
+// The Tail draws a log as turns: what came in and mail at the left edge, what the participant did
+// two cells in. A result that went well is not drawn, a failed one is, also once its run of tool calls folds
+// into one line; the latest run, still going, is a tree of its last calls; piggery mail in and out
+// is a line each; the worker's own directory is left out of calls. An older turn is what came in,
+// one run of all its calls and what it gave back (the mail it sent, else its last words on one
+// line); a blank line ends a turn, and none ends the Tail.
+func TestTopTailDrawsTheLogClean(t *testing.T) {
+	lines := []string{
+		`user: [piggery] 2 new messages:  <message id="#1506" from="lark (lead)" sender="lark" at="09:13:21"> Check the **FK** on batches </message> <message id="#1507" sender="bob">x</message>`,
+		"> read /w/shop/internal/store/store.go",
+		"< read ok: package store",
+		"> bash cd /w/shop && rg -n deliveries internal/store",
+		"< bash error: exit 1: no such file",
+		"assistant: Wrong path.",
+		"> read /w/shop/internal/core/gc.go",
+		"< read ok: x",
+		"> bash cd /w/shop && rg -n deliveries internal/core",
+		"< bash ok: x",
+		"> edit /w/shop/internal/core/gc.go",
+		"< edit ok: x",
+		"> bash cd /w/shop && go test ./internal/core/",
+	}
+	got := strings.Split(strip(strings.Join(drawTail(tailItems(lines), 60, "/w/shop", "/home/u"), "\n")), "\n")
+	want := []string{
+		"from lark  #1506 Check the FK on batches  +1",
+		"  • 2 tools · read, bash · 1 failed",
+		"    ✗ bash  exit 1: no such file",
+		"  Wrong path.",
+		"  ◦ 4 tools · read, bash ×2, edit",
+		"    +1",
+		"    ├ • bash  rg -n deliveries internal/core",
+		"    ├ • edit  internal/core/gc.go",
+		"    └ ◦ bash  go test ./internal/core/",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("tail =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	// A transcript leaves out the calls of a message that has words and has no end-of-turn line:
+	// a result is its own call, and a prompt starts a turn. The runs an older turn's left-out words
+	// stood between are one run.
+	got = strings.Split(strip(strings.Join(drawTail(tailItems([]string{"user: do x", "assistant: Looking.", "< bash ok: a",
+		"assistant: The file next.", "< read ok: b", "< read ok: c", "assistant: Found it.", "user: next", "assistant: Done."}), 40, "", ""), "\n")), "\n")
+	if want := []string{"› do x", "  • 3 tools · bash, read ×2", "  Found it.", "", "› next", "  Done."}; !slices.Equal(got, want) {
+		t.Fatalf("transcript tail = %q; want %q", got, want)
+	}
+	older := []string{"assistant: I'll look first.", "> piggery_send lead #3 done", "< piggery_send ok: sent #4",
+		"assistant: Sent #3 to lead: the gc order is fixed", "-- agent end", "-- agent end",
+		"assistant: The gc order is fixed and its test fails without the fix", "-- agent end",
+		"assistant: Standing by.", "-- agent end"}
+	got = strings.Split(strip(strings.Join(drawTail(tailItems(older), 40, "", ""), "\n")), "\n")
+	if want := []string{"to lead  #3 done", "", "  The gc order is fixed and its test fa…", "", "  Standing by."}; !slices.Equal(got, want) {
+		t.Fatalf("tail = %q; want %q", got, want)
+	}
+}
+
+// The Tail's head says what the row does not: a member's task (its number and who gave it, its
+// title on at most two lines, how its reply chain stands, a newer unmarked mail), then whom it
+// reports to, then a rule. A member whose row says it all has no head.
+func TestTopTailHeadShowsTheAssignment(t *testing.T) {
 	now := time.UnixMilli(10_000_000)
 	ago := func(min int) int64 { return now.Add(-time.Duration(min) * time.Minute).UnixMilli() }
 	long := "omp phase 2, your part: the interactive side of the extension with a very long title that goes past two lines of the pane"
@@ -280,20 +344,20 @@ func TestTopOverviewShowsTheAssignment(t *testing.T) {
 		Latest: &core.ChainMail{Seq: 183, At: ago(3), ByMember: true}, Newer: &core.NewerMail{Seq: 190, Title: "next: the dsh part", At: ago(1)}}
 	m := newTopModel(nil, "")
 	m.Update(fetched{ps: proto.PsResult{State: core.State{Teams: []core.TeamState{{ID: "ta", Name: "a", Members: []core.MemberState{
-		{ID: "a1", Name: "a1", Role: "executor", State: "idle", Assignment: a}, {ID: "a2", Name: "a2", Role: "executor", State: "idle"}}}}}}})
+		{ID: "a1", Name: "a1", Role: "executor", State: "idle", Assignment: a, ReportsTo: "a2"}, {ID: "a2", Name: "a2", Role: "executor", State: "idle"}}}}}}})
 	strip := regexp.MustCompile("\x1b\\[[0-9;]*m")
-	side := func(sel string) string {
+	side := func(sel string) []string {
 		m.sel = sel
-		return strip.ReplaceAllString(strings.Join(m.sidebar(50, 30, now), "\n"), "")
+		return strings.Split(strip.ReplaceAllString(strings.Join(m.sidebar(50, 30, now), "\n"), ""), "\n")
 	}
-	got := strings.Split(side("a1"), "\n")
-	if len(got) < 8 || !strings.HasPrefix(got[2], " task ") || !strings.Contains(got[2], "#175 omp phase 2, your part:") || !strings.HasSuffix(got[3], "…") ||
-		strings.TrimSpace(got[4]) != "from summer-hamster · 22m ago" || strings.TrimSpace(got[5]) != "handed back #183 · 3m ago" ||
-		!strings.HasPrefix(got[6], " mail ") || !strings.Contains(got[6], "#190 next: the dsh part · 1m ago") || !strings.HasPrefix(got[7], " team ") {
-		t.Fatalf("overview = %q; want the task rows (title over two lines, from, handed back, mail) before team", got)
+	got := side("a1")
+	if len(got) < 8 || got[0] != " task #175 · from summer-hamster · 22m ago" || !strings.HasPrefix(got[1], " omp phase 2, your part:") || !strings.HasSuffix(got[2], "…") ||
+		got[3] != " handed back #183 · 3m ago" || got[4] != " mail #190 next: the dsh part · 1m ago" ||
+		got[5] != " reports to a2" || !strings.HasPrefix(strings.TrimSpace(got[6]), "──") {
+		t.Fatalf("head = %q; want the task rows (number and from, title over two lines, handed back, mail), reports to, a rule", got)
 	}
-	if strings.Contains(side("a2"), "task") {
-		t.Fatal("a member without an assignment shows a task row")
+	if got := side("a2"); strings.Contains(strings.Join(got, "\n"), "task") || strings.Contains(got[0], "──") {
+		t.Fatalf("a member whose row says it all has a head: %q", got)
 	}
 }
 
@@ -316,7 +380,7 @@ func TestTopFooterShowsTheDaemonVersion(t *testing.T) {
 	if l := last(180); !strings.HasSuffix(l, "dev-daemon (cli dev-cli: piggery restart)") {
 		t.Fatalf("mismatch footer: %q", l)
 	}
-	if l := last(80); !strings.HasSuffix(l, "dev-daemon") || strings.Contains(l, "cli") {
+	if l := last(110); !strings.HasSuffix(l, "dev-daemon") || strings.Contains(l, "cli") {
 		t.Fatalf("mismatch footer, room for the version only: %q", l)
 	}
 	Version = "dev-daemon"
@@ -376,7 +440,7 @@ func TestTopKillKey(t *testing.T) {
 	}
 }
 
-// Events are a box like the Overview's (no column-name line) that `e` folds into one line of text
+// Events are a box like the sidebar's (no column-name line) that `e` folds into one line of text
 // with the latest event; the keys are two lines with `x kill` on the second.
 func TestTopEventsBoxAndKeyLines(t *testing.T) {
 	sgr := regexp.MustCompile("\x1b\\[[0-9;]*m")
@@ -653,7 +717,7 @@ func TestModelPickerAppliesTheChoice(t *testing.T) {
 	}
 }
 
-// hitFor is the Overview model-row target of worker id in the last frame.
+// hitFor is the Tail's model-row target of worker id in the last frame.
 func hitFor(m *topModel, id string) (hit, bool) {
 	for _, h := range m.hits {
 		if h.pick == id {

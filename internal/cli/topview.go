@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"image/color"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -68,9 +69,6 @@ func helpStyles() help.Styles {
 	return help.Styles{ShortKey: stMuted, ShortDesc: stRule, ShortSeparator: stRule, Ellipsis: stRule,
 		FullKey: stMuted, FullDesc: stRule, FullSeparator: stRule}
 }
-
-// stateIcon is a member state as icon + word (view.StateText), coloured by what it asks of the operator.
-func stateIcon(state string) (string, color.Color) { return view.StateText(state), stateColor(state) }
 
 func stateColor(state string) color.Color {
 	switch view.StatusOf(state) {
@@ -312,7 +310,7 @@ func (m *topModel) render() string {
 	default: // no sidebar, or nothing to show in it
 		main = m.listBox(width, room, y, now)
 	}
-	if beside { // the divider between the list and the Overview: a press on it starts a drag
+	if beside { // the divider between the list and the sidebar: a press on it starts a drag
 		for i := range main {
 			m.hits = append(m.hits, hit{y: y + i, x0: width - sw, x1: width - sw + 1, divide: true})
 		}
@@ -325,14 +323,13 @@ func (m *topModel) render() string {
 }
 
 // hit is a clickable span of one screen row, recorded while drawing: a tab (tab), a row of
-// the list (id), a sidebar tab (side >= 0), or the list's body (list: the wheel moves there).
+// the list (id), or the list's body (list: the wheel moves there).
 type hit struct {
 	y, x0, x1 int
 	tab, id   string
-	side      int
 	list      bool
 	divide    bool   // the divider between the list and the sidebar: a press here starts a drag
-	pick      string // the Overview's model row of this worker: hover tints it, a click opens the picker
+	pick      string // the Tail's model row of this worker: hover tints it, a click opens the picker
 	opt       string // a choice inside the open picker (m:<row>, l:<level>)
 }
 
@@ -373,7 +370,7 @@ func (m *topModel) listBox(w, h, y int, now time.Time) []string {
 		lines, rowIDs = append([]string{head}, shown...), append([]string{""}, shownIDs...)
 	}
 	for i := range n {
-		hl := hit{y: y + 1 + i, x0: 1, x1: w - 1, side: -1, list: true}
+		hl := hit{y: y + 1 + i, x0: 1, x1: w - 1, list: true}
 		if i < len(rowIDs) {
 			hl.id = rowIDs[i]
 		}
@@ -389,16 +386,12 @@ func (m *topModel) listBox(w, h, y int, now time.Time) []string {
 	return boxMarked("", lines, w, h, up, down)
 }
 
-// sideBox is the sidebar in a w x h box at column x, row y; its Overview and Tail titles are
-// hits.
+// sideBox is the sidebar in a w x h box at column x, row y: the Tail, titled with whose it is.
 func (m *topModel) sideBox(x, y, w, h int, now time.Time) []string {
-	ox := x + 3 // after "┌─ "
-	m.hits = append(m.hits, hit{y: y, x0: ox, x1: ox + len("Overview"), side: sideOverview},
-		hit{y: y, x0: ox + len("Overview  "), x1: ox + len("Overview  Tail"), side: sideTail})
 	lines := m.sidebar(w-2, h-2, now)
 	if m.modelRow >= 0 && m.sideShown() { // the model value, after "│ " and the label
-		vx := x + 1 + 1 + overviewLabel
-		m.hits = append(m.hits, hit{y: y + 1 + m.modelRow, x0: vx, x1: vx + m.modelW, side: -1, pick: m.modelOf})
+		vx := x + 1 + 1 + headLabel
+		m.hits = append(m.hits, hit{y: y + 1 + m.modelRow, x0: vx, x1: vx + m.modelW, pick: m.modelOf})
 	}
 	return box(m.sideTitle(), lines, w, h)
 }
@@ -490,7 +483,7 @@ func (m *topModel) tabBar(tabs []view.Tab, y, width int) string {
 	x := 2
 	add := func(text, key string, style lipgloss.Style) {
 		w := lipgloss.Width(text)
-		m.hits = append(m.hits, hit{y: y, x0: x, x1: x + w, tab: key, side: -1})
+		m.hits = append(m.hits, hit{y: y, x0: x, x1: x + w, tab: key})
 		x += w + tabGap
 		parts = append(parts, style.Render(text))
 	}
@@ -753,21 +746,19 @@ type trow struct {
 }
 
 func (m *topModel) sideTitle() string {
-	tabs := []string{"Overview", "Tail"}
-	for i, t := range tabs {
-		if i == m.sideTab {
-			tabs[i] = stTitle.Underline(true).Render(t)
-		} else {
-			tabs[i] = stMuted.Render(t)
-		}
+	id, gate := m.tailTarget()
+	name := view.Names(m.ps.State)[id]
+	if name == "" {
+		return stTitle.Render("Tail")
 	}
-	return strings.Join(tabs, "  ")
+	if gate {
+		name += " (gate)"
+	}
+	return stTitle.Render("Tail") + stMuted.Render(" · "+name)
 }
 
-// sidebar is the selected row's Overview (every fact top has of it) or its Tail, in w x h.
-// overviewLabel is the Overview's label cell: wider than its longest label (`last turn`), so a gap
-// always separates the label from its value.
-const overviewLabel = 10
+// headLabel is the label before the model in the Tail's head: its value starts after it.
+const headLabel = len("model ")
 
 // selMember is the selected member and its team, nil when a solo or a row of another kind is selected.
 func (m *topModel) selMember() (*core.MemberState, *core.TeamState) {
@@ -781,96 +772,137 @@ func (m *topModel) selMember() (*core.MemberState, *core.TeamState) {
 	return nil, nil
 }
 
+// sidebar is the Tail of the selected row in w x h (tailTarget: a team's line shows its gate's): a
+// head of what the row does not show (a closed team's closing, the task and newer mail, the model
+// when it can be changed here, who spawned it and whom it reports to), a rule, and its log.
 func (m *topModel) sidebar(w, h int, now time.Time) []string {
 	m.modelRow = -1
-	d := view.Describe(m.ps.State, m.sel, m.stats(), now)
-	switch d.Kind {
-	case view.DetailNone:
+	if m.sel == "" {
 		return []string{" " + stMuted.Render("Nothing selected.")}
-	case view.DetailParticipant:
-		if m.sideTab == sideTail {
-			return m.tailLines(w, h)
-		}
 	}
-	kv := func(k, v string) string { return " " + stMuted.Render(fmt.Sprintf("%-*s", overviewLabel, k)) + v }
-	head := " " + lipgloss.NewStyle().Bold(true).Render(d.Title) + stMuted.Render(" · "+d.Sub)
-	if d.State != "" {
-		icon, col := stateIcon(d.State)
-		head = " " + lipgloss.NewStyle().Bold(true).Render(d.Title) + stMuted.Render(" · "+d.Sub+" ") + pill(icon, col, colInk)
+	id, _ := m.tailTarget()
+	head := m.tailHead(id, w, now)
+	if id == "" {
+		return append(head, " "+stMuted.Render("No gate: nothing to tail."))
 	}
-	out := []string{head, ""}
-	out = append(out, assignmentRows(d.Task, w-1-overviewLabel)...)
-	for _, f := range d.Facts {
-		v := f.Value
-		if f.Pick { // its model can be changed here: blue with a ▾, tinted under the mouse
-			v += " ▾"
-			m.modelRow, m.modelOf, m.modelW = len(out), d.ID, lipgloss.Width(v)
-			style := lipgloss.NewStyle().Foreground(colLink)
-			if m.hover == d.ID {
-				style = style.Background(colSurface)
+	if len(head) > 0 {
+		head = append(head, " "+stRule.Render(strings.Repeat("─", max(w-2, 0))))
+	}
+	return append(head, m.tailLines(id, w, h-len(head))...)
+}
+
+// tailHead is the head of id's Tail, in w cells; nothing when the row says it all.
+func (m *topModel) tailHead(id string, w int, now time.Time) []string {
+	label := func(k string) string { return " " + stMuted.Render(k+" ") }
+	var out []string
+	if team, ok := strings.CutPrefix(m.sel, closedRow); ok {
+		for _, c := range m.ps.Closed {
+			if c.ID == team {
+				out = append(out, label("closed")+view.Ago(c.ClosedAt, now)+" ago by "+cmp.Or(c.ClosedBy, "admin"))
 			}
-			v = style.Render(v)
 		}
-		if f.Note != "" {
-			v += "  " + stMuted.Render(f.Note)
-		}
-		if f.Muted {
-			v = stMuted.Render(v)
-		}
-		out = append(out, kv(f.Label, v))
 	}
-	if d.Hint != "" {
-		if d.HintGap {
-			out = append(out, "")
+	if id == "" {
+		return out
+	}
+	d := view.Describe(m.ps.State, id, nil, now)
+	out = append(out, assignmentRows(d.Task, w-2)...)
+	for _, f := range d.Facts {
+		if !f.Pick { // the row shows the rest
+			continue
 		}
-		out = append(out, " "+stMuted.Render(d.Hint))
+		v := f.Value + " ▾" // its model can be changed here: blue with a ▾, tinted under the mouse
+		m.modelRow, m.modelOf, m.modelW = len(out), d.ID, lipgloss.Width(v)
+		style := lipgloss.NewStyle().Foreground(colLink)
+		if m.hover == d.ID {
+			style = style.Background(colSurface)
+		}
+		out = append(out, label("model")+style.Render(v))
+	}
+	names := view.Names(m.ps.State)
+	for _, t := range teamsOf(m.ps) {
+		for _, mem := range t.Members {
+			if mem.ID != id {
+				continue
+			}
+			var who []string
+			if mem.Headless && mem.SpawnedBy != "" {
+				who = append(who, "spawned by "+view.OrDash(names[mem.SpawnedBy]))
+			}
+			if mem.ReportsTo != "" {
+				who = append(who, "reports to "+view.OrDash(names[mem.ReportsTo]))
+			}
+			if len(who) > 0 {
+				out = append(out, " "+stMuted.Render(truncate(strings.Join(who, " · "), w-2)))
+			}
+		}
 	}
 	return out
 }
 
-// tailLines is the selected participant's Tail: the latest lines of its log, in w x h.
-func (m *topModel) tailLines(w, h int) []string {
-	if !m.tailable(m.sel) {
+// tailLines is id's log in w x h: its latest items (toptail.go), the newest at the bottom.
+func (m *topModel) tailLines(id string, w, h int) []string {
+	if h <= 0 {
+		return nil
+	}
+	if !m.tailable(id) {
 		return []string{" " + stMuted.Render("No tail: piggery has no log of it to read.")}
 	}
 	var lines []string
-	if m.tail.worker == m.sel { // a fetch in flight may still carry the previous worker's
+	if m.tail.worker == id { // a fetch in flight may still carry the previous worker's
 		lines = m.tail.lines
 	}
 	if len(lines) == 0 {
 		return []string{" " + stMuted.Render("No output yet.")}
 	}
-	if n := min(h, topTailLines); len(lines) > n {
-		lines = lines[len(lines)-n:]
+	home, _ := os.UserHomeDir()
+	out := drawTail(tailItems(lines), w-2, m.cwdOf(id), home)
+	out = out[max(len(out)-h, 0):]
+	for len(out) > 0 && out[0] == "" { // what fits starts at a turn's end: no blank line on top
+		out = out[1:]
 	}
-	out := make([]string, len(lines))
-	for i, l := range lines {
-		out[i] = " " + styleTail(l, w-2)
+	for i, l := range out {
+		out[i] = " " + l
 	}
 	return out
 }
 
-// assignmentRows is the member's current task in the sidebar (width n after the 9-cell label):
-// its title on at most two lines, who gave it and when, how its reply chain stands (muted), and,
-// once the member handed back, the newer mail from the assigner that is not part of the chain
-// (a note, or a task sent without op assign). Nothing when it has none.
+// cwdOf is the directory participant id works in; "" when it is not in the snapshot.
+func (m *topModel) cwdOf(id string) string {
+	for _, s := range m.ps.Solos {
+		if s.ID == id {
+			return s.Cwd
+		}
+	}
+	for _, t := range teamsOf(m.ps) {
+		for _, mem := range t.Members {
+			if mem.ID == id {
+				return mem.Cwd
+			}
+		}
+	}
+	return ""
+}
+
+// assignmentRows is the member's current task in the sidebar, n cells wide: its number, who gave it
+// and when (muted), its title on at most two lines, how its reply chain stands (muted), and, once
+// the member handed back, the newer mail from the assigner that is not part of the chain (a note,
+// or a task sent without op assign). Nothing when it has none.
 func assignmentRows(t *view.Task, n int) []string {
 	if t == nil {
 		return nil
 	}
 	n = max(n, 10)
-	indent := strings.Repeat(" ", 1+overviewLabel)
-	lines := wrapTwo(t.Title, n)
-	out := []string{" " + stMuted.Render(fmt.Sprintf("%-*s", overviewLabel, "task")) + lines[0]}
-	for _, l := range lines[1:] {
-		out = append(out, indent+l)
+	num, title, _ := strings.Cut(t.Title, " ")
+	out := []string{" " + stMuted.Render(truncate("task "+num+" · "+t.From, n))}
+	for _, l := range wrapTwo(title, n) {
+		out = append(out, " "+lipgloss.NewStyle().Bold(true).Render(l))
 	}
-	out = append(out, indent+t.From)
 	if t.Chain != "" {
-		out = append(out, indent+stMuted.Render(t.Chain))
+		out = append(out, " "+stMuted.Render(truncate(t.Chain, n)))
 	}
 	if x := t.Mail; x != nil {
-		out = append(out, " "+stMuted.Render(fmt.Sprintf("%-*s", overviewLabel, "mail")+x.Head+truncate(x.Title, n-lipgloss.Width(x.Head+x.Tail))+x.Tail))
+		out = append(out, " "+stMuted.Render("mail "+x.Head)+truncate(x.Title, n-lipgloss.Width("mail "+x.Head+x.Tail))+stMuted.Render(x.Tail))
 	}
 	return out
 }
@@ -915,8 +947,8 @@ func eventStyle(tone view.Tone) lipgloss.Style {
 	return stMuted
 }
 
-// sideSplit is the width of the Overview panel and whether it is beside the list: the one split the
-// list | Overview columns and the band below them (notices | events) share.
+// sideSplit is the width of the sidebar (the Tail) and whether it is beside the list: the one split the
+// list | sidebar columns and the band below them (notices | events) share.
 func (m *topModel) sideSplit(width int) (int, bool) {
 	return clampSide(cmp.Or(m.saved.Side, max(sideMin, width/3)), width), m.sideShown() && m.sel != "" && !m.narrow()
 }
@@ -925,9 +957,9 @@ func (m *topModel) sideSplit(width int) (int, bool) {
 func clampSide(sw, width int) int { return min(max(sw, sideMin), width-listMin) }
 
 // band is the bottom of the screen above the keys: the notices (psResult.Notices: what the notify
-// hooks received) left, at the list's width, and the events right, at the Overview's, split where the
-// list and the Overview are. Each is a box or, folded, one line at the top of its side; the band is as
-// tall as the taller side. With no notices the events take the width, and where the Overview is not
+// hooks received) left, at the list's width, and the events right, at the sidebar's, split where the
+// list and the sidebar are. Each is a box or, folded, one line at the top of its side; the band is as
+// tall as the taller side. With no notices the events take the width, and where the sidebar is not
 // beside the list the two are stacked.
 func (m *topModel) band(width, height, sw int, beside bool, now time.Time) []string {
 	if len(m.ps.Notices) == 0 {
@@ -1005,7 +1037,7 @@ func (m *topModel) noticesBox(w, height int, now time.Time, h int) []string {
 	return box(stTitle.Render("Notices"), lines, w, max(len(lines)+2, h))
 }
 
-// eventsBox is the latest events in a box like the Overview's (3 rows in a short window, 5, or 8 in
+// eventsBox is the latest events in a box like the sidebar's (3 rows in a short window, 5, or 8 in
 // a tall one), at least h lines tall, or, collapsed, one rule line with the title and the latest event.
 func (m *topModel) eventsBox(width, height int, now time.Time, h int) []string {
 	n := 8
@@ -1036,26 +1068,6 @@ func (m *topModel) eventsBox(width, height int, now time.Time, h int) []string {
 		lines[i] = row(r, w, nil, func(int) lipgloss.Style { return st }, false, inner)
 	}
 	return box(stTitle.Render("Events"), lines, width, max(max(len(rows), 1)+2, h))
-}
-
-// styleTail colors a tail line (view.ParseTail's kinds) cut to n cells: tool calls secondary with
-// dim arguments, results muted (errors red), problems amber, assistant text plain.
-func styleTail(l string, n int) string {
-	t := view.ParseTail(l)
-	switch t.Kind {
-	case view.TailTool:
-		head := truncate(t.Text, n)
-		return lipgloss.NewStyle().Foreground(colTool).Render(head) + stMuted.Render(truncate(t.Rest, n-lipgloss.Width(head)))
-	case view.TailError:
-		return lipgloss.NewStyle().Foreground(colError).Render(truncate(t.Text, n))
-	case view.TailResult, view.TailUser:
-		return stMuted.Render(truncate(t.Text, n))
-	case view.TailWarning:
-		return lipgloss.NewStyle().Foreground(colWarning).Render(truncate(t.Text, n))
-	case view.TailRule:
-		return stRule.Render(truncate(t.Text, n))
-	}
-	return truncate(t.Text, n)
 }
 
 // truncate cuts plain text to n display cells, with … when cut.

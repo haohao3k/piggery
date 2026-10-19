@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.10.4 - 2026-10-19
+
+`top`'s sidebar is now the selected row's Tail, drawn as turns, and its width follows a drag.
+
+- Change: `top`'s sidebar has no Overview tab any more (it repeated the row) and `t` is gone. It is
+  the selected row's Tail; on a team's line, its gate's (`Tail · lark (gate)`). Above a rule, a head
+  says what the row does not: the task and a newer mail, the model where it can be changed (a click
+  on it, or `M`, opens the picker as before), who spawned it and whom it reports to, and when a
+  closed team closed. The log below is drawn as turns, a blank line between two: what came in at the
+  left edge (a prompt `›`, mail `from lark …`), what the participant did two cells in. A run of tool
+  calls is one line (`• 4 tools · bash ×3, edit`); the latest run, still going, is a tree of its
+  last calls; a result shows only when it failed; mail sent is one line (`to lark …`), at the left
+  edge like mail in; an older turn keeps what came in, its calls and what it gave back. This works
+  for interactive sessions' transcripts as well as workers' logs. `piggery tail` still prints every
+  line.
+- New: drag the line between the list and the sidebar in `top` to resize the sidebar; the width
+  is kept for the next `top` (#34). `top` also draws faster: its colours are worked out once, not
+  on every frame. Thanks to @sting-lon.
+- Change: in `piggery tail`, a call to piggery's send tool shows whom it went to and its body
+  (`> piggery_send lead #3 done`) instead of cut `body=… to=…`, and `read`, `edit` and `write`
+  show their path also when the harness names it `file_path` (Claude) or passes a list of `paths`.
+
 ## v0.10.3 - 2026-10-15
 
 On Windows, pi workers started through pi's own launcher no longer go gone about ten seconds after they start.

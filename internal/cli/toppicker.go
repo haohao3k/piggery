@@ -17,7 +17,7 @@ import (
 )
 
 // The model picker: a box over top, opened by a click on the model row of a live headless worker's
-// Overview. A text input fuzzy-filters the models the daemon lists for that worker (verb proto.VerbModels),
+// Tail. A text input fuzzy-filters the models the daemon lists for that worker (verb proto.VerbModels),
 // a row of thinking levels is chosen beside it, Enter applies through the verb `model`, Esc closes.
 
 // pickLevels are the thinking levels the picker offers, in the order it shows them.
@@ -328,7 +328,7 @@ func (m *topModel) overlay(frame []string, width int) []string {
 	}
 	m.hits = m.hits[:0]
 	for _, h := range hits {
-		h.y, h.x0, h.x1, h.side, h.list = y0+h.y, x0+h.x0, x0+h.x1, -1, false
+		h.y, h.x0, h.x1, h.list = y0+h.y, x0+h.x0, x0+h.x1, false
 		m.hits = append(m.hits, h)
 	}
 	return out

@@ -85,10 +85,9 @@ func (e *env) top(args []string) error {
 }
 
 const (
-	topEvery     = time.Second
-	topEvents    = 8
-	tailKeep     = 200 // readable tail lines kept for the selected worker
-	topTailLines = 20  // the latest tail lines shown (fewer when the window has less room)
+	topEvery  = time.Second
+	topEvents = 8
+	tailKeep  = 200 // readable tail lines kept for the selected worker: the Tail draws what fits of them
 )
 
 type topModel struct {
@@ -103,7 +102,6 @@ type topModel struct {
 	sel     string   // selected member or solo (participant id), "" when the tab has none
 	side    bool     // the sidebar is shown beside the list (wide terminal)
 	full    bool     // the sidebar is shown instead of the list (narrow terminal)
-	sideTab int      // sideOverview or sideTail
 	events  bool     // the events strip is shown
 	notices bool     // the notices box is shown (else its newest, on one line)
 	drag    bool     // the divider is being dragged; saved.Side follows the mouse until the release
@@ -128,8 +126,8 @@ type topModel struct {
 	killNote string                // the answer to the last `x`, until the next key
 
 	pick       *modelPicker                      // the open model picker (toppicker.go)
-	hover      string                            // the worker whose Overview model row the mouse is on
-	modelRow   int                               // the Overview line of the model row that opens the picker, -1 when there is none (set while drawing)
+	hover      string                            // the worker whose Tail model row the mouse is on
+	modelRow   int                               // the Tail line of the model row that opens the picker, -1 when there is none (set while drawing)
 	modelOf    string                            // ... and its worker
 	modelW     int                               // ... and the width of its value
 	listModels func(id string) ([]string, error) // asks the daemon for the models a worker's harness accepts, on a connection of its own
@@ -148,11 +146,9 @@ type killed struct {
 }
 
 const (
-	tabClosed    = view.TabClosed // not a team id
-	closedRow    = view.TeamRow   // + team id: the selectable line of a team (a live one, or listed as one line)
-	goneRow      = view.GoneRow   // + team id: the selectable line of a team's folded gone members
-	sideOverview = 0
-	sideTail     = 1
+	tabClosed = view.TabClosed // not a team id
+	closedRow = view.TeamRow   // + team id: the selectable line of a team (a live one, or listed as one line)
+	goneRow   = view.GoneRow   // + team id: the selectable line of a team's folded gone members
 )
 
 func newTopModel(c *Client, dir string) *topModel {
@@ -167,10 +163,10 @@ func newTopModel(c *Client, dir string) *topModel {
 
 // topKeys are top's keys; the footer shows the short list, ? the full one.
 type topKeys struct {
-	Next, Prev, Up, Down, Preview, Pane, Close, Events, Notices, Mouse, Kill, Help, Quit key.Binding
-	PgUp, PgDown, Home, End                                                              key.Binding // ? only
-	Model                                                                                key.Binding
-	mouseOn                                                                              bool // what the m entry says
+	Next, Prev, Up, Down, Preview, Close, Events, Notices, Mouse, Kill, Help, Quit key.Binding
+	PgUp, PgDown, Home, End                                                        key.Binding // ? only
+	Model                                                                          key.Binding
+	mouseOn                                                                        bool // what the m entry says
 }
 
 func newTopKeys() topKeys {
@@ -183,7 +179,6 @@ func newTopKeys() topKeys {
 		Up:      b([]string{"up", "k"}, "↑/↓", "select"),
 		Down:    b([]string{"down", "j"}, "↑/↓", "select"),
 		Preview: b([]string{"enter"}, "enter", "open/close"),
-		Pane:    b([]string{"t"}, "t", "overview/tail"),
 		Close:   b([]string{"esc"}, "esc", "back"),
 		Events:  b([]string{"e"}, "e", "events"),
 		Notices: b([]string{"n"}, "n", "notices"),
@@ -205,7 +200,7 @@ func (k topKeys) ShortHelp() []key.Binding { return append(k.look(), k.act()...)
 // look is the footer's first line: move and look. act is the second: act and toggle, with the short
 // names of the keys whose full list entry is longer.
 func (k topKeys) look() []key.Binding {
-	return []key.Binding{k.Down, k.Next, k.Preview, k.Close, k.Pane}
+	return []key.Binding{k.Down, k.Next, k.Preview, k.Close}
 }
 
 func (k topKeys) act() []key.Binding {
@@ -225,7 +220,7 @@ func onOff(on bool) string {
 
 func (k topKeys) FullHelp() [][]key.Binding {
 	k.Mouse.SetHelp("m", "mouse "+onOff(k.mouseOn)+" (off: select text)")
-	return [][]key.Binding{{k.Next, k.Prev}, {k.Down, k.PgUp, k.Home}, {k.Preview, k.Pane, k.Close}, {k.Events, k.Notices, k.Mouse, k.Kill, k.Model, k.Help, k.Quit}}
+	return [][]key.Binding{{k.Next, k.Prev}, {k.Down, k.PgUp, k.Home}, {k.Preview, k.Close}, {k.Events, k.Notices, k.Mouse, k.Kill, k.Model, k.Help, k.Quit}}
 }
 
 // tailState follows one log incrementally: a worker's run log or a session's transcript.
@@ -263,7 +258,8 @@ func (m *topModel) Init() tea.Cmd { return m.fetch() }
 // fetch reads the snapshot and, when on, the selected participant's new log lines. One fetch is in
 // flight at a time (the next is scheduled when it lands), so the client is not shared.
 func (m *topModel) fetch() tea.Cmd {
-	sel, on, tail, logs := m.sel, m.sideShown() && m.sideTab == sideTail && m.tailable(m.sel), m.tail, m.logs
+	sel, _ := m.tailTarget()
+	on, tail, logs := m.sideShown() && m.tailable(sel), m.tail, m.logs
 	return func() tea.Msg {
 		var f fetched
 		if _, f.err = m.c.CallInto(proto.VerbPs, core.StateArgs{Events: topEvents}, &f.ps); f.err != nil {
@@ -395,8 +391,6 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.toggleRow(m.sel) {
 				m.toggleSide()
 			}
-		case key.Matches(msg, k.Pane):
-			m.side, m.sideTab = true, 1-m.sideTab // the tail comes with the next fetch
 		case key.Matches(msg, k.Close):
 			if m.narrow() {
 				m.full = false // back to the list
@@ -454,7 +448,7 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.ps, m.logs, m.loaded = msg.ps, msg.logs, true
-		if msg.tail.worker == m.sel {
+		if id, _ := m.tailTarget(); msg.tail.worker == id { // a team's line follows its gate's
 			m.tail = msg.tail
 		}
 		m.keepSel()
@@ -666,7 +660,7 @@ func (m *topModel) move(d int) {
 }
 
 // click acts on what the last frame drew at x, y: a tab switches to it, a row selects it (the
-// selected row toggles the sidebar), a sidebar title switches the sidebar to it.
+// selected row toggles the sidebar).
 func (m *topModel) click(x, y int) tea.Cmd {
 	h, ok := m.at(x, y)
 	switch {
@@ -677,8 +671,6 @@ func (m *topModel) click(x, y int) tea.Cmd {
 		if mem, _ := m.selMember(); mem != nil && mem.ID == h.pick {
 			return m.openPicker(*mem)
 		}
-	case h.side >= 0:
-		m.side, m.sideTab = true, h.side
 	case strings.HasPrefix(h.id, closedRow) || strings.HasPrefix(h.id, goneRow):
 		m.sel = h.id
 		m.toggleRow(h.id)
@@ -740,6 +732,29 @@ func (m *topModel) toggleSide() {
 	} else {
 		m.side = !m.side
 	}
+}
+
+// tailTarget is whose Tail the sidebar shows: the selected member or solo, or for a team's line (or
+// its gone members' line) the team's gate (gate true; id "" when the team has none).
+func (m *topModel) tailTarget() (id string, gate bool) {
+	team, ok := strings.CutPrefix(m.sel, closedRow)
+	if !ok {
+		team, ok = strings.CutPrefix(m.sel, goneRow)
+	}
+	if !ok {
+		return m.sel, false
+	}
+	for _, t := range teamsOf(m.ps) {
+		if t.ID != team {
+			continue
+		}
+		for _, mem := range t.Members {
+			if mem.Gate {
+				return mem.ID, true
+			}
+		}
+	}
+	return "", true
 }
 
 // tailable reports whether id has a log to tail: a driver log (capability usage), or a
