@@ -166,7 +166,8 @@ func TestCodexHookDriftIsOutdated(t *testing.T) {
 	}
 }
 
-// `setup --outdated` runs setup for what is installed and outdated, and only that: Codex with a
+// `setup --outdated` runs setup for what is installed and outdated, and only that (the home files it
+// writes first are not an integration): Codex with a
 // config block from before the integers is written again; Claude, which is not installed (files
 // left in ~/.piggery/claude are not an install), is not touched; the second run says all is current.
 func TestSetupOutdatedUpdatesWhatIsInstalled(t *testing.T) {
@@ -195,7 +196,7 @@ func TestSetupOutdatedUpdatesWhatIsInstalled(t *testing.T) {
 		return out.String(), err
 	}
 	out, err := run()
-	if err != nil || !strings.Contains(out, "codex: updated (v0 < v1)") || strings.Contains(out, "claude") {
+	if err != nil || !strings.Contains(out, "codex: updated (v0 < v1)") || strings.Contains(out, "claude: ") {
 		t.Fatalf("first run: %q, %v", out, err)
 	}
 	if i, _ := integrationOf(dir, "codex"); i.outdated() {

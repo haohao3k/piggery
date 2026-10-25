@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -491,5 +492,45 @@ func TestAdminNameSkipsGoneMembersOfClosedTeams(t *testing.T) {
 	}
 	if _, err := f.e.Kill(ctx, core.AdminTarget{Target: "lead2"}); err == nil || !strings.Contains(err.Error(), "pass --team") {
 		t.Fatalf("kill lead2 with both teams closed: %v; want the ambiguity", err)
+	}
+}
+
+// gc cuts the run logs of a participant gone longer than a week in a team that is still open
+// (and of a gone solo), by its id and current run. A live one, one gone only lately, and one of a
+// team that is closed are left to the other steps: the team's logs go with it, when it is deleted.
+func TestGCTrimsTheLogsOfLongGoneParticipantsOfOpenTeams(t *testing.T) {
+	f := newGCFixture(t, "open", "closed", "fresh")
+	id := func(team, name string) string { return f.who[team][name].ParticipantID }
+	day := int64(24 * time.Hour / time.Millisecond)
+	gone := func(pid string, daysAgo int64) {
+		t.Helper()
+		if _, err := f.db.Exec(`UPDATE participants SET state='gone', state_since=?, run_id='run-'||id WHERE id=?`,
+			f.now.UnixMilli()-daysAgo*day, pid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.e.TeamDown(ctx, core.TeamDownArgs{Team: "closed"}); err != nil {
+		t.Fatal(err)
+	}
+	gone(id("open", "lead"), 8)
+	gone(id("open", "lead2"), 8)
+	gone(id("closed", "lead2"), 8)
+	gone(id("fresh", "lead2"), 6)
+	got := map[string]string{}
+	place := core.GCPlace{ArchiveDir: f.dir, TrimLogs: func(key, run string, dry bool) (int64, error) {
+		got[key] = run
+		if key == id("open", "lead") { // one that cannot be cut does not stop the others
+			return 0, errors.New("disk says no")
+		}
+		return 10, nil
+	}}
+	res, err := f.e.GC(ctx, place, core.GCArgs{ClosedBeforeMs: 30 * day})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := id("open", "lead2")
+	if len(got) != 2 || got[want] != "run-"+want || res.LogsTrimmed != 1 || res.LogsFreed != 10 ||
+		len(res.LogsFailed) != 1 || !strings.Contains(res.LogsFailed[0], "disk says no") {
+		t.Fatalf("trimmed %v, result %+v; want only the open team's two workers gone 8 days, with their runs, one failing", got, res)
 	}
 }

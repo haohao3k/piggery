@@ -40,7 +40,7 @@ func (e *Engine) deliver(participantID string, d RuntimeDriver) {
 			p.run).Scan(&n); err != nil {
 			return internal(err)
 		}
-		text, err := t.giveMailWhere(p, n, `to_id=? AND acked_at IS NULL AND held_reason IS NULL
+		text, err := t.giveMailWhere(p, n, 0, `to_id=? AND acked_at IS NULL AND held_reason IS NULL
 			AND id NOT IN (SELECT d.message_id FROM deliveries d JOIN batches b ON b.run_id=d.run_id AND b.batch_seq=d.batch_seq
 				WHERE d.run_id=? AND b.ended_at IS NULL AND b.completed_at IS NULL)`, p.id, p.run)
 		if err != nil || text == "" {

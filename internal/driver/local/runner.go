@@ -498,22 +498,7 @@ func (d *Driver) Tail(participantID string, n int) ([]json.RawMessage, error) {
 	if w == nil {
 		return nil, fmt.Errorf("no worker for participant %s", participantID)
 	}
-	b, err := os.ReadFile(w.logPth)
-	if err != nil {
-		return nil, err
-	}
-	lines := bytes.Split(bytes.TrimRight(b, "\n"), []byte("\n"))
-	if len(b) == 0 {
-		lines = nil
-	}
-	if n > 0 && len(lines) > n {
-		lines = lines[len(lines)-n:]
-	}
-	out := make([]json.RawMessage, len(lines))
-	for i, l := range lines {
-		out[i] = json.RawMessage(l)
-	}
-	return out, nil
+	return lastRecords(w.logPth, n)
 }
 
 // live returns the participant's worker while its process runs.

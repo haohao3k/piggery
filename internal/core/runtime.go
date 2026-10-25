@@ -159,6 +159,18 @@ func WithSharedPrompts(f func(template, role string) string) Option {
 	return func(e *Engine) { e.sharedPrompts = f }
 }
 
+// SpawnPin is what the Human's config.yaml `roles` sets for a role's workers: each field is "" when
+// it sets none. Values pass through as written; core never reads a harness's model names.
+type SpawnPin struct{ Harness, Model, Thinking string }
+
+// WithRoleSpawn sets where a worker's harness, model and thinking level can come from the Human's
+// config (config.yaml `roles`, matched by role and template in the server): f returns the pin for a
+// role of a template, each field already settled by the config's own order. It ranks above the
+// manifest's deprecated spawn.harness|model|thinking and below a harness given for a resume.
+func WithRoleSpawn(f func(template, role string) SpawnPin) Option {
+	return func(e *Engine) { e.roleSpawn = f }
+}
+
 // driverNamed is the driver of harness h, nil when none runs it.
 func (e *Engine) driverNamed(h string) RuntimeDriver {
 	for _, d := range e.runtimes {

@@ -34,6 +34,8 @@ func checkFiles(dir string) checkReport {
 		}
 		_, warns := server.CheckPrompts(dir, set.Prompts)
 		r.Warnings = append(r.Warnings, warns...)
+		_, warns = server.CheckRoles(dir, set.Roles)
+		r.Warnings = append(r.Warnings, warns...)
 	}
 	if _, legacy := server.NotifyHooks(dir); legacy {
 		r.Warnings = append(r.Warnings, filepath.Join(dir, "hooks", "notify")+" is no longer run: move it into "+server.NotifyHooksDir(dir)+"/")
@@ -41,15 +43,23 @@ func checkFiles(dir string) checkReport {
 	for _, err := range local.CheckProfiles(dir) {
 		r.Errors = append(r.Errors, err.Error())
 	}
+	errs, warns := checkTemplates(dir, true)
+	r.Errors, r.Warnings = append(r.Errors, errs...), append(r.Warnings, warns...)
+	return r
+}
+
+// checkTemplates is what loading every template of the home (and the built-ins not unpacked yet) refuses
+// and warns about, one line each, "<manifest path>: <what>".
+func checkTemplates(dir string, detail bool) (errs, warns []string) {
 	templates := map[string]string{} // manifest path -> the self-contained manifest
 	if listed, err := manifests.List(dir); err != nil {
-		r.Errors = append(r.Errors, err.Error())
+		errs = append(errs, err.Error())
 	} else {
 		for _, l := range listed {
 			path := filepath.Join(l.From, manifests.ManifestFile)
 			text, err := manifests.Resolve(l.Name, dir)
 			if err != nil {
-				r.Errors = append(r.Errors, fmt.Sprintf("%s: %v", path, err))
+				errs = append(errs, fmt.Sprintf("%s: %v", path, err))
 				continue
 			}
 			templates[path] = text
@@ -59,7 +69,7 @@ func checkFiles(dir string) checkReport {
 				continue
 			}
 			if text, err := manifests.Builtin(name); err != nil {
-				r.Errors = append(r.Errors, fmt.Sprintf("built-in template %s: %v", name, err))
+				errs = append(errs, fmt.Sprintf("built-in template %s: %v", name, err))
 			} else {
 				templates["built-in template "+name] = text
 			}
@@ -71,15 +81,19 @@ func checkFiles(dir string) checkReport {
 	}
 	slices.Sort(paths)
 	for _, p := range paths {
-		warns, err := core.CheckManifest(templates[p])
-		if err != nil {
-			r.Errors = append(r.Errors, fmt.Sprintf("%s: %v", p, err))
+		check := core.CheckManifestShort
+		if detail {
+			check = core.CheckManifest
 		}
-		for _, w := range warns {
-			r.Warnings = append(r.Warnings, fmt.Sprintf("%s: %s", p, w))
+		ws, err := check(templates[p])
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", p, err))
+		}
+		for _, w := range ws {
+			warns = append(warns, fmt.Sprintf("%s: %s", p, w))
 		}
 	}
-	return r
+	return errs, warns
 }
 
 // check is `piggery check`: local, no daemon. Like doctor: the errors, then `warning:` lines; exit 1

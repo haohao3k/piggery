@@ -27,7 +27,7 @@ routing:
   - {from: lead, to: notify, allow: true}
   - {from: lead, to: worker, allow: true}
 timers:
-  - {on: worker, notify: notify, silent_for: 10m}
+  - {on: worker, notify: notify, working_for: 10m}
 `
 	warns, err := core.CheckManifest(man)
 	if err != nil || len(warns) != 2 {

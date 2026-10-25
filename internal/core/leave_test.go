@@ -273,7 +273,7 @@ func TestLeaverGetsNoCCCopyOrRoleNotice(t *testing.T) {
 	const man = "template: cc\nauto_join_role: owner\nroles:\n" +
 		"  owner: {tools: [send, inbox, who, agent], can_spawn: [dev, rev]}\n  dev: {tools: [send, inbox]}\n  rev: {tools: [send, inbox, who, agent]}\n" +
 		"routing:\n  - {from: dev, to: owner, allow: true, cc: [rev]}\n" +
-		"limits: {depth: 2, concurrency: 2}\ntimers:\n  - {on: dev, silent_for: 1m, notify: rev}\n"
+		"limits: {depth: 2, concurrency: 2}\ntimers:\n  - {on: dev, working_for: 1m, notify: rev}\n"
 	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 	e := core.New(db, core.WithClock(func() time.Time { return now }),
 		core.WithTemplates(func(string, string) (string, error) { return man, nil }))

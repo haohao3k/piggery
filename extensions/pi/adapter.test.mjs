@@ -141,3 +141,38 @@ test("mail steered at the run's last boundary keeps the turn open: pi runs on wi
 	assert.deepEqual(shown.at(-1), { text: "#955", steer: true });
 	assert.deepEqual(calls.filter((c) => c.event === "turn_end"), [{ event: "turn_end", prompt_id: "k1", outcome: "ok" }]);
 });
+
+test("seen: a give is seen once its text entered the context and a model turn after it ended well", async () => {
+	let n = 0;
+	const { turns, calls } = setup((a) => (a.event === "turn_end" || a.event === "tool_boundary" && n >= 2 ? {} : { text: `mail ${++n}`, part: n }));
+	turns.agentStart(); // turn_start gives part 1
+	await turns.drain();
+	turns.messageIn("something the human typed"); // no give: nothing seen
+	turns.toolBoundary(true);
+	await turns.drain(); // that boundary gives part 2
+	assert.equal(calls.at(-1).seen, undefined);
+	turns.messageIn("mail 1");
+	turns.toolBoundary(false); // the model turn failed: not seen
+	turns.messageIn("mail 2");
+	turns.toolBoundary(true);
+	turns.toolBoundary(true); // nothing new: no seen again
+	await turns.drain();
+	assert.deepEqual(calls.filter((c) => c.event === "tool_boundary").map((c) => c.seen), [undefined, undefined, 2, undefined]);
+	await turns.beforeSettle("completed");
+	turns.settled();
+	turns.agentStart(); // a new turn starts counting again: an old text is not its give
+	turns.messageIn("mail 2");
+	turns.toolBoundary(true);
+	await turns.drain();
+	assert.equal(calls.at(-1).seen, undefined);
+	// The reply that read a give ends before its tools run (a long one): seen goes then, once.
+	turns.messageIn("mail 3");
+	const before = calls.length;
+	turns.answered(false); // an aborted reply read nothing
+	await turns.drain();
+	assert.equal(calls.length, before);
+	turns.answered(true);
+	turns.toolBoundary(true); // the tools ended: nothing new to say
+	await turns.drain();
+	assert.deepEqual(calls.slice(before).map((c) => c.seen), [3, undefined]);
+});

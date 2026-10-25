@@ -41,7 +41,7 @@ with two lenses on different models), `advisor` (read-only advice on a hard deci
 its own branch, a refinery merges them one at a time). Each one
 is drawn, with when to pick it, in [manifests/README.md](../manifests/README.md).
 
-**Mixing harnesses.** A role can name a harness (`spawn: {harness: claude}` in the template); a
+**Mixing harnesses.** A role can name a harness (`roles:` in `config.yaml`, below); a
 role that names none uses the harness of the session that founded the team, and a founder with none
 uses `harness:` in `config.yaml`. So a pi gate can have Claude workers and a Codex reviewer. Each
 harness needs its `piggery setup <harness>` and, for workers, its profile (the daemon writes a
@@ -225,7 +225,12 @@ sender sees nothing.
   `~/.piggery/archive/`, read back, and deleted with their logs and scratch files; archives older
   than `gc.archive_keep` (30 days) are deleted. By hand: `piggery gc --closed-before 168h
   --dry-run`, then without `--dry-run`; `piggery archive show <file>` reads an archive. Your
-  harnesses' own session files are never touched. A closed team or gone solo that sent mail still
+  harnesses' own session files are never touched. The same run also cuts the run logs of a
+  worker gone for more than 7 days in a team that is still open: the logs of its older runs are
+  deleted, the last run keeps its final 1000 records (at most 5 MB) and its stderr the final 64 KB.
+  `top` shows the same context and turns after the cut; the older lines are gone from `piggery
+  tail`. It is not a setting, and `gc.closed_after: off` turns it off with the rest of the run.
+  A closed team or gone solo that sent mail still
   unread by someone who can read it (a live session, or a member of a team that is still open or
   closed more recently) is kept until that mail is read.
 
@@ -239,7 +244,7 @@ Everything piggery keeps is in `~/.piggery`. Some of it is yours to edit; the re
 | `templates/<name>/` | yes | team templates: `manifest.yaml` and the prompt files it names |
 | `harness/<harness>.json` | yes | how workers of one harness start (command, model, blacklist) |
 | `hooks/notify.d/` | yes | your notification hooks (above) |
-| `rules/*.md`, any file you name | yes | your own rules for `prompts:` (below); `rules/general-policy.md` comes with piggery for `lead-peer` and `slp` |
+| `rules/*.md`, any file you name | yes | your own rules for `prompts:` (below); `rules/general-policy.md` comes with piggery for `lead-peer` and `slp` (a role a newer piggery adds is put into your entry once; one you remove stays removed) |
 | `serve.log` | read | the daemon's log: **where problems are written** |
 | `piggery.db`, `piggery.sock`, `piggery.lock`, `admin.token` | no | state, socket, lock, your admin credential (on Windows the daemon listens on a named pipe, for your user only, and `piggery.pipe` holds its name instead of `piggery.sock`) |
 | `logs/`, `run/`, `sessions/`, `archive/`, `backups/`, `cache/`, `plugins/` | no | worker logs, scratch of running workers, session data, gc archives, database copies, cached reads, copies of piggery's adapters |
@@ -273,11 +278,10 @@ harness: claude        # pi, claude, codex, omp, dsh or opencode
 ```
 
 **Model and thinking for a harness's workers, or for one role.** A worker runs the first of: the
-role's `spawn.model` in the template, the harness profile's `model`, the model of the session that
-began the spawn chain, the harness default. `inherit` (the default) means "keep going down the
-chain". Thinking follows the same chain, in the harness's own levels. Pin the harness when you pin
-a model: names and levels belong to one harness (`piggery check` warns when a role sets `spawn.model` or
-`spawn.thinking` and leaves `spawn.harness` as `inherit`).
+`roles:` entry in `config.yaml`, the harness profile's `model`, the model of the session that
+began the spawn chain, the harness default. A field you leave out (or write as `inherit`) means "keep
+going down the chain". Thinking follows the same chain, in the harness's own levels. Pin the harness
+when you pin a model: names and levels belong to one harness.
 
 ```jsonc
 // harness/claude.json: every Claude worker
@@ -285,11 +289,22 @@ a model: names and levels belong to one harness (`piggery check` warns when a ro
 ```
 
 ```yaml
-# templates/mine/manifest.yaml: workers of this role only
+# config.yaml: your pins, not the template's, so a template update never touches them
 roles:
-  reviewer:
-    spawn: {harness: codex, model: gpt-5, thinking: high}
+  mine/reviewer: {harness: codex, model: gpt-5, thinking: high}   # one role of one template
+  slp/*:         {model: sonnet}                                  # every role of a template
+  oracle:        {harness: codex}                                 # this role in any template
+  "*":           {thinking: high}                                 # everything else
 ```
+
+Each field comes from the first entry that sets it, in the order above (the specific before the
+general), so `slp/*` can set the model for the whole template while `slp/lead` changes only
+its harness. An entry piggery cannot use (a role the template lacks, an unknown harness) is skipped
+with a warning at daemon start. A template's own `spawn.harness|model|thinking` still work, one rank
+under this, but are deprecated: piggery moves them into `roles:` itself when it starts a new version
+(`setup` does too when no daemon runs), keeping what each role runs with and copies of the old files in
+`~/.piggery/templates/.backup/migrate-<time>/`. A template it cannot edit exactly keeps them, and
+`piggery check` says which `roles:` line replaces them.
 
 Change a running worker with `piggery model w1 <model>`. A level the harness does not run for that
 model is an error at spawn, never a silent downgrade.
@@ -333,18 +348,24 @@ denied), the limits and the timers:
 template: mine                 # the template's name
 roles:
   lead: {tools: [send, inbox, who, agent], can_spawn: [peer], instructions_file: prompts/lead.md}
-  peer: {tools: [send, inbox, who], spawn: {model: inherit}}
+  peer: {tools: [send, inbox, who]}
 routing:
   - {from: lead, to: peer, allow: true}
   - {from: peer, to: lead, allow: true, cc: [lead]}
 limits: {depth: 2, concurrency: 4, messages_per_participant_per_minute: 30}
 timers:
-  - {on: peer, silent_for: 20m, notify: reports_to}   # nudge when a worker is silent that long
+  - {on: peer, working_for: 20m, notify: reports_to}  # nudge when a worker works that long with no turn end
 ```
 
-`piggery` keeps a built-in you never edited up to date; a file you edited or deleted is left as it
-is, and your own templates are never touched. `piggery template new` copies the current built-in
-under a new name if you want the newer version of one you edited. Every key of a manifest is in
+`piggery` keeps a built-in you never edited up to date. A template is one block: if you edited,
+deleted or added any file in it, the whole template is left as it is (so it never ends up half old,
+half new), and your own templates are never touched. `piggery template list` marks such a built-in
+`built-in, edited`. To get the current version of one you edited, run
+`piggery template update <name>` (it lists what differs and changes nothing) and then
+`piggery template update <name> --force`: your copy is moved whole to
+`~/.piggery/templates/.backup/<name>-<time>/` and the built-in is written, so the next upgrade
+keeps it current again. Teams already running keep the version they were founded with.
+`piggery template new` copies the current built-in under a new name instead. Every key of a manifest is in
 [reference.md](reference.md#manifest).
 
 **Where workers run.** A worker starts in its spawner's directory. To put workers in lanes (a git
@@ -375,15 +396,21 @@ Remove a column to hide it; the name is always shown.
 - **Outdated integrations.** After an upgrade the daemon brings the pi, omp, dsh and opencode extensions up to date
   itself. Claude Code and Codex are only reported: `ps` and `top` show `outdated: codex (v0 < v1):
   piggery setup --outdated`. Run that command: it updates every installed integration that is outdated
-  and says what to do next (restart the sessions that were open).
+  and says what to do next (restart the sessions that were open). It also brings the built-in templates
+  and shared prompts up to date; the ones you changed it keeps unless you tick them (see Upgrade).
 - **A worker does not start.** Its harness profile is wrong (the daemon and `piggery setup` write a missing one; `piggery setup --force` resets it),
   or the harness has no login for the daemon's `HOME`. `piggery tail <worker>` shows the harness's
   own error.
 - **Upgrade.** `piggery update` installs the latest release in place of the running binary (its
-  checksum is verified; `--check` only prints versions; a build from source needs `--force`), or run
-  the install script again. On Windows the binary it replaced stays beside the new one as
+  checksum is verified; `--check` only prints versions; a build from source needs `--force`) and then
+  runs the new `piggery setup --outdated`. If you installed another way (the install script),
+  run `piggery setup --outdated` yourself; once per version a command on a terminal reminds you. Coming from
+  v0.10 or older, the old `update` cannot run that second step: type `piggery setup --outdated` yourself. That step
+  lists the built-in templates and shared prompts you edited: tick the ones to replace with the
+  built-in (your copy goes to `.backup`), or answer without asking: `--replace slp,general-policy|all|none`. On Windows the binary it replaced stays beside the new one as
   `piggery.exe.old` until the next upgrade; delete it when you like. The daemon restarts at the next command; before a database upgrade it
-  copies the database to `~/.piggery/backups/` (the three newest are kept). `piggery restart`
+  copies the database to `~/.piggery/backups/` (the three newest are kept). The `pig` alias the installer
+  made follows the update (on Windows `pig update` replaces `piggery.exe` and links `pig.exe` to it again). `piggery restart`
   restarts it now.
   Once a day the daemon checks for a newer release: `top`, `ps --view` and `setup` then say `vX
   available: piggery update`, and nothing is installed on its own. `update.check: false` in

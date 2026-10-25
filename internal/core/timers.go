@@ -76,6 +76,14 @@ func (e *Engine) WatchList(ctx context.Context, c Caller) ([]Timer, error) {
 // FireDue fires active timers with fire_at <= now: one message from "engine" to the target,
 // event timer_fired, then deactivate (or reschedule when every_ms > 0). Called by serve's ticker.
 func (e *Engine) FireDue(ctx context.Context) (int, error) {
+	// One read first: a transaction every second with nothing due wakes the CPU for nothing.
+	var due int
+	if err := e.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM timers WHERE active=1 AND fire_at<=?)`, e.now().UnixMilli()).Scan(&due); err != nil {
+		return 0, internal(err)
+	}
+	if due == 0 {
+		return 0, nil
+	}
 	var targets []string
 	err := e.inTx(ctx, func(t *txn) error {
 		targets = nil
@@ -89,7 +97,7 @@ func (e *Engine) FireDue(ctx context.Context) (int, error) {
 				return internal(err)
 			}
 			id := newID(t.now)
-			if _, err := t.insertMessage(id, "", team, AddrEngine, tm.Target, "", "", "", "", tm.Body); err != nil {
+			if _, err := t.insertMessage(id, "", team, AddrEngine, tm.Target, "", "", "", tm.Body); err != nil {
 				return err
 			}
 			if tm.EveryMs > 0 {

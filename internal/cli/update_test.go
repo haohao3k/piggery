@@ -138,3 +138,69 @@ func TestUpdateOnWindowsMovesTheOldBinaryAside(t *testing.T) {
 		}
 	}
 }
+
+// pig.exe, the alias the Windows installer makes, is a hard link to piggery.exe. An update must keep it
+// one: run as pig.exe it replaces the piggery.exe beside it (not itself, which would leave pig.exe a copy
+// and piggery.exe old), and either way pig.exe steps aside as pig.exe.old and is linked to the new binary.
+// A pig.exe that is not a link to piggery.exe is someone else's and stays as it is. goos is the updater's,
+// so every OS runs this.
+func TestUpdateKeepsPigExeLinked(t *testing.T) {
+	for _, c := range []struct {
+		name, runAs string
+		linked      bool
+	}{
+		{"run as pig.exe", "pig.exe", true},
+		{"run as piggery.exe", "piggery.exe", true},
+		{"someone else's pig.exe", "piggery.exe", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir, err := filepath.EvalSymlinks(t.TempDir()) // exePath resolves links; so must the expectation
+			if err != nil {
+				t.Fatal(err)
+			}
+			main, pig := filepath.Join(dir, "piggery.exe"), filepath.Join(dir, "pig.exe")
+			if err := os.WriteFile(main, []byte("v1"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if c.linked {
+				if err := os.Link(main, pig); err != nil {
+					t.Skipf("no hard links here: %v", err)
+				}
+			} else if err := os.WriteFile(pig, []byte("not piggery"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			u := updater{exe: filepath.Join(dir, c.runAs), goos: "windows"}
+			for _, v := range []string{"v2", "v3"} { // the second finds a pig.exe.old to replace
+				exe, err := u.exePath()
+				if err != nil || exe != main {
+					t.Fatalf("the file to replace is %q, %v; want %s", exe, err, main)
+				}
+				tmp := filepath.Join(dir, ".piggery-update-new")
+				if err := os.WriteFile(tmp, []byte(v), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := putBinary(tmp, exe, "windows"); err != nil {
+					t.Fatal(err)
+				}
+				if b, _ := os.ReadFile(main); string(b) != v {
+					t.Fatalf("piggery.exe is %q after the update to %s", b, v)
+				}
+			}
+			b, _ := os.ReadFile(pig)
+			if !c.linked {
+				if string(b) != "not piggery" || fileExists(pig+".old") {
+					t.Fatalf("a pig.exe that is not ours was touched: %q", b)
+				}
+				return
+			}
+			if string(b) != "v3" || !sameFile(pig, main) {
+				t.Fatalf("pig.exe is %q, linked=%v; want the new binary, one file with piggery.exe", b, sameFile(pig, main))
+			}
+			if old, _ := os.ReadFile(pig + ".old"); string(old) != "v2" {
+				t.Fatalf("pig.exe.old is %q; want the pig.exe it replaced (v2)", old)
+			}
+		})
+	}
+}
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }

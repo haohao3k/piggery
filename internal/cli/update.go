@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -149,13 +151,8 @@ func (u updater) install(ctx context.Context, r release) error {
 		return fmt.Errorf("%s: sha256 %s does not match checksums.txt (%s); nothing replaced", name, hex.EncodeToString(sum[:]), want)
 	}
 
-	exe := u.exe
-	if exe == "" {
-		if exe, err = os.Executable(); err != nil {
-			return err
-		}
-	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil { // replace the file, not a symlink to it
+	exe, err := u.exePath()
+	if err != nil {
 		return err
 	}
 	mode := fs.FileMode(0o755)
@@ -188,14 +185,49 @@ func (u updater) install(ctx context.Context, r release) error {
 	return putBinary(tmp.Name(), exe, u.goos)
 }
 
+// exePath is the file `update` replaces: the running binary (or u.exe), not a symlink to it. On
+// Windows `pig.exe` is a hard link to piggery.exe, which EvalSymlinks does not follow: run as pig.exe,
+// the file to replace is the piggery.exe beside it, so that pig.exe is not turned into a separate copy.
+func (u updater) exePath() (string, error) {
+	exe := u.exe
+	if exe == "" {
+		var err error
+		if exe, err = os.Executable(); err != nil {
+			return "", err
+		}
+	}
+	exe, err := filepath.EvalSymlinks(exe)
+	if err != nil || u.goos != "windows" {
+		return exe, err
+	}
+	if main := filepath.Join(filepath.Dir(exe), "piggery.exe"); !strings.EqualFold(exe, main) && sameFile(exe, main) {
+		return main, nil
+	}
+	return exe, nil
+}
+
+// sameFile reports whether a and b are one file (a hard link to the other).
+func sameFile(a, b string) bool {
+	sa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	sb, err := os.Stat(b)
+	return err == nil && os.SameFile(sa, sb)
+}
+
 // putBinary moves the new binary tmp to exe. A rename replaces a binary atomically, running or not,
 // everywhere but on Windows: a running program can be renamed there, not replaced or deleted. So
 // there the old binary steps aside first, as exe+".old" (in place of the one an earlier update
-// left), and stays until the next update or until someone deletes it.
+// left), and stays until the next update or until someone deletes it. A pig.exe beside it that is a
+// hard link to it (the alias the installer makes) would stay a link to the old file: it steps aside
+// the same way, as pig.exe.old, and is linked to the new one. Any other pig.exe is not ours.
 func putBinary(tmp, exe, goos string) error {
 	if goos != "windows" {
 		return os.Rename(tmp, exe)
 	}
+	pig := filepath.Join(filepath.Dir(exe), "pig.exe")
+	ours := !strings.EqualFold(pig, exe) && sameFile(pig, exe)
 	old := exe + ".old"
 	if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("cannot remove %s, which an earlier update left (a daemon of that version may still run: piggery shutdown): %w", old, err)
@@ -206,6 +238,17 @@ func putBinary(tmp, exe, goos string) error {
 	if err := os.Rename(tmp, exe); err != nil {
 		os.Rename(old, exe) // back where it was: nothing replaced
 		return err
+	}
+	if ours {
+		if err := os.Remove(pig + ".old"); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%s is updated, but pig.exe still is the old one: cannot remove %s: %w", exe, pig+".old", err)
+		}
+		if err := os.Rename(pig, pig+".old"); err != nil {
+			return fmt.Errorf("%s is updated, but pig.exe still is the old one: %w", exe, err)
+		}
+		if err := os.Link(exe, pig); err != nil {
+			return fmt.Errorf("%s is updated, but pig.exe is gone: link it again (New-Item -ItemType HardLink -Path pig.exe -Target piggery.exe): %w", exe, err)
+		}
 	}
 	return nil
 }
@@ -240,12 +283,16 @@ func (u updater) run(ctx context.Context, w io.Writer, check, force bool) (bool,
 	return true, nil
 }
 
-// update is `piggery update [--check] [--force]`. A running daemon is shut down after the
-// binary is replaced; the next command starts the new one.
+// update is `piggery update [--check] [--force] [--replace <names>]`, the one command of an upgrade.
+// A running daemon is shut down after the binary is replaced; the next command starts the new one.
+// Then the new binary runs `setup --outdated` (this one cannot: it is the old code), with the same
+// terminal, so the list of changed templates can be answered; when this binary is already the
+// latest, it runs it itself. --check only looks at the versions.
 func (e *env) update(args []string) error {
 	fs := e.flags("update")
 	check := fs.Bool("check", false, "print the current and latest versions only")
 	force := fs.Bool("force", false, "install even over a dev build or the same version")
+	replace := fs.String("replace", "", "replace the built-in templates and shared prompts you changed, without asking: <name,…|all|none>")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -253,19 +300,45 @@ func (e *env) update(args []string) error {
 	if len(pos) != 0 {
 		return fmt.Errorf("%w: update takes no arguments", errUsage)
 	}
+	replaceSet := false
+	fs.Visit(func(f *flag.Flag) { replaceSet = replaceSet || f.Name == "replace" })
+	if replaceSet && *check {
+		return fmt.Errorf("%w: --replace and --check do not go together (--check only looks)", errUsage)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	u := updater{api: latestRelease, goos: runtime.GOOS, goarch: runtime.GOARCH, client: http.DefaultClient}
+	if e.upd != nil {
+		u = *e.upd
+	}
 	replaced, err := u.run(ctx, e.stdout, *check, *force)
-	if err != nil || !replaced {
+	if err != nil || *check {
 		return err
+	}
+	setup := []string{"--outdated"}
+	if replaceSet {
+		setup = append(setup, "--replace="+*replace)
+	}
+	if !replaced {
+		return e.setup(setup) // already the latest: the same second step, by this binary
 	}
 	if c, err := Dial(e.dir, false); err == nil { // a daemon runs the old binary: stop it
 		c.Close()
 		if _, err := os.Stat(server.AdminTokenPath(e.dir)); err == nil {
 			e.admin = true
-			return e.shutdown(nil)
+			if err := e.shutdown(nil); err != nil {
+				return err
+			}
 		}
+	}
+	exe, err := u.exePath()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, append([]string{"setup"}, setup...)...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, e.stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("the new piggery's `setup --outdated` failed (%w); run it again by hand", err)
 	}
 	return nil
 }

@@ -161,7 +161,7 @@ type SoloState struct {
 
 // pendingMail counts, per recipient, mail not yet acked: [unacked (deliverable), held].
 const pendingMail = `SELECT to_id, SUM(held_reason IS NULL), SUM(held_reason IS NOT NULL) FROM messages
-	WHERE acked_at IS NULL AND to_id NOT IN ('board', 'notify', 'engine') GROUP BY to_id`
+	WHERE acked_at IS NULL AND to_id NOT IN ('notify', 'engine') GROUP BY to_id`
 
 // State returns the operator snapshot.
 func (e *Engine) State(ctx context.Context, a StateArgs) (State, error) {
@@ -192,59 +192,59 @@ func (e *Engine) State(ctx context.Context, a StateArgs) (State, error) {
 			return internal(err)
 		}
 
+		gateOf := map[string]string{} // team -> its gate's participant id
 		teams, err := t.QueryContext(t.ctx, `SELECT id, name, template_name, root_cwd, created_at, COALESCE(parent_id,''),
-			COALESCE((SELECT name FROM participants WHERE id=teams.parent_id),''), gate_closed FROM teams WHERE closed_at IS NULL ORDER BY name`)
+			COALESCE((SELECT name FROM participants WHERE id=teams.parent_id),''), gate_closed, COALESCE(gate_id,'') FROM teams WHERE closed_at IS NULL ORDER BY name`)
 		if err != nil {
 			return internal(err)
 		}
 		for teams.Next() {
 			var ts TeamState
-			if err := teams.Scan(&ts.ID, &ts.Name, &ts.Template, &ts.Root, &ts.CreatedAt, &ts.ParentID, &ts.Parent, &ts.GateClosed); err != nil {
+			var gate string
+			if err := teams.Scan(&ts.ID, &ts.Name, &ts.Template, &ts.Root, &ts.CreatedAt, &ts.ParentID, &ts.Parent, &ts.GateClosed, &gate); err != nil {
 				teams.Close()
 				return internal(err)
 			}
+			gateOf[ts.ID] = gate
 			out.Teams = append(out.Teams, ts)
 		}
 		teams.Close()
 		if err := teams.Err(); err != nil {
 			return internal(err)
 		}
-		for i := range out.Teams {
-			if err := t.teamMembers(&out.Teams[i], pending); err != nil {
-				return err
-			}
-		}
 		// Closed teams gc has not removed yet, newest first, with who closed them.
 		closed, err := t.QueryContext(t.ctx, `SELECT id, name, template_name, root_cwd, closed_at, created_at, COALESCE(parent_id,''),
-			COALESCE((SELECT name FROM participants WHERE id=teams.parent_id),'') FROM teams
+			COALESCE((SELECT name FROM participants WHERE id=teams.parent_id),''), COALESCE(gate_id,''),
+			COALESCE((SELECT p.name FROM events e JOIN participants p ON p.id=e.participant
+				WHERE e.type='team_down' AND e.team_id=teams.id ORDER BY e.seq DESC LIMIT 1),'') FROM teams
 			WHERE closed_at IS NOT NULL ORDER BY closed_at DESC`)
 		if err != nil {
 			return internal(err)
 		}
 		for closed.Next() {
 			var c ClosedTeam
-			if err := closed.Scan(&c.ID, &c.Name, &c.Template, &c.Root, &c.ClosedAt, &c.CreatedAt, &c.ParentID, &c.Parent); err != nil {
+			var gate string
+			if err := closed.Scan(&c.ID, &c.Name, &c.Template, &c.Root, &c.ClosedAt, &c.CreatedAt, &c.ParentID, &c.Parent, &gate, &c.ClosedBy); err != nil {
 				closed.Close()
 				return internal(err)
 			}
+			gateOf[c.ID] = gate
 			out.Closed = append(out.Closed, c)
 		}
 		closed.Close()
 		if err := closed.Err(); err != nil {
 			return internal(err)
 		}
+		// Members, gates and assignments of every team, open and closed, one query each (not one per team).
+		var all []*TeamState
+		for i := range out.Teams {
+			all = append(all, &out.Teams[i])
+		}
 		for i := range out.Closed {
-			c := &out.Closed[i]
-			if err := t.teamMembers(&c.TeamState, pending); err != nil {
-				return err
-			}
-			var by sql.NullString
-			err := t.QueryRowContext(t.ctx, `SELECT p.name FROM events e JOIN participants p ON p.id=e.participant
-				WHERE e.type='team_down' AND e.team_id=? ORDER BY e.seq DESC LIMIT 1`, c.ID).Scan(&by)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return internal(err)
-			}
-			c.ClosedBy = by.String
+			all = append(all, &out.Closed[i].TeamState)
+		}
+		if err := t.fillTeams(all, gateOf, pending); err != nil {
+			return err
 		}
 
 		solos, err := t.QueryContext(t.ctx, `SELECT `+participantCols+`, cwd, created_at, COALESCE(session_model, model, ''), protocol_version,
@@ -293,48 +293,48 @@ func (e *Engine) State(ctx context.Context, a StateArgs) (State, error) {
 		}
 		evs.Close()
 		slices.Reverse(out.Events)
-		for _, ev := range out.Events {
-			for _, id := range []string{ev.Participant, ev.RefID} {
-				if _, done := out.Names[id]; done || id == "" {
-					continue
-				}
-				var name string
-				err := t.QueryRowContext(t.ctx, `SELECT name FROM participants WHERE id=?
-					UNION ALL SELECT '#' || seq FROM messages WHERE id=?`, id, id).Scan(&name)
-				if err != nil && !errors.Is(err, sql.ErrNoRows) {
-					return internal(err)
-				}
-				if err == nil { // a ref may also be a team: no label
-					out.Names[id] = name
-				}
-			}
+		names, err := t.eventNames(out.Events)
+		if err != nil {
+			return err
 		}
+		out.Names = names
 		return nil
 	})
 	return out, err
 }
 
-// teamMembers fills ts's gate and members (those that have not left, in the order they entered)
-// and its mail counts: every row of the team counts (a leaver's held mail too).
-func (t *txn) teamMembers(ts *TeamState, pending map[string][2]int) error {
-	gate, _, err := t.teamGate(ts.ID)
-	if err != nil {
-		return err
+// inList is "?,?,?" and the values as args, for an IN (...) over a batch.
+func inList[T any](vals []T) (string, []any) {
+	args := make([]any, len(vals))
+	for i, v := range vals {
+		args[i] = v
 	}
-	ts.Gate = gate.name
-	ts.Members = []MemberState{}
-	assigned, err := t.assignments(ts.ID)
+	return strings.TrimSuffix(strings.Repeat("?,", len(vals)), ","), args
+}
+
+// fillTeams fills each team's gate and members (those that have not left, in the order they entered)
+// and its mail counts: every row of the team counts (a leaver's held mail too). The rows of all
+// teams come from one query, then are dealt out by team: a snapshot of many teams is a handful of
+// queries, not several for every team and member (each query wakes the CPU).
+func (t *txn) fillTeams(teams []*TeamState, gateOf map[string]string, pending map[string][2]int) error {
+	byID := make(map[string]*TeamState, len(teams))
+	for _, ts := range teams {
+		ts.Members = []MemberState{}
+		byID[ts.ID] = ts
+	}
+	assigned, err := t.assignments()
 	if err != nil {
 		return err
 	}
 	rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+`, COALESCE(mode,''), last_turn_end, left_at,
 		COALESCE(session_model, model, ''), COALESCE(session_thinking, thinking, ''), COALESCE(capabilities, 'null'),
 		created_at, COALESCE(spawned_by, ''), cwd, protocol_version, transcript, transcript_format
-		FROM participants WHERE team_id=? ORDER BY `+joinOrder, ts.ID)
+		FROM participants WHERE team_id IS NOT NULL ORDER BY `+joinOrder)
 	if err != nil {
 		return internal(err)
 	}
 	defer rows.Close()
+	gateName := map[string]string{} // team -> the name of its gate, found among the team's own rows
 	for rows.Next() {
 		var mode, model, thinking, caps, spawnedBy, cwd string
 		var turn, left, proto sql.NullInt64
@@ -345,6 +345,13 @@ func (t *txn) teamMembers(ts *TeamState, pending map[string][2]int) error {
 		if err != nil {
 			return internal(err)
 		}
+		ts := byID[q.team]
+		if ts == nil {
+			continue
+		}
+		if q.id == gateOf[q.team] {
+			gateName[q.team] = q.name
+		}
 		n := pending[q.id]
 		ts.Unacked += n[0]
 		ts.Held += n[1]
@@ -352,7 +359,7 @@ func (t *txn) teamMembers(ts *TeamState, pending map[string][2]int) error {
 			continue
 		}
 		ts.Members = append(ts.Members, MemberState{ID: q.id, Name: q.name, Role: q.role, State: q.state,
-			Headless: mode == modeHeadless, Gate: q.id == gate.id, StateSince: q.stateSince,
+			Headless: mode == modeHeadless, Gate: q.id == gateOf[q.team], StateSince: q.stateSince,
 			LastTurnEnd: turn.Int64, Unacked: n[0], Model: model, Thinking: thinking, RunID: q.run, ReportsTo: q.reportsTo,
 			CreatedAt: created, SpawnedBy: spawnedBy, Harness: q.harness, LastActivity: q.lastActivity, Cwd: cwd,
 			ProtocolVersion: intOrNil(proto), Transcript: transcriptOrNil(tpath, tformat), Assignment: assigned[q.id]})
@@ -361,17 +368,31 @@ func (t *txn) teamMembers(ts *TeamState, pending map[string][2]int) error {
 	if err := rows.Err(); err != nil {
 		return internal(err)
 	}
+	rows.Close()
+	for team, id := range gateOf {
+		ts := byID[team]
+		if ts == nil || id == "" {
+			continue
+		}
+		if name, ok := gateName[team]; ok {
+			ts.Gate = name
+		} else if g, ok, err := t.participantByID(id); err != nil { // a gate that moved out of the team
+			return err
+		} else if ok {
+			ts.Gate = g.name
+		}
+	}
 	return nil
 }
 
-// assignments returns, per member of the team, its latest delivered mail marked op assign, with
-// the state of that assignment's reply chain (see Assignment).
-func (t *txn) assignments(team string) (map[string]*Assignment, error) {
+// assignments returns, per member (of any team), its latest delivered mail marked op assign, with
+// the state of that assignment's reply chain (see Assignment): three queries for all of them.
+func (t *txn) assignments() (map[string]*Assignment, error) {
 	rows, err := t.QueryContext(t.ctx, `SELECT m.to_id, m.id, m.seq, m.body, m.from_id, COALESCE(f.name, 'admin'), m.created_at
 		FROM messages m LEFT JOIN participants f ON f.id=m.from_id
-		WHERE m.op=? AND m.held_reason IS NULL AND m.to_id IN (SELECT id FROM participants WHERE team_id=?)
+		WHERE m.op=? AND m.held_reason IS NULL AND m.to_id IN (SELECT id FROM participants WHERE team_id IS NOT NULL)
 		AND m.seq=(SELECT MAX(x.seq) FROM messages x WHERE x.op=m.op AND x.to_id=m.to_id AND x.held_reason IS NULL)`,
-		OpAssign, team)
+		OpAssign)
 	if err != nil {
 		return nil, internal(err)
 	}
@@ -392,39 +413,115 @@ func (t *txn) assignments(team string) (map[string]*Assignment, error) {
 		return nil, internal(err)
 	}
 	rows.Close()
-	for to, a := range out {
+	if len(out) == 0 {
+		return out, nil
+	}
+	// The newest mail of each assignment's reply chain (the mails whose reply_to leads back to it).
+	root := map[string]string{} // assignment message id -> member
+	var rootIDs []string
+	for to, id := range ids {
+		root[id] = to
+		rootIDs = append(rootIDs, id)
+	}
+	in, args := inList(rootIDs)
+	crows, err := t.QueryContext(t.ctx, `WITH RECURSIVE chain(root, id) AS (
+			SELECT id, id FROM messages WHERE id IN (`+in+`)
+			UNION SELECT chain.root, m.id FROM messages m JOIN chain ON m.reply_to=chain.id)
+		SELECT chain.root, m.seq, m.created_at, m.from_id FROM chain JOIN messages m ON m.id=chain.id WHERE chain.id<>chain.root`, args...)
+	if err != nil {
+		return nil, internal(err)
+	}
+	defer crows.Close()
+	latest := map[string]ChainMail{} // member -> newest mail of the chain
+	sender := map[string]string{}
+	for crows.Next() {
+		var rootID, by string
 		var c ChainMail
-		var sender string
-		err := t.QueryRowContext(t.ctx, `WITH RECURSIVE chain(id) AS (
-				SELECT ? UNION SELECT m.id FROM messages m JOIN chain ON m.reply_to=chain.id)
-			SELECT seq, created_at, from_id FROM messages WHERE id IN chain AND id<>? ORDER BY seq DESC LIMIT 1`,
-			ids[to], ids[to]).Scan(&c.Seq, &c.At, &sender)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
+		if err := crows.Scan(&rootID, &c.Seq, &c.At, &by); err != nil {
 			return nil, internal(err)
 		}
-		c.ByMember = sender == to
-		a.Latest = &c
-		if !c.ByMember {
-			continue
+		to := root[rootID]
+		if cur, ok := latest[to]; !ok || c.Seq > cur.Seq {
+			latest[to], sender[to] = c, by
 		}
+	}
+	if err := crows.Err(); err != nil {
+		return nil, internal(err)
+	}
+	crows.Close()
+	// Where the chain ends with the member's own mail: the assigner's newest mail to the member since
+	// that is not in the chain's reach (a note, or a task whose op assign was forgotten).
+	var vals []string
+	var vargs []any
+	for to, c := range latest {
+		c.ByMember = sender[to] == to
+		a := out[to]
+		l := c
+		a.Latest = &l
+		if c.ByMember {
+			vals = append(vals, "(?,?,?,?)")
+			vargs = append(vargs, to, from[to], to, c.Seq)
+		}
+	}
+	if len(vals) == 0 {
+		return out, nil
+	}
+	nrows, err := t.QueryContext(t.ctx, `WITH v(k, f, t, s) AS (VALUES `+strings.Join(vals, ",")+`)
+		SELECT v.k, m.seq, m.body, m.created_at FROM v JOIN messages m
+			ON m.from_id=v.f AND m.to_id=v.t AND m.seq>v.s AND m.cc_of IS NULL AND m.held_reason IS NULL
+		WHERE m.seq=(SELECT MAX(x.seq) FROM messages x WHERE x.from_id=v.f AND x.to_id=v.t AND x.seq>v.s
+			AND x.cc_of IS NULL AND x.held_reason IS NULL)`, vargs...)
+	if err != nil {
+		return nil, internal(err)
+	}
+	defer nrows.Close()
+	for nrows.Next() {
+		var to, body string
 		var n NewerMail
-		var body string
-		err = t.QueryRowContext(t.ctx, `SELECT seq, body, created_at FROM messages
-			WHERE from_id=? AND to_id=? AND seq>? AND cc_of IS NULL AND held_reason IS NULL ORDER BY seq DESC LIMIT 1`,
-			from[to], to, c.Seq).Scan(&n.Seq, &body, &n.At)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
+		if err := nrows.Scan(&to, &n.Seq, &body, &n.At); err != nil {
 			return nil, internal(err)
 		}
 		n.Title = assignmentTitle(body)
-		a.Newer = &n
+		out[to].Newer = &n
 	}
-	return out, nil
+	return out, internal(nrows.Err())
+}
+
+// eventNames labels every id in evs (actor or ref): a participant by its name, a message by its #seq.
+// A team ref has none.
+func (t *txn) eventNames(evs []Event) (map[string]string, error) {
+	names := map[string]string{}
+	var ids []string
+	for _, ev := range evs {
+		for _, id := range []string{ev.Participant, ev.RefID} {
+			if id != "" && !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return names, nil
+	}
+	in, args := inList(ids)
+	rows, err := t.QueryContext(t.ctx, `SELECT id, name FROM participants WHERE id IN (`+in+`)
+		UNION ALL SELECT id, '#' || seq FROM messages WHERE id IN (`+in+`)`, append(args, args...)...)
+	if err != nil {
+		return nil, internal(err)
+	}
+	defer rows.Close()
+	for rows.Next() { // a participant first, then a message (an id is only one of them)
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, internal(err)
+		}
+		if _, done := names[id]; !done {
+			names[id] = name
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, internal(err)
+	}
+	return names, nil
 }
 
 func transcriptOrNil(path, format sql.NullString) *Transcript {
@@ -447,10 +544,11 @@ type WorkerLogArgs struct {
 	Team   string `json:"team,omitempty"` // when the name is in more than one team
 }
 
-// WorkerLog names the latest run the daemon started for a worker; its driver log is the tail.
+// WorkerLog names the run of a worker the daemon started and that is its run now; its driver log is
+// the tail.
 type WorkerLog struct {
 	ParticipantID string `json:"participant_id"`
-	RunID         string `json:"run_id"` // a worker's latest run ("" for a session)
+	RunID         string `json:"run_id"` // a worker's current run ("" for a session)
 	// Transcript is a session's own file (no process of piggery's), as its adapter reported it.
 	Transcript *Transcript `json:"transcript,omitempty"`
 }
@@ -464,8 +562,10 @@ func (e *Engine) WorkerLog(ctx context.Context, a WorkerLogArgs) (WorkerLog, err
 			return err
 		}
 		out.ParticipantID = p.id
-		err = t.QueryRowContext(t.ctx, `SELECT run_id FROM processes WHERE participant_id=?
-			ORDER BY started_at DESC LIMIT 1`, p.id).Scan(&out.RunID)
+		// Only a process of the participant's current run: one that was a headless worker and is
+		// now a session (a resume in a TUI) has its old driver log, not what it does now.
+		err = t.QueryRowContext(t.ctx, `SELECT pr.run_id FROM processes pr JOIN participants q ON q.id=pr.participant_id
+			AND q.run_id=pr.run_id WHERE pr.participant_id=? ORDER BY pr.started_at DESC LIMIT 1`, p.id).Scan(&out.RunID)
 		if !errors.Is(err, sql.ErrNoRows) {
 			return internal(err)
 		}

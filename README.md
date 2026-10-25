@@ -57,7 +57,7 @@ flowchart LR
 | [dsh](https://github.com/deepseek-ai/deepseek-harness) | yes (`dsh web`, plugin) | yes (`dsh --profile sdk`) | 0.2.0-rc.1, 0.2.0-rc.2 | `piggery setup dsh` |
 | [opencode](https://opencode.ai) | yes (plugin) | yes (`opencode serve`) | 1.18.34, 1.19.0 | `piggery setup opencode` |
 
-- Workers run on the harness their role names (`spawn.harness`), else on the harness of the
+- Workers run on the harness your `roles:` entry in `config.yaml` names for their role, else on the harness of the
   session that founded the team.
 - `piggery setup` alone shows each harness's version and whether piggery is installed in it.
 
@@ -79,11 +79,17 @@ against the release's `checksums.txt`, and puts it in `~/.local/bin` (`%USERPROF
 on Windows).
 
 - Another directory: `PIGGERY_INSTALL_DIR=...`. A given release: `PIGGERY_VERSION=v0.3.0`.
+- `pig` is a short name for `piggery`, made beside it when nothing else is called `pig` (a symlink; on
+  Windows a hard link `pig.exe`). A `pig` of yours, in that directory or elsewhere on your PATH (Apache Pig,
+  say), is never replaced; the installer says so. `piggery update` keeps the alias on the new binary. After
+  an install by hand: `ln -s piggery ~/.local/bin/pig` (Windows: `New-Item -ItemType HardLink -Path pig.exe -Target piggery.exe`).
 - By hand: download `piggery-<os>-<arch>` (`piggery-windows-<arch>.exe` on Windows) from the
   [latest release](https://github.com/sting8k/piggery/releases/latest), `chmod +x` it, put it on
   your PATH.
 - With Go 1.26+: `go install github.com/sting8k/piggery/cmd/piggery@latest`.
-- Later: `piggery update` installs a newer release. What changed is in [CHANGELOG.md](CHANGELOG.md).
+- Later: `piggery update` installs a newer release, then runs `piggery setup --outdated`, which asks
+  about the built-in templates you edited. If you come from v0.10 or older, type `piggery setup --outdated`
+  once after the update (the old `update` does not run that step). What changed is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Quick start
 

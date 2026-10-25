@@ -18,6 +18,9 @@ type listedTemplate struct {
 	taskforce             bool // it has a top-level taskforce: block: a solo or a gate can call it up with spawn template=
 }
 
+// originEdited is how a built-in template the user changed (manifests.Differing) reads in the origin column.
+const originEdited = "built-in, edited"
+
 // templatesOf reads the templates of the home the way team up and the templates action do
 // (manifests.List, then each through manifests.Resolve), with each manifest's summary.
 func (e *env) templatesOf() ([]listedTemplate, error) {
@@ -26,6 +29,10 @@ func (e *env) templatesOf() ([]listedTemplate, error) {
 		return nil, err
 	}
 	builtin := manifests.Builtins()
+	differing, err := manifests.Differing(e.dir)
+	if err != nil {
+		return nil, err
+	}
 	read := func(name string) (string, error) { return manifests.Resolve(name, e.dir) }
 	if len(ls) == 0 { // before the first setup or daemon start: the ones that will be unpacked
 		for _, n := range builtin {
@@ -38,6 +45,9 @@ func (e *env) templatesOf() ([]listedTemplate, error) {
 		t := listedTemplate{name: l.Name, origin: "yours"}
 		if slices.Contains(builtin, l.Name) {
 			t.origin = "built-in"
+			if slices.ContainsFunc(differing, func(u manifests.Updated) bool { return u.Name == l.Name }) {
+				t.origin = originEdited
+			}
 		}
 		var m struct {
 			Summary   string    `yaml:"summary"`
@@ -89,7 +99,10 @@ func (e *env) templateList(args []string) error {
 			tf = len("taskforce") + 2
 		}
 	}
-	const origin = len("built-in")
+	origin := len("built-in")
+	for _, t := range ts {
+		origin = max(origin, len(t.origin))
+	}
 	for _, t := range ts {
 		summary := t.summary
 		if room := width - w - origin - tf - 4; width > 0 && room > 0 {

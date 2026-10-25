@@ -1,5 +1,74 @@
 # Changelog
 
+## v0.11.0 - 2026-10-25
+
+Upgrading is two commands, model choices live in `config.yaml`, and an idle daemon stays idle.
+
+Upgrade from v0.10: `piggery update`, then `piggery setup --outdated` (the v0.10 `update` does not
+run the second step for you; from this version on it does). The second step brings the pi (22),
+omp (21), dsh (22) and opencode (17) integrations up to date; restart sessions of those that are
+open. Claude and Codex are unchanged. The database moves to schema v30 on the first start, with a
+backup first as before.
+
+- New: `piggery setup --outdated`, the second step of an upgrade. It does what a plain `setup` does
+  for the home, updates every installed integration that is outdated, then lists the built-in
+  templates and shared prompts you changed: on a terminal a list to tick (`d` shows the diff),
+  otherwise kept, with the `--replace <names>|all|none` that replaces them. A replaced one goes to
+  `.backup` first. It also says, once, what the daemon did to the home since the last setup.
+- New: `piggery template update [<name>] [--force]` brings a built-in template in
+  `~/.piggery/templates` to this version. One you changed is listed and left alone; `--force`
+  moves it to `templates/.backup/` and writes the built-in. `template list` marks it
+  `built-in, edited`. Running teams keep the manifest they started with.
+- New: `roles:` in `config.yaml` sets the harness, model and thinking of a role's workers:
+  `<template>/<role>`, `<template>/*`, `<role>` or `*`, each field from the most specific entry
+  that sets it. An entry piggery cannot use (a role no template has, an unknown harness) is skipped
+  with a warning at daemon start. An unknown key in `config.yaml` now names its line, where it
+  sits and the keys known there.
+- New: `inbox` can wait for mail: with nothing unread, `wait` (the tool's parameter, or
+  `piggery inbox --wait N`) waits up to 50 s and answers as soon as mail comes. An empty wait
+  reminds the model to end its turn instead (mail wakes it).
+- New: a timer `{on: <role>, every: <duration>}` (at least `1m`) tells that role
+  `Working now: <names>` once a period while a member of another role works and none of its own
+  does; an idle team gets nothing.
+- New: `pig`, a short name for `piggery`: the installers make it beside `piggery` (a symlink; on
+  Windows a hard link `pig.exe`, which `update` links again) only when nothing else is called `pig`.
+- New: `piggery gc` also cuts the run logs of workers gone over 7 days in teams that are still
+  open: older runs are deleted, the last keeps its final 1000 records (at most 5 MB).
+- Change: model choices move by themselves. A template in your home that still sets
+  `spawn.harness|model|thinking` has them moved into `config.yaml` `roles:` when the daemon starts,
+  so every role runs with what it ran with before; copies of both files go to
+  `templates/.backup/migrate-*`. In a manifest those keys are deprecated: still read, below
+  `roles:`, and built-in templates no longer set them.
+- Change: the timer `silent_for` is named `working_for` (it means working with no turn end, not
+  idle). Every template in your home is renamed by itself; `silent_for` still loads.
+- Change: a built-in template is one block. One you did not touch is replaced whole by the new
+  version; one you changed in any way (a file edited, removed or added) is kept whole, so a template
+  is never half old and half new.
+- Change: the built-in prompts. In `lead-peer` and `slp` a Peer works with the Lead, not under
+  it, and accepting a handback needs no reply of its own; `slp`'s Supervisor keeps a journal and
+  advises; the taskforce card says when calling one pays. `general-policy` adds: a number that
+  gates or steers the work is a proxy (its source, a baseline, criteria frozen first, an opposing
+  check); report finished work before starting anything else; answer whoever waits on you. A copy
+  you edited is kept; `setup --outdated` offers the new one.
+- Change (pi): mail steered into a running turn counts as read once the model reply that read it
+  ends, not when the whole turn ends; a long tool call no longer keeps it unacked for minutes.
+- Change (pi): a session that no longer drives a participant says why (the daemon's refusal,
+  another owner, a closed team) and the way back: a new pi session joins again.
+- Change: `piggery ps` costs the daemon a handful of queries instead of several per team, member
+  and notice.
+- Removed: the team board (pins). `send` to `board`, `--op replace|remove`, `--target`,
+  `inbox --view`, `piggery board` and `can_pin` are gone; no built-in template used them. A
+  template that still sets `can_pin: true` loads, and `piggery check` says the key is ignored. Mail
+  already pinned stays in the database; schema v30 drops the `pins` view.
+- Fix: an idle daemon woke the CPU about 10 times a second for every open team; it now reads only
+  teams where someone works.
+- Fix: the `settled` notice fired while a taskforce the gate called was still working; a team now
+  counts the open taskforces its members called.
+- Fix: `piggery tail` of a worker that went on as an interactive session showed its old driver log
+  instead of the session's transcript.
+- Fix (pi): two piggery tools called at once on a fresh session left it unable to join; the calls
+  now share one connect.
+
 ## v0.10.4 - 2026-10-19
 
 `top`'s sidebar is now the selected row's Tail, drawn as turns, and its width follows a drag.

@@ -85,7 +85,7 @@ func TestSharedPromptsForARole(t *testing.T) {
 // and the rest of the settings load. The built-in roles are found; `solo` needs no template.
 func TestBadSharedPromptsAreWarnedAndSkipped(t *testing.T) {
 	dir := t.TempDir()
-	if err := manifests.Unpack(dir); err != nil {
+	if _, err := manifests.Unpack(dir); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(dir, "rules.md"), "x")

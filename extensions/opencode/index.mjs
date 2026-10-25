@@ -25,7 +25,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Turns } from "../pi/adapter.mjs";
 import { Client, daemonAddress, daemonUp } from "../pi/client.mjs";
-import { afterRetire, render, renderWho, sentText } from "../pi/render.mjs";
+import { afterRetire, emptyInbox, render, renderWho, sentText } from "../pi/render.mjs";
 import { Bridge, NUDGE } from "./bridge.mjs";
 import { Records } from "./records.mjs";
 
@@ -468,10 +468,10 @@ const TOOL_BODIES = {
 	},
 	async inbox(part, p) {
 		await part.ensureConnected();
-		// No batch: in a turn the daemon records the delivery in that turn; a view is read-only.
-		const msgs = await part.client.call("inbox", p.view ? { view: p.view } : {});
-		if (!msgs.length) return p.view ? "Nothing in this view." : "No new messages.";
-		return p.view ? render(msgs, `view ${p.view}, ${msgs.length} message(s), nothing marked read`) : render(msgs);
+		// No batch: in a turn the daemon records the delivery in that turn.
+		const msgs = await part.client.call("inbox", p.wait ? { wait: p.wait } : {});
+		if (!msgs.length) return emptyInbox(p.wait);
+		return render(msgs);
 	},
 	async who(part) {
 		await part.ensureConnected();

@@ -254,7 +254,7 @@ func (e *Engine) applyReconcile(ctx context.Context, id, run string, worker bool
 		// A notice is plain mail from engine: nothing in core reacts to mail, so it cannot
 		// trigger another notice.
 		msg := newID(t.now)
-		if _, err := t.insertMessage(msg, "", p.team, AddrEngine, p.reportsTo, "", "", "", "", body); err != nil {
+		if _, err := t.insertMessage(msg, "", p.team, AddrEngine, p.reportsTo, "", "", "", body); err != nil {
 			return err
 		}
 		notified = p.reportsTo

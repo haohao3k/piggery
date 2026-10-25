@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sting8k/piggery/internal/core"
+	"github.com/sting8k/piggery/internal/store"
 )
 
 // The engine tells the operator, at the gate's turn_end and only from state: one team
@@ -192,5 +193,69 @@ func TestHeadlessGateNeverNotifies(t *testing.T) {
 	}
 	if len(sunk) != 0 {
 		t.Fatalf("a headless gate notified: %v", sunk)
+	}
+}
+
+// A taskforce the gate called is the team's work still to come: the gate's last send while the
+// taskforce has it is not settled; once the gate closed the taskforce, it is.
+func TestGateNoticeWaitsForItsTaskforce(t *testing.T) {
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	const tf = "template: tf\ntaskforce: {}\nauto_join_role: chair\nroles:\n  chair: {tools: [send, inbox]}\n"
+	var sunk []string
+	e := core.New(db, core.WithRuntime(&fakeRuntime{}), core.WithNotifySink(func(id string) { sunk = append(sunk, id) }),
+		core.WithTemplates(func(string, string) (string, error) { return tf, nil }))
+	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: "template: t\nauto_join_role: lead\nroles:\n  lead: {tools: [send, inbox, agent]}\nrouting: [{from: lead, to: lead, allow: true}]\n", Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	join := func(name string) core.Caller {
+		j, err := e.Join(ctx, core.JoinArgs{Team: team.ID, Role: "lead", Name: name, Cwd: team.RootCwd})
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, _ := e.Authenticate(ctx, j.ID, j.Token)
+		return c
+	}
+	alice, bob := join("alice"), join("bob")
+	if _, err := e.Agent(ctx, alice, core.AgentArgs{Action: core.AgentSpawn, Template: "tf", Task: "review it"}); err != nil {
+		t.Fatal(err)
+	}
+	do := func(c core.Caller, ev, prompt string) {
+		t.Helper()
+		if _, err := e.HarnessEvent(ctx, c, core.HarnessEventArgs{Event: ev, PromptID: prompt, Outcome: core.HarnessOutcomeOK}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send := func(from core.Caller, to string) {
+		t.Helper()
+		if _, err := e.Send(ctx, from, core.SendArgs{To: to, Body: "x"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// the gate's last send of a turn on mail, bob idle: only the taskforce is left
+	gateTurn := func(prompt, to string) {
+		send(bob, "alice")
+		do(alice, core.HarnessTurnStart, prompt)
+		send(alice, to)
+		if to == "bob" {
+			do(bob, core.HarnessTurnStart, prompt+"b")
+			do(bob, core.HarnessTurnEnd, prompt+"b")
+		}
+		do(alice, core.HarnessTurnEnd, prompt)
+	}
+	gateTurn("a1", "tf")
+	if len(sunk) != 0 {
+		t.Fatalf("settled while its taskforce has the work: %v", sunk)
+	}
+	if _, err := e.Agent(ctx, alice, core.AgentArgs{Action: core.AgentClose, Team: "tf"}); err != nil {
+		t.Fatal(err)
+	}
+	gateTurn("a2", "bob")
+	if len(sunk) != 1 {
+		t.Fatalf("after the close: %d notices, want settled", len(sunk))
 	}
 }

@@ -50,19 +50,39 @@ func (e *Engine) TeamUp(ctx context.Context, a TeamUpArgs) (Team, error) {
 	return team, err
 }
 
-// manifestWarnings are what a manifest allows but probably does not mean: a role that pins a model
-// or a thinking level while its harness is inherit. Model names and levels belong to one harness,
-// so the pin holds only when the worker happens to run on it. Sorted by role; team up still works.
-func manifestWarnings(m manifest) []string {
-	var out []string
+// manifestWarnings are what a manifest still does that config.yaml `roles` replaces: a role whose
+// spawn.harness, .model or .thinking is not inherit. It still works, at the rank under the config.
+// A role with can_pin: true is named too: the board is gone, the key does nothing.
+// One line names the roles; with detail (piggery check) one line per role gives the entry to write
+// in config.yaml instead. Sorted by role; team up still works.
+func manifestWarnings(m manifest, detail bool) []string {
+	var out, roles, pinners []string
 	for _, name := range slices.Sorted(maps.Keys(m.Roles)) {
+		if m.Roles[name].CanPin {
+			pinners = append(pinners, name)
+		}
 		sp := m.Roles[name].Spawn
-		for _, pin := range []struct{ key, val, what string }{{"model", sp.Model, "model names"}, {"thinking", sp.Thinking, "thinking levels"}} {
-			if pin.val != "" && sp.Harness == "" {
-				out = append(out, fmt.Sprintf("role %q sets spawn.%s %q but spawn.harness is inherit: %s belong to one harness, so pin spawn.harness too",
-					name, pin.key, pin.val, pin.what))
+		var keys, pins []string
+		for _, f := range []struct{ key, val string }{{"harness", sp.Harness}, {"model", sp.Model}, {"thinking", sp.Thinking}} {
+			if f.val != "" {
+				keys = append(keys, f.key)
+				pins = append(pins, f.key+": "+f.val)
 			}
 		}
+		switch {
+		case len(keys) == 0:
+		case detail:
+			out = append(out, fmt.Sprintf("roles.%s.spawn.%s is deprecated; put it in config.yaml: roles: {%s/%s: {%s}}",
+				name, strings.Join(keys, "/"), m.Template, name, strings.Join(pins, ", ")))
+		default:
+			roles = append(roles, name)
+		}
+	}
+	if len(pinners) > 0 {
+		out = append(out, fmt.Sprintf("can_pin of %s is ignored: the board was removed; delete the key", strings.Join(pinners, ", ")))
+	}
+	if len(roles) > 0 {
+		out = append(out, fmt.Sprintf("model choices for %s belong in config.yaml roles: (piggery check shows the lines to write)", strings.Join(roles, ", ")))
 	}
 	return out
 }

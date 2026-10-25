@@ -1,6 +1,7 @@
 # Install piggery on Windows from a GitHub release: the binary for this CPU, checked against the
-# release's checksums.txt, into $env:PIGGERY_INSTALL_DIR (default %USERPROFILE%\.local\bin). No
-# administrator rights.
+# release's checksums.txt, into $env:PIGGERY_INSTALL_DIR (default %USERPROFILE%\.local\bin), and
+# pig.exe beside it as a short name (a hard link) when nothing else is called that. No administrator
+# rights.
 #
 #   irm https://raw.githubusercontent.com/sting8k/piggery/main/install.ps1 | iex
 #
@@ -47,9 +48,12 @@
         if (-not $want) { throw "piggery install: checksums.txt has no line for $name" }
         # .NET, not Get-FileHash: Windows PowerShell 5.1 loads that cmdlet from PSModulePath, and one
         # started from inside pwsh inherits PowerShell 7's, where it is not found.
-        $s = [IO.File]::OpenRead($bin)
-        try { $got = -join ([Security.Cryptography.SHA256]::Create().ComputeHash($s) | ForEach-Object { $_.ToString('x2') }) }
-        finally { $s.Dispose() }
+        function Sha256Of($path) {
+            $s = [IO.File]::OpenRead($path)
+            try { -join ([Security.Cryptography.SHA256]::Create().ComputeHash($s) | ForEach-Object { $_.ToString('x2') }) }
+            finally { $s.Dispose() }
+        }
+        $got = Sha256Of $bin
         if ($got -ne $want) { throw "piggery install: checksum mismatch for $name (got $got, want $want); nothing installed" }
 
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -57,6 +61,14 @@
         $old = Join-Path $dir 'piggery.exe.old'
         $new = Join-Path $dir ".piggery.new.$PID"
         $had = Test-Path -LiteralPath $target
+        # pig.exe is ours when it is the same bytes as the piggery.exe about to be replaced (a hard link to
+        # it, or a copy: either is piggery, and either would keep running the old one). Compared by content,
+        # as Get-Item .Target differs between Windows PowerShell 5.1 and 7.
+        $pig = Join-Path $dir 'pig.exe'
+        $pigOurs = $false
+        if ($had -and (Test-Path -LiteralPath $pig)) {
+            $pigOurs = (Sha256Of $pig) -eq (Sha256Of $target)
+        }
         try {
             Copy-Item -LiteralPath $bin -Destination $new -Force
             # A running piggery (its daemon) can be renamed, not replaced or deleted: the binary
@@ -76,6 +88,27 @@
         }
     } finally {
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # pig: a hard link needs no administrator rights. One that is ours still is the file just replaced,
+    # so it steps aside as pig.exe.old (it may be running: pig update) and is linked to the new one.
+    # Any other pig, a file here or a program on PATH, is someone's and is not touched.
+    try {
+        $pigOld = "$pig.old"
+        if ($pigOurs) {
+            if (Test-Path -LiteralPath $pigOld) { Remove-Item -LiteralPath $pigOld -Force }
+            Move-Item -LiteralPath $pig -Destination $pigOld
+            New-Item -ItemType HardLink -Path $pig -Target $target | Out-Null
+        } elseif (Test-Path -LiteralPath $pig) {
+            Write-Host "piggery install: pig is taken by $pig; use piggery"
+        } elseif ($other = Get-Command pig -ErrorAction SilentlyContinue | Select-Object -First 1) {
+            Write-Host "piggery install: pig is taken by $($other.Definition); use piggery"
+        } else {
+            New-Item -ItemType HardLink -Path $pig -Target $target | Out-Null
+            Write-Host "piggery install: pig is a short name for piggery ($pig)"
+        }
+    } catch {
+        Write-Host "piggery install: could not link pig.exe to piggery.exe ($($_.Exception.Message)); use piggery, or: New-Item -ItemType HardLink -Path $pig -Target $target"
     }
 
     $version = try { & $target --version } catch { $null }

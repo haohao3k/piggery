@@ -23,7 +23,7 @@ func TestFound(t *testing.T) {
 	}
 	defer db.Close()
 	home := t.TempDir()
-	if err := manifests.Unpack(home); err != nil {
+	if _, err := manifests.Unpack(home); err != nil {
 		t.Fatal(err)
 	}
 	e := core.New(db, core.WithTemplates(func(name, _ string) (string, error) {

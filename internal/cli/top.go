@@ -492,34 +492,6 @@ func readLogs(dir string, ps proto.PsResult, prev map[string]logState) map[strin
 	return out
 }
 
-func recordType(rec []byte) string {
-	var r struct{ Type string }
-	json.Unmarshal(rec, &r)
-	return r.Type
-}
-
-// contextSize is the context of an assistant message_end with usage: its totalTokens (input,
-// output and cache together), or their sum when totalTokens is missing.
-func contextSize(rec []byte) (int, bool) {
-	var r struct {
-		Type    string
-		Message struct {
-			Role  string
-			Usage *struct {
-				Input, Output, CacheRead, CacheWrite, TotalTokens int
-			}
-		}
-	}
-	if json.Unmarshal(rec, &r) != nil || r.Type != "message_end" || r.Message.Role != "assistant" || r.Message.Usage == nil {
-		return 0, false
-	}
-	u := r.Message.Usage
-	if u.TotalTokens > 0 {
-		return u.TotalTokens, true
-	}
-	return u.Input + u.Output + u.CacheRead + u.CacheWrite, true
-}
-
 // stats is each headless worker's context (current run) and turns (all runs), and each session's
 // from its transcript; none for a participant with no log read.
 func (m *topModel) stats() map[string]view.Stats {

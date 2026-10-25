@@ -222,7 +222,7 @@ func (t *txn) oldGate(teamID string) (g oldGateRow, ok bool, err error) {
 }
 
 // reopenSummary is what the new gate reads after reopen: the team and template, each other
-// member with its last state, the board pins, the gate's unacked mail, and how to go on.
+// member with its last state, the gate's unacked mail, and how to go on.
 func (t *txn) reopenSummary(team string, gate participant, m manifest) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Reopened team %s (template %s); you are %s (%s), its gate.\n", team, m.Template, gate.name, gate.role)
@@ -262,14 +262,6 @@ func (t *txn) reopenSummary(team string, gate participant, m manifest) (string, 
 	if n == 0 {
 		b.WriteString(" none besides you")
 	}
-	pins, err := t.livePins(gate)
-	if err != nil {
-		return "", err
-	}
-	fmt.Fprintf(&b, "\nBoard: %d pin(s)", len(pins))
-	for _, p := range pins {
-		fmt.Fprintf(&b, "\n- #%d %s", p.Seq, firstLine(p.Body))
-	}
 	var unacked int
 	if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM messages WHERE to_id=? AND acked_at IS NULL`,
 		gate.id).Scan(&unacked); err != nil {
@@ -281,12 +273,4 @@ func (t *txn) reopenSummary(team string, gate participant, m manifest) (string, 
 			"action=resume brings it back with its context.", gate.toolPrefix)
 	}
 	return b.String(), nil
-}
-
-func firstLine(s string) string {
-	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
-	if r := []rune(s); len(r) > 100 {
-		s = string(r[:100]) + "…"
-	}
-	return s
 }

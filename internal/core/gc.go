@@ -150,14 +150,30 @@ type GCResult struct {
 	Solos []GCTeam `json:"solos,omitempty"`
 	// ExpiredArchives are archive files deleted for being older than the archive retention.
 	ExpiredArchives []string `json:"expired_archives,omitempty"`
+	// LogsTrimmed is how many participants gone longer than gcTrimAfter in teams still open (and
+	// gone solos) had their run logs cut (GCPlace.TrimLogs), LogsFreed the bytes that freed.
+	LogsTrimmed int   `json:"logs_trimmed,omitempty"`
+	LogsFreed   int64 `json:"logs_freed,omitempty"`
+	// LogsFailed are the participants (name: error) whose logs could not be cut: gc went on with
+	// the others.
+	LogsFailed []string `json:"logs_failed,omitempty"`
 }
+
+// gcTrimAfter is how long a participant must have been gone before its run logs are cut down: a
+// fixed policy, not a setting. A team that stays open for long would keep the logs of every
+// worker that left it; a closed team's go with it when gc deletes the team.
+const gcTrimAfter = 7 * 24 * time.Hour
 
 // GCPlace is where gc works, set by the daemon: the archive directory, and Own, the entries the
 // daemon keeps for a participant or session known by key (its run logs, scratch and session data:
 // the layout is the daemon's, core knows none; nil: none). Own gets only what is one path element.
+//
+// TrimLogs cuts down the run logs of a participant gone for long but still in the books (key, its
+// current run; dry: write and delete nothing) and returns the bytes freed; nil: none are cut.
 type GCPlace struct {
 	ArchiveDir string
 	Own        func(key string) []string
+	TrimLogs   func(key, run string, dry bool) (int64, error)
 }
 
 // A gc unit is what one archive holds and one transaction deletes: a closed team, or a gone solo.
@@ -283,7 +299,51 @@ func (e *Engine) GC(ctx context.Context, place GCPlace, a GCArgs) (GCResult, err
 			}
 		}
 	}
-	return res, nil
+	return res, e.trimLogs(ctx, place.TrimLogs, a.DryRun, &res)
+}
+
+// trimLogs cuts the run logs of the participants gone longer than gcTrimAfter that gc does not
+// delete: those of a team still open, and gone solos not yet old enough to delete.
+func (e *Engine) trimLogs(ctx context.Context, trim func(key, run string, dry bool) (int64, error), dry bool, res *GCResult) error {
+	if trim == nil {
+		return nil
+	}
+	rows, err := e.db.QueryContext(ctx, `SELECT p.id, p.name, COALESCE(p.run_id,'') FROM participants p
+		LEFT JOIN teams t ON t.id=p.team_id
+		WHERE p.state='gone' AND p.state_since < ? AND (p.team_id IS NULL OR t.closed_at IS NULL)
+		ORDER BY p.state_since`, e.now().Add(-gcTrimAfter).UnixMilli())
+	if err != nil {
+		return internal(err)
+	}
+	type gone struct{ id, name, run string }
+	var list []gone
+	for rows.Next() {
+		var g gone
+		if err := rows.Scan(&g.id, &g.name, &g.run); err != nil {
+			rows.Close()
+			return internal(err)
+		}
+		list = append(list, g)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return internal(err)
+	}
+	for _, g := range list {
+		if !oneElement(g.id) {
+			continue
+		}
+		freed, err := trim(g.id, g.run, dry)
+		if err != nil { // a file that cannot be cut is not a reason to leave the others
+			res.LogsFailed = append(res.LogsFailed, g.name+": "+err.Error())
+			continue
+		}
+		if freed > 0 {
+			res.LogsTrimmed++
+			res.LogsFreed += freed
+		}
+	}
+	return nil
 }
 
 // key is the id the unit's rows are selected by.

@@ -60,6 +60,13 @@ func promptsFor(dir string, entries []PromptEntry, warn func(msg string)) func(t
 	}
 }
 
+// rolePatternOK says r is `<role>`, `<template>/<role>`, `<template>/*` or `*` (no other glob).
+func rolePatternOK(r string) bool {
+	tpl, role, two := strings.Cut(r, "/")
+	glob := strings.Contains(r, "*") && r != "*" && !(two && role == "*" && !strings.Contains(tpl, "*"))
+	return !(r == "" || glob || strings.Contains(role, "/") || (two && (tpl == "" || role == "")))
+}
+
 // checkPromptShape drops what LoadSettings can see is wrong without reading anything else: an entry
 // with no file or no role, a role that is not `<role>` or `<template>/<role>` (the rest of its entry
 // stays). It returns the entries to keep and one warning per problem, naming the entry.
@@ -72,9 +79,7 @@ func checkPromptShape(path string, entries []PromptEntry) (kept []PromptEntry, w
 		}
 		var roles []string
 		for _, r := range e.Roles {
-			tpl, role, two := strings.Cut(r, "/")
-			glob := strings.Contains(r, "*") && r != "*" && !(two && role == "*" && !strings.Contains(tpl, "*")) // only `*` and `<template>/*`
-			if r == "" || glob || strings.Contains(role, "/") || (two && (tpl == "" || role == "")) {
+			if !rolePatternOK(r) {
 				warns = append(warns, fmt.Sprintf("%s (%s): role %q: want <role>, <template>/<role>, <template>/*, * or solo; role skipped", at, e.File, r))
 				continue
 			}

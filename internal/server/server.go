@@ -95,6 +95,9 @@ type conn struct {
 	nc  net.Conn
 	wmu sync.Mutex
 	enc *json.Encoder
+	// ctx ends when the connection closes: a call still waiting (inbox wait) stops with it.
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// caller is set by identify (guarded by server.mu). Its RunID is used for every
 	// participant verb on this connection, so a superseded process gets run.stale.
@@ -170,12 +173,17 @@ func Run(ctx context.Context, cfg Config) error {
 	// Every built-in runtime driver; a worker runs on the one its harness names.
 	drivers := local.Builtin(cfg.Dir, opts)
 	// The built-in templates into ~/.piggery/templates, never over the user's edits.
-	if err := manifests.Unpack(cfg.Dir); err != nil {
+	unpacked, err := manifests.Unpack(cfg.Dir)
+	if err != nil {
 		return fmt.Errorf("templates: %w", err)
 	}
 	// Every config file piggery owns gets the keys it lacks, as `piggery setup` does; a file its
 	// parser refuses is only logged here, the parser says why where it is read.
 	filled, errs := EnsureFiles(cfg.Dir)
+	// The model choices templates still make move into config.yaml `roles` (read again below, once).
+	moved, merrs := MigrateSpawn(cfg.Dir)
+	filled, errs = append(filled, moved...), append(errs, merrs...)
+	NoteHomeChanges(cfg.Dir, unpacked, filled) // `piggery setup` tells the user, once
 	for _, f := range filled {
 		log.Info("config keys added", "file", f.Path, "keys", f.Added)
 	}
@@ -185,12 +193,19 @@ func Run(ctx context.Context, cfg Config) error {
 	// The Human's shared prompts, read again: EnsureFiles may have added the entry of one piggery
 	// ships. What cannot work is logged and left out, never a reason not to start.
 	if again, err := LoadSettings(cfg.Dir); err == nil {
-		settings.Prompts = again.Prompts
+		settings.Prompts, settings.Roles = again.Prompts, again.Roles
 	}
 	var promptWarns []string
 	settings.Prompts, promptWarns = CheckPrompts(cfg.Dir, settings.Prompts)
 	for _, w := range append(settings.Warnings, promptWarns...) {
 		log.Warn("shared prompts", "problem", w)
+	}
+	// The Human's roles (harness/model/thinking by role): same rule, an entry that cannot work is
+	// logged and left out.
+	var roleWarns []string
+	settings.Roles, roleWarns = CheckRoles(cfg.Dir, settings.Roles)
+	for _, w := range roleWarns {
+		log.Warn("roles", "problem", w)
 	}
 	if cfg.Integrations != nil {
 		// The extensions `piggery setup pi|omp|dsh|opencode` installed: rewritten when their integration
@@ -227,6 +242,7 @@ func Run(ctx context.Context, cfg Config) error {
 	s.eng = core.New(db, append(runtimes, core.WithNotify(s.wake),
 		core.WithDefaultHarness(settings.Harness), core.WithDefaultGate(settings.Gate == "closed"), core.WithAllowedRoots(settings.AllowedRoots),
 		core.WithSharedPrompts(promptsFor(s.dir, settings.Prompts, func(m string) { s.log.Warn("shared prompts", "problem", m) })), core.WithNotifySink(s.notifyHook),
+		core.WithRoleSpawn(roleSpawnFor(settings.Roles)),
 		core.WithTemplates(func(name, _ string) (string, error) { return manifests.Resolve(name, s.dir) }),
 		core.WithTemplateList(func(string) ([]core.TemplateRef, error) {
 			ls, err := manifests.List(s.dir)
@@ -277,7 +293,8 @@ func Run(ctx context.Context, cfg Config) error {
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		cn := &conn{nc: c, enc: json.NewEncoder(c)}
+		cctx, cancel := context.WithCancel(ctx)
+		cn := &conn{nc: c, enc: json.NewEncoder(c), ctx: cctx, cancel: cancel}
 		s.mu.Lock()
 		s.conns[cn] = struct{}{}
 		s.mu.Unlock()
@@ -336,6 +353,15 @@ func (s *server) serveConn(ctx context.Context, c *conn) {
 		var resp proto.Response
 		if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
 			resp = errResponse("", &core.Error{Code: core.CodeInvalid, Message: "bad request: " + err.Error()})
+		} else if waits(req) {
+			// An inbox that waits for mail answers later, by id: the connection's other requests
+			// (the harness's turn events among them) go on meanwhile.
+			s.wg.Add(1)
+			go func() {
+				defer s.wg.Done()
+				c.write(s.handle(c.ctx, c, req), 0)
+			}()
+			continue
 		} else {
 			resp = s.handle(ctx, c, req)
 		}
@@ -348,10 +374,20 @@ func (s *server) serveConn(ctx context.Context, c *conn) {
 	}
 }
 
+// waits reports whether req is an inbox call that may wait for mail.
+func waits(req proto.Request) bool {
+	if req.Verb != proto.VerbInbox {
+		return false
+	}
+	var a core.InboxArgs
+	return json.Unmarshal(req.Args, &a) == nil && a.Wait > 0
+}
+
 // closeConn drops c. If c was identified and no other live connection is identified for the same
 // participant, the participant goes gone. Not while the daemon itself is stopping: the sessions are
 // still alive and will reconnect (recovery).
 func (s *server) closeConn(ctx context.Context, c *conn) {
+	c.cancel()
 	c.nc.Close()
 	s.mu.Lock()
 	delete(s.conns, c)
@@ -552,7 +588,7 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 		default:
 			return call(req, func(a core.LogArgs) (any, error) { return s.eng.Log(ctx, a) })
 		}
-	case proto.VerbSend, proto.VerbInbox, proto.VerbCompletion, proto.VerbWho, proto.VerbBoard,
+	case proto.VerbSend, proto.VerbInbox, proto.VerbCompletion, proto.VerbWho,
 		proto.VerbWatchAdd, proto.VerbWatchList, proto.VerbAgent, proto.VerbIdentify, proto.VerbPresence,
 		proto.VerbHarnessEvent:
 	default:
@@ -607,8 +643,6 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 		return call(req, func(a core.CompletionArgs) (any, error) { return s.eng.Completion(ctx, c, a) })
 	case proto.VerbWho:
 		return call(req, func(struct{}) (any, error) { return s.eng.Who(ctx, c) })
-	case proto.VerbBoard:
-		return call(req, func(struct{}) (any, error) { return s.eng.Board(ctx, c) })
 	case proto.VerbWatchAdd:
 		return call(req, func(a core.TimerArgs) (any, error) { return s.eng.WatchAdd(ctx, c, a) })
 	case proto.VerbWatchList:

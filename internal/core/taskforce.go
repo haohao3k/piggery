@@ -191,7 +191,7 @@ func (e *Engine) spawnTaskforce(ctx context.Context, c Caller, a AgentArgs) (Age
 				"task_id": res.TaskID, "cwd": dir, "taskforce": teamName, "template": a.Template}}); err != nil {
 			return err
 		}
-		seq, err := t.insertMessage(res.TaskID, "", team, p.id, res.ParticipantID, "", "", OpAssign, "", a.Task)
+		seq, err := t.insertMessage(res.TaskID, "", team, p.id, res.ParticipantID, "", "", OpAssign, a.Task)
 		res.TaskSeq = seq
 		return err
 	})
@@ -305,7 +305,7 @@ func (e *Engine) Taskforces(ctx context.Context) (int, error) {
 				return acted, err
 			}
 			if err := e.inTx(ctx, func(t *txn) error {
-				_, err := t.insertMessage(newID(t.now), "", v.callerTeam, AddrEngine, v.caller, "", "", "", "",
+				_, err := t.insertMessage(newID(t.now), "", v.callerTeam, AddrEngine, v.caller, "", "", "",
 					fmt.Sprintf("Taskforce %s closed: its chair %s stopped.", v.name, v.chair))
 				return err
 			}); err != nil {
@@ -403,7 +403,7 @@ func (t *txn) checkTaskforce(id string) (v taskforceVerdict, err error) {
 	}
 	body := fmt.Sprintf("Taskforce %s (template %s) has been idle for %s. If you do not need it any more, close it: %sagent action=close team=%s.",
 		v.name, m.Template, age(t.now-since), caller.toolPrefix, v.name)
-	if _, err := t.insertMessage(newID(t.now), "", caller.team, AddrEngine, caller.id, "", "", "", "", body); err != nil {
+	if _, err := t.insertMessage(newID(t.now), "", caller.team, AddrEngine, caller.id, "", "", "", body); err != nil {
 		return v, err
 	}
 	if _, err := t.ExecContext(t.ctx, `UPDATE teams SET idle_noticed=? WHERE id=?`, since, id); err != nil {
@@ -445,8 +445,10 @@ func callTaskforceText(prefix string, lines []string) string {
 	}
 	return " You may call up a temporary team on your own judgment, like a subagent: " + prefix +
 		"agent action=spawn template=<name> task=<what to do>; it works in your directory and answers you by mail" +
-		" (send to the team's name to talk to it). Call one for a one-off second opinion, a review that matters, a decision or approach you are stuck on, or a short bounded job;" +
-		" not for work you can do yourself. Each taskforce's summary says what it does and whether it edits. It does not close itself: you close it, when you are done with it, with " + prefix + "agent action=close team=<name>." +
+		" (send to the team's name to talk to it). Call one only when it pays: the work promises what your own checks cannot show" +
+		" (a crash, concurrency, a hostile caller, data loss, security) and a miss would be costly and silent; you explained an anomaly" +
+		" but did not prove it; or you face a hard-to-undo choice or keep failing. Not for small work, a cheap and visible miss, or what" +
+		" a check you can run settles faster. Ask it one specific question and name the commit; weigh the answer. Each taskforce's summary says what it does and whether it edits. It does not close itself: you close it, when you are done with it, with " + prefix + "agent action=close team=<name>." +
 		" Taskforces you can call:\n" + strings.Join(lines, "\n") + "\n"
 }
 

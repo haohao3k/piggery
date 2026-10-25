@@ -189,7 +189,8 @@ func TestDefaultConfigHasEveryKey(t *testing.T) {
 		}
 	}
 	walk(m, "")
-	want := yamlPaths(reflect.TypeOf(configFile{}), "")
+	// roles is the Human's own: setup never writes it, and a file with it is not "missing" it
+	want := slices.DeleteFunc(yamlPaths(reflect.TypeOf(configFile{}), ""), func(k string) bool { return k == "roles" })
 	slices.Sort(got)
 	slices.Sort(want)
 	if !slices.Equal(got, want) {

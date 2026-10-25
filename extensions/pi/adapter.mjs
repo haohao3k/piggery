@@ -11,7 +11,7 @@ const OUTCOME = { completed: "ok", aborted: "interrupted", error: "failed" };
 export class Turns {
 	/**
 	 * @param {object} io
-	 * @param {(args: object) => Promise<{text?: string, block?: boolean}>} io.event harness.event
+	 * @param {(args: object) => Promise<{text?: string, block?: boolean, part?: number}>} io.event harness.event
 	 * @param {(event: string) => Promise<any>} io.presence presence events with no standard event
 	 * @param {(text: string, steer: boolean) => void} io.deliver shows mail to the model
 	 * @param {() => string} io.newKey a fresh turn key
@@ -35,6 +35,13 @@ export class Turns {
 		this.held = false; // a wake came after this run's turn ended, before pi settled
 		this.ended = []; // turn_ends the daemon did not get (it was down), oldest first
 		this.unread = false; // mail was steered in and no model turn has started since
+		this.parts = { key: null, given: [], inContext: 0, sent: 0 }; // gives of the turn `key`
+	}
+
+	/** The part bookkeeping of the turn in progress; a new key starts it again. */
+	turnParts() {
+		if (this.parts.key !== this.key) this.parts = { key: this.key, given: [], inContext: 0, sent: 0 };
+		return this.parts;
 	}
 
 	enqueue(fn) {
@@ -57,10 +64,23 @@ export class Turns {
 	async give(args, steer) {
 		const r = await this.io.event(args);
 		if (r?.text) {
+			if (r.part && args.prompt_id === this.key) this.turnParts().given.push({ part: r.part, text: r.text });
 			this.io.deliver(r.text, steer);
 			if (steer) this.unread = true;
 		}
 		return r;
+	}
+
+	/**
+	 * A user message entered the model's context (pi's message_end): when it is a give of this turn,
+	 * the next model turn that ends well has read it (seen). Text no give matches changes nothing.
+	 */
+	messageIn(text) {
+		const p = this.turnParts();
+		const hit = p.given.find((g) => g.text === text);
+		if (!hit) return;
+		p.inContext = Math.max(p.inContext, hit.part);
+		p.given = p.given.filter((g) => g.part > hit.part);
 	}
 
 	/** A model turn starts inside the run (pi's turn_start, omp's turn_start, dsh's step/start): mail steered before it is in it. */
@@ -77,10 +97,27 @@ export class Turns {
 		this.enqueue(() => this.give({ event: "turn_start", prompt_id: key }, true));
 	}
 
-	/** Tool results are in (pi's turn_end): mail can be steered into the running turn. */
-	toolBoundary() {
+	/**
+	 * The model's reply ended (pi's assistant message_end): ok (not error or aborted) means it read
+	 * every give in its context, so the daemon acks them now, before the reply's tools run.
+	 */
+	answered(ok) {
+		const p = this.turnParts();
+		if (this.key && ok && p.inContext > p.sent) this.toolBoundary(true);
+	}
+
+	/**
+	 * Tool results are in (pi's turn_end): mail can be steered into the running turn. modelOk: the model
+	 * turn that just ended finished without error or abort, so the gives in its context are seen and
+	 * the daemon acks them; a harness that does not say keeps acking at the turn's end.
+	 */
+	toolBoundary(modelOk = false) {
 		const key = this.key;
-		if (key) this.enqueue(() => this.give({ event: "tool_boundary", prompt_id: key }, true));
+		if (!key) return;
+		const args = { event: "tool_boundary", prompt_id: key };
+		const p = this.turnParts();
+		if (modelOk && p.inContext > p.sent) args.seen = p.sent = p.inContext;
+		this.enqueue(() => this.give(args, true));
 	}
 
 	/**

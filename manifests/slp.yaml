@@ -5,9 +5,9 @@
 # watches a lane through its Lead's log and talks only to Leads; a Lead writes to its Peers as a
 # person would, so a Peer sees only its work and the one who gives it. Every role talks with `send`;
 # routing is the fence: a Peer reaches only the Lead, a Lead the Supervisor and its Peers.
-# Handbacks, questions and arguments are mail, with a kind where it helps. No board.
+# Handbacks, questions and arguments are mail, with a kind where it helps.
 template: slp
-summary: Lanes of work (code, research, writing, operations…) where the Human sets direction through a Supervisor, a Lead owns the plan and integration, and Peers own separate scopes and may question the premise.
+summary: Lanes of work (code, research, writing, operations…) where the Human sets direction through a Supervisor, a Lead owns the plan and integration, and Peers each solve one piece and think about the goal with the Lead.
 auto_join_role: supervisor   # the founder's role when a session founds a team from this template
 roles:
   supervisor:
@@ -15,36 +15,24 @@ roles:
     instructions_file: prompts/slp/supervisor.md   # inlined by `piggery --admin team up`
     tools: [send, inbox, who, agent]
     can_spawn: [lead]
-    can_pin: false
     can_set_cwd: true
     spawn:                 # how piggery starts this role's workers
-      harness: inherit       # inherit: the main session's harness, else config.yaml harness
-      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
-      thinking: inherit      # inherit: same chain as model
       allow_tools: []      # native tools the harness profile turns off that this role keeps
   lead:
     description: Owns the lane's plan, splits it into scopes with one owner each, judges the evidence, and integrates.
     instructions_file: prompts/slp/lead.md
     tools: [send, inbox, who, agent]
     can_spawn: [peer]
-    can_pin: false
     can_set_cwd: true
     spawn:                 # how piggery starts this role's workers
-      harness: inherit       # inherit: the main session's harness, else config.yaml harness
-      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
-      thinking: inherit      # inherit: same chain as model
       allow_tools: []      # native tools the harness profile turns off that this role keeps
   peer:
-    description: Owns one scope and the judgement inside it; may question the premise with evidence; hands back what is true.
+    description: Solves one piece of the lane its own way, raises a better way or a problem with the plan, and hands back what is true.
     instructions_file: prompts/slp/peer.md
     tools: [send, inbox, who]
     can_spawn: []
-    can_pin: false
     can_set_cwd: false
     spawn:                 # how piggery starts this role's workers
-      harness: inherit       # inherit: the main session's harness, else config.yaml harness
-      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
-      thinking: inherit      # inherit: same chain as model
       allow_tools: []      # native tools the harness profile turns off that this role keeps
 routing:
   - {from: supervisor, to: lead, allow: true, cc: []}
@@ -52,8 +40,8 @@ routing:
   - {from: lead, to: peer, allow: true, cc: []}
   - {from: peer, to: lead, allow: true, cc: []}
 timers:
-  - {on: peer, notify: reports_to, silent_for: 20m}
-  - {on: lead, notify: reports_to, silent_for: 30m}
+  - {on: peer, notify: reports_to, working_for: 20m}
+  - {on: lead, notify: reports_to, working_for: 30m}
 limits:                  # none: no limit
   depth: 2                 # how deep spawned_by chains may go
   concurrency: 10           # live workers at once

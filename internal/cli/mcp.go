@@ -416,16 +416,39 @@ func (s *mcpServer) serve(in io.Reader) error {
 		if json.Unmarshal(sc.Bytes(), &m) != nil || len(m.ID) == 0 {
 			continue // a notification (initialized, cancelled): nothing to answer
 		}
-		res, rerr := s.handle(m)
-		reply := map[string]any{"jsonrpc": "2.0", "id": m.ID}
-		if rerr != nil {
-			reply["error"] = rerr
-		} else {
-			reply["result"] = res
+		if waitsForMail(m) {
+			// It answers when mail comes, by id: other calls (other Codex threads' too) go on.
+			go s.reply(m)
+			continue
 		}
-		s.write(reply)
+		s.reply(m)
 	}
 	return sc.Err()
+}
+
+func (s *mcpServer) reply(m rpcMsg) {
+	res, rerr := s.handle(m)
+	reply := map[string]any{"jsonrpc": "2.0", "id": m.ID}
+	if rerr != nil {
+		reply["error"] = rerr
+	} else {
+		reply["result"] = res
+	}
+	s.write(reply)
+}
+
+// waitsForMail reports whether m calls the inbox tool with a wait.
+func waitsForMail(m rpcMsg) bool {
+	if m.Method != "tools/call" {
+		return false
+	}
+	var p struct {
+		Name      string `json:"name"`
+		Arguments struct {
+			Wait int `json:"wait"`
+		} `json:"arguments"`
+	}
+	return json.Unmarshal(m.Params, &p) == nil && strings.HasSuffix(p.Name, "inbox") && p.Arguments.Wait > 0
 }
 
 func (s *mcpServer) write(v any) {
@@ -625,23 +648,18 @@ func (s *mcpServer) callTool(name string, raw json.RawMessage) (string, error) {
 		return core.SentText(r), nil
 	case name == "inbox":
 		var a struct {
-			View string `json:"view"`
+			Wait int `json:"wait"`
 		}
 		_ = json.Unmarshal(raw, &a)
 		var msgs []core.Delivered
 		// No batch: while a turn is open the daemon records the delivery in its batch.
-		if err := c.call(proto.VerbInbox, core.InboxArgs{View: a.View}, &msgs); err != nil {
+		if err := c.call(proto.VerbInbox, core.InboxArgs{Wait: a.Wait}, &msgs); err != nil {
 			return "", err
 		}
-		switch {
-		case len(msgs) == 0 && a.View != "":
-			return "Nothing in this view.", nil
-		case len(msgs) == 0:
-			return "No new messages.", nil
-		case a.View != "":
-			return core.RenderMail(msgs, fmt.Sprintf("view %s, %d message(s), nothing marked read", a.View, len(msgs)), mcpPrefix, time.Now()), nil
+		if len(msgs) == 0 {
+			return core.RenderEmptyInbox(a.Wait), nil
 		}
-		return core.RenderMail(msgs, "", mcpPrefix, time.Now()), nil
+		return core.RenderMail(msgs, mcpPrefix, time.Now()), nil
 	case name == "who":
 		var ps []core.Presence
 		if err := c.call(proto.VerbWho, nil, &ps); err != nil {

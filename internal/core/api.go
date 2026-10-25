@@ -1,4 +1,4 @@
-// Package core is the piggery engine: registry, mailbox, gate, board, events, timers.
+// Package core is the piggery engine: registry, mailbox, gate, events, timers.
 // It knows nothing about sockets, CLI, or the concrete SQL driver (database/sql only).
 //
 // Invariants (guardrails):
@@ -22,27 +22,28 @@ import (
 // Reserved addresses core interprets.
 const (
 	AddrNotify = "notify"
-	AddrBoard  = "board"
 	AddrEngine = "engine"
 )
 
 // OpAssign marks a mail as the recipient's current assignment (ps shows it).
 const OpAssign = "assign"
 
-// BoardLimit is the max number of live pins per team.
-const BoardLimit = 20
-
 // Engine is the piggery core. Safe for use by one daemon; callers serialize through the DB.
 type Engine struct {
 	db             *sql.DB
 	now            func() time.Time
 	notify         func(participantID string)
-	runtimes       []RuntimeDriver                    // one per harness (WithRuntime)
-	defaultHarness string                             // workers of no role or session harness (WithDefaultHarness)
-	allowedRoots   []string                           // spawn cwd bounds besides the team root (WithAllowedRoots)
-	sharedPrompts  func(template, role string) string // the Human's text for a role card (WithSharedPrompts)
-	minProtocol    int                                // lowest adapter protocol version identify accepts
-	deliverLocks   sync.Map                           // participant id -> *sync.Mutex: one delivery at a time, in batch order
+	runtimes       []RuntimeDriver                      // one per harness (WithRuntime)
+	defaultHarness string                               // workers of no role or session harness (WithDefaultHarness)
+	allowedRoots   []string                             // spawn cwd bounds besides the team root (WithAllowedRoots)
+	sharedPrompts  func(template, role string) string   // the Human's text for a role card (WithSharedPrompts)
+	roleSpawn      func(template, role string) SpawnPin // the Human's harness/model/thinking for a role's workers (WithRoleSpawn)
+	minProtocol    int                                  // lowest adapter protocol version identify accepts
+	deliverLocks   sync.Map                             // participant id -> *sync.Mutex: one delivery at a time, in batch order
+	mailMu         sync.Mutex                           // guards mailWaits
+	mailWaits      map[string][]chan struct{}           // participant id -> inbox calls waiting for mail (Inbox Wait)
+	everyMu        sync.Mutex                           // guards everyLast
+	everyLast      map[string]int64                     // "team/rule index" -> when an every rule last told (or first saw work), ms
 	// stopping holds the runs stopWorker is ending, and closing is set once the daemon stops: an
 	// exit of either is intended, so it does not wake the worker (ProcessExited).
 	stopping sync.Map // run id -> struct{}
@@ -70,7 +71,7 @@ type Option func(*Engine)
 func WithClock(now func() time.Time) Option { return func(e *Engine) { e.now = now } }
 
 // WithNotify registers f, called after commit once for each new message addressed to a
-// participant (Send, FireDue); never for board/notify or refused sends. f must not block.
+// participant (Send, FireDue); never for notify or refused sends. f must not block.
 func WithNotify(f func(participantID string)) Option { return func(e *Engine) { e.notify = f } }
 
 // ProtocolVersion is the version of the socket lines adapters rely on, raised when their shape
@@ -160,12 +161,11 @@ type Event struct {
 // ---- participant verbs ----
 
 type SendArgs struct {
-	To          string `json:"to"` // participant name/id in view, "notify", or "board"
+	To          string `json:"to"` // participant name/id in view, or "notify"
 	Kind        string `json:"kind,omitempty"`
 	Body        string `json:"body"`
 	ReplyTo     string `json:"reply_to,omitempty"`
-	Op          string `json:"op,omitempty"`     // "" | assign (to a member that reports to the sender) | replace | remove (board)
-	Target      string `json:"target,omitempty"` // board only: live pin id for replace/remove
+	Op          string `json:"op,omitempty"` // "" | assign (to a member that reports to the sender)
 	ClientMsgID string `json:"client_msg_id,omitempty"`
 }
 
@@ -190,7 +190,6 @@ type Message struct {
 	ReplyTo    string `json:"reply_to,omitempty"`
 	ReplyToSeq int64  `json:"reply_to_seq,omitempty"`
 	Op         string `json:"op,omitempty"`
-	Target     string `json:"target,omitempty"`
 	Body       string `json:"body"`
 	CreatedAt  int64  `json:"created_at"`
 	CcOf       string `json:"cc_of,omitempty"` // a routing cc copy of this message id
@@ -203,10 +202,9 @@ type InboxArgs struct {
 	// Batch N: records deliveries (run, N); N closed -> CodeBatchClosed;
 	// opening a new N lower than the run's highest batch -> CodeBatchOrder.
 	Batch *int64 `json:"batch,omitempty"`
-	// View is a read-only read (views.go): "board". A view records no delivery, takes no batch,
-	// and never acks. Limit caps it (default 50).
-	View  string `json:"view,omitempty"`
-	Limit int    `json:"limit,omitempty"`
+	// Wait: return only mail not yet given in this batch (a pull: on this run); with none, wait up
+	// to this many seconds (at most MaxInboxWait) and return as soon as mail comes.
+	Wait int `json:"wait,omitempty"`
 }
 
 type Delivered struct {
@@ -385,15 +383,18 @@ type HarnessEventArgs struct {
 	Thinking       string `json:"thinking,omitempty"`    // model_changed
 	PromptID       string `json:"prompt_id,omitempty"`   // turn_start, tool_boundary, turn_end: the harness's key of the turn
 	Wake           bool   `json:"wake,omitempty"`        // turn_start: a mail check (a wake, a reconnect), not a turn: with nothing to give, nothing is opened
+	Seen           int64  `json:"seen,omitempty"`        // tool_boundary, turn_end: the highest part of this turn a finished model turn read; acked at once
 	StopHookActive bool   `json:"stop_hook_active,omitempty"`
 }
 
 // HarnessEventResult is what the adapter prints back to the harness: Text is mail framed for
 // the model ("" none; bounded in size, the rest comes next time); Block (turn_end only) means
-// the turn must go on to read Text instead of ending.
+// the turn must go on to read Text instead of ending. Part numbers the give within the turn (turn_start's
+// is 1) for the adapter's `seen`; 0 when Text holds no mail.
 type HarnessEventResult struct {
 	Text  string `json:"text,omitempty"`
 	Block bool   `json:"block,omitempty"`
+	Part  int64  `json:"part,omitempty"`
 }
 
 // ---- error contract (serialized as-is on the wire) ----
@@ -415,7 +416,7 @@ type Error struct {
 	Message string `json:"message"`
 	RuleID  string `json:"rule_id,omitempty"`
 	Layer   string `json:"layer,omitempty"`   // token | visibility | routing | permission | limit | target
-	Details any    `json:"details,omitempty"` // e.g. live pins when the board is full
+	Details any    `json:"details,omitempty"` // e.g. the mail a limit holds
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -426,6 +427,6 @@ func (e *Error) Error() string { return e.Code + ": " + e.Message }
 
 // Send, Inbox, Completion, Who: mail.go.
 
-// Board: board.go. WatchAdd, WatchList, FireDue: timers.go.
+// WatchAdd, WatchList, FireDue: timers.go.
 
 // Agent (spawn, stop, resume, tail): agent.go.

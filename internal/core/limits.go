@@ -53,7 +53,7 @@ func (t *txn) hold(p participant, msgID, to, rule, key string) (bool, error) {
 	body := fmt.Sprintf("Your message %s is held by %s and was not delivered. Further messages over this limit "+
 		"are held without another notice. Slow down; an admin can release it with "+
 		"`piggery --admin release %s`.", msgID, rule, msgID)
-	if _, err := t.insertMessage(notice, "", p.team, AddrEngine, p.id, "", "", "", "", body); err != nil {
+	if _, err := t.insertMessage(notice, "", p.team, AddrEngine, p.id, "", "", "", body); err != nil {
 		return false, err
 	}
 	return true, t.event(evt{typ: "notice", participant: p.id, team: p.team, ref: notice,
@@ -124,11 +124,9 @@ func (e *Engine) Release(ctx context.Context, a ReleaseArgs) error {
 	for _, id := range copies {
 		e.notifyAfterCommit(id)
 	}
-	switch to {
-	case AddrNotify:
+	if to == AddrNotify {
 		e.notifyHookAfterCommit(a.ID)
-	case AddrBoard:
-	default:
+	} else {
 		e.notifyAfterCommit(to)
 	}
 	return nil

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Turns } from "./adapter.mjs";
-import { afterRetire, render, renderWho, sentText } from "./render.mjs";
+import { afterRetire, emptyInbox, render, renderWho, sentText } from "./render.mjs";
 import { Client, daemonAddress, daemonUp } from "./client.mjs";
 
 // The built-in tools, defined once for every adapter (tools.json, next to this file); {tool:X}
@@ -40,7 +40,7 @@ type ProcState = {
 	envRun?: string; // PIGGERY_RUN_ID, same
 	disabled?: boolean; // PIGGERY_DISABLED=1 at first load (later loads see the value set for children)
 	authRef?: string; // pi session id that auth was joined for
-	stale?: boolean;
+	stale?: string; // why this process stopped driving its participant (set: for good)
 	turns?: Turns;
 };
 const proc: ProcState = ((globalThis as any).__piggeryPi ??= {});
@@ -160,7 +160,7 @@ export default function piggery(pi: ExtensionAPI) {
 				if (err?.code) {
 					// Live elsewhere (invalid) or a headless worker's session (not_found): inert for
 					// this process, silently. Transport errors have no code and are retried.
-					proc.stale = true;
+					proc.stale = err.message;
 					cl.stop();
 					setTools([]);
 					return;
@@ -206,15 +206,14 @@ export default function piggery(pi: ExtensionAPI) {
 	// token is bad): stop driving for the rest of the process, never re-identify as a new run.
 	const retire = (err: any) => {
 		if (afterRetire(err, !!workerRun) === "solo") return becomeSolo();
-		proc.stale = true;
-		setTools([]);
-		log(
+		proc.stale =
 			err.rule_id === "run.stale"
-				? "piggery: another process now owns this participant; this session stops driving it"
+				? "another process now owns this participant"
 				: err.rule_id === "team.closed"
-					? "piggery: left the team: team closed (team down)"
-					: `piggery: ${err.message}; this session stops driving it`,
-		);
+					? "left the team: team closed (team down)"
+					: err.message;
+		setTools([]);
+		log(err.rule_id === "team.closed" ? `piggery: ${proc.stale}` : `piggery: ${proc.stale}; this session stops driving it`);
 	};
 
 	// Team down (or this session's own close): drop the closed team's participant and let join.auto
@@ -309,13 +308,26 @@ export default function piggery(pi: ExtensionAPI) {
 	};
 
 	// A tool call needs the daemon: start it if it is not running (the model called a piggery tool,
-	// so the human asked), then wait for the client to connect and identify.
+	// so the human asked), then wait for the client to connect and identify. Concurrent tool calls
+	// share one attempt, and a client already connecting is waited for, never replaced: a second
+	// client would join.auto the same session again, which the daemon refuses ("participant is
+	// live"), leaving this session inert.
+	let connecting: Promise<void> | undefined;
 	const ensureConnected = async () => {
-		if (proc.stale) throw new Error("this pi session no longer drives a piggery participant");
+		// Say why and the way back: without the cause a model guessed at one (PIGGERY_DISABLED, which
+		// this extension sets for its children) and sent the Human after it.
+		if (proc.stale)
+			throw new Error(
+				`this pi session no longer drives a piggery participant (${proc.stale}); piggery stays off in this pi process, a new pi session joins again`,
+			);
 		if (client?.ready) return;
+		connecting ??= connect().finally(() => (connecting = undefined));
+		return connecting;
+	};
+	const connect = async () => {
 		if (!(await daemonUp())) await startDaemon();
-		client?.stop();
-		startClient(envAuth ?? proc.auth);
+		if (client && !client.stopped) client.retryNow();
+		else startClient(envAuth ?? proc.auth);
 		for (let i = 0; i < 100 && !client?.ready && !proc.stale; i++) await new Promise((r) => setTimeout(r, 100));
 		if (!client?.ready) throw new Error("could not reach the piggery daemon");
 	};
@@ -362,7 +374,16 @@ export default function piggery(pi: ExtensionAPI) {
 	// blocked end (more mail) is steered in before pi decides whether to run on.
 	pi.on("agent_start", () => turns.agentStart());
 	pi.on("turn_start", () => turns.modelTurn());
-	pi.on("turn_end", () => turns.toolBoundary());
+	// A give in the context, then a model reply that ends well: the daemon acks it then, before the
+	// reply's tools run.
+	const ok = (m) => m?.stopReason !== "error" && m?.stopReason !== "aborted";
+	pi.on("message_end", (e) => {
+		if (e.message?.role === "assistant") return turns.answered(ok(e.message));
+		if (e.message?.role !== "user") return;
+		const c = e.message.content;
+		turns.messageIn(typeof c === "string" ? c : c.filter((x) => x.type === "text").map((x) => x.text).join(""));
+	});
+	pi.on("turn_end", (e) => turns.toolBoundary(ok(e.message)));
 	pi.on("agent_before_settle", async (e) => {
 		await turns.beforeSettle(e.outcome);
 	});
@@ -389,13 +410,15 @@ export default function piggery(pi: ExtensionAPI) {
 		return text(sentText(await client!.call("send", p)));
 	});
 
-	builtin("inbox", async (_id, p) => {
+	builtin("inbox", async (_id, p, signal) => {
 		await ensureConnected();
-		// No batch: in a turn the daemon records the delivery in that turn (like piggery mcp); a
-		// view is read-only (no delivery).
-		const msgs: any[] = await client!.call("inbox", p.view ? { view: p.view } : {});
-		if (!msgs.length) return text(p.view ? "Nothing in this view." : "No new messages.");
-		return text(p.view ? render(msgs, `view ${p.view}, ${msgs.length} message(s), nothing marked read`) : render(msgs));
+		// No batch: in a turn the daemon records the delivery in that turn (like piggery mcp).
+		// A wait ends with the turn: an abort answers at once (mail the wait then takes stays unacked).
+		const call = client!.call("inbox", p.wait ? { wait: p.wait } : {});
+		const stop = new Promise<any[]>((r) => (signal?.aborted ? r([]) : signal?.addEventListener("abort", () => r([]), { once: true })));
+		const msgs: any[] = await Promise.race([call, stop]);
+		if (!msgs.length) return text(emptyInbox(p.wait));
+		return text(render(msgs));
 	});
 
 	builtin("who", async () => {

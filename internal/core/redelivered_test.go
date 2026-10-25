@@ -22,10 +22,10 @@ func TestRedeliveredMailIsMarked(t *testing.T) {
 		t.Fatalf("second delivery: %+v, %v", again, err)
 	}
 	now := time.UnixMilli(again[0].CreatedAt).Add(time.Second)
-	if got := core.RenderMail(first, "", "", now); strings.Contains(got, "redelivered") {
+	if got := core.RenderMail(first, "", now); strings.Contains(got, "redelivered") {
 		t.Fatalf("first delivery rendered as redelivered: %s", got)
 	}
-	if got := core.RenderMail(again, "", "", now); !strings.Contains(got, ` redelivered="true"`) || strings.Contains(got, "age=") {
+	if got := core.RenderMail(again, "", now); !strings.Contains(got, ` redelivered="true"`) || strings.Contains(got, "age=") {
 		t.Fatalf("redelivery rendered: %s", got)
 	}
 }

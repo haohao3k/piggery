@@ -13,7 +13,7 @@ import (
 
 // GateCheck is one check of the send gate as `why` reports it.
 type GateCheck struct {
-	Check  string `json:"check"`  // caller, visibility, team_gate, routing, reply_to, board, limits, cc
+	Check  string `json:"check"`  // caller, visibility, team_gate, routing, reply_to, limits, cc
 	Result string `json:"result"` // pass, deny, hold, info
 	RuleID string `json:"rule_id,omitempty"`
 	Detail string `json:"detail"`
@@ -21,7 +21,7 @@ type GateCheck struct {
 
 type WhyArgs struct {
 	From string `json:"from"`           // participant id or name
-	To   string `json:"to"`             // as in send: a name/id, notify or board
+	To   string `json:"to"`             // as in send: a name/id or notify
 	Team string `json:"team,omitempty"` // team id or name, when From's name is ambiguous
 }
 

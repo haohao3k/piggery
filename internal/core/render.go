@@ -10,14 +10,20 @@ import (
 // renders them (extensions/pi/render.mjs), with the harness's tool prefix. No ULIDs: messages are
 // #N, people are names.
 
-// RenderMail renders msgs for the model. heading replaces the default "N new messages" line
-// (a read-only view is not new mail).
-func RenderMail(msgs []Delivered, heading, toolPrefix string, now time.Time) string {
-	if heading == "" {
-		heading = fmt.Sprintf("%d new message", len(msgs))
-		if len(msgs) != 1 {
-			heading += "s"
-		}
+// RenderEmptyInbox is the inbox answer with nothing to give. After a wait it says what to do
+// instead of waiting again (live t8-hyb-1: a lead waited out 75 empty waits in one turn).
+func RenderEmptyInbox(wait int) string {
+	if wait > 0 {
+		return "No new messages. Nothing else in hand? End your turn: mail wakes you."
+	}
+	return "No new messages."
+}
+
+// RenderMail renders msgs for the model.
+func RenderMail(msgs []Delivered, toolPrefix string, now time.Time) string {
+	heading := fmt.Sprintf("%d new message", len(msgs))
+	if len(msgs) != 1 {
+		heading += "s"
 	}
 	parts := make([]string, len(msgs))
 	for i, m := range msgs {

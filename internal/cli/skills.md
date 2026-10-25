@@ -17,13 +17,12 @@ are `#N`; people and teams are names.
 ```sh
 piggery who                                   # your team, other teams (name, gate), solos
 piggery send <to> "text" [--reply-to #N] [--kind K]
-piggery inbox                                 # new mail (read only)
-piggery inbox --view board                    # the team board
+piggery inbox [--wait N]                      # new mail (read only); --wait: wait up to N s (max 50) for mail the work needs, never sleep
 piggery completion --batch N                  # ack a batch you pulled with inbox --batch N
 ```
 
 - `to`: a teammate's name; another team's name (reaches its gate; only gates write between
-  teams); a solo's name; `board` (pins: `--op replace|remove --target #N`). `notify` is piggery's own
+  teams); a solo's name. `notify` is piggery's own
   channel to the Human; agents cannot send to it.
 - `--op assign` (to a member that reports to you): the mail becomes that member's current task,
   shown in `piggery top`; a later assign replaces it. Put a short title on the first line. A task
@@ -73,18 +72,23 @@ piggery ps                                                       # check: its mo
 It works on headless workers only (a session's model is chosen in that session). A running worker
 switches from its next turn and keeps its context; a stopped one gets it when resumed. Name the
 model as the worker's harness does (pi and omp: `provider/model`); a model or level the harness does
-not run is refused and nothing changes. Tell the Human what `ps` shows after.
+not run is refused and nothing changes. Tell the Human what `ps` shows after. To make the workers of
+a role always run one harness or model, the Human writes `roles:` in `~/.piggery/config.yaml`; that is
+not a template field (see Writing a template).
 
 ## Writing a template (when the Human asks)
 
 A template is `~/.piggery/templates/<name>/manifest.yaml` plus the prompt files it names,
 relative to that directory. To start from a built-in, copy its directory under a new name and
 set `template:` to that name. You do not bring it up: the Human does, or asks a session to found it.
+Do not put `spawn.harness`, `spawn.model` or `spawn.thinking` in a template (deprecated; piggery moves them into `roles:` itself when it starts): to make a
+role's workers always run one harness or model, the Human writes `roles:` in `config.yaml`
+(`<template>/<role>: {harness, model, thinking}`).
 
 **Manifest fields** (only these exist; each with its default is in
 [docs/reference.md](https://github.com/sting8k/piggery/blob/main/docs/reference.md#manifest)):
 `template` (required, the name), `summary`, `auto_join_role`, `roles.<role>` (`instructions` or
-`instructions_file`, `tools`, `can_spawn`, `can_pin`, `can_set_cwd`, `spawn`), `routing`, `limits`, `timers`, `taskforce` (`idle_for`: a template with this block can also be called up
+`instructions_file`, `tools`, `can_spawn`, `can_set_cwd`, `spawn`), `routing`, `limits`, `timers`, `taskforce` (`idle_for`: a template with this block can also be called up
 with `spawn --template`; keep its keys in that block, because `timers` refuses unknown keys in older binaries).
 The tools are `send`, `inbox`, `who`, `agent` and no others. The first routing rule matching (sender's
 role, recipient's role) decides and none means denied; mail
@@ -122,7 +126,7 @@ routing:
   - {from: helper, to: lead, allow: true}
 limits: {depth: 2, concurrency: 3}
 timers:
-  - {on: helper, silent_for: 30m, notify: reports_to}
+  - {on: helper, working_for: 30m, notify: reports_to}
 ```
 
 `prompts/lead.md`:

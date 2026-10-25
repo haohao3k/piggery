@@ -26,7 +26,7 @@ CI runs exactly these. A change is not done until they pass.
 | Path | What it is |
 | --- | --- |
 | `cmd/piggery` | The binary's entry point |
-| `internal/core` | The engine: registry, mailbox, gate, board, events, timers. No I/O beyond the DB |
+| `internal/core` | The engine: registry, mailbox, gate, events, timers. No I/O beyond the DB |
 | `internal/store` | SQLite open and schema; `migrate_N.sql` files |
 | `internal/server` | `piggery serve`: the one daemon that owns the DB and the socket |
 | `internal/proto` | The socket wire format (JSON lines), shared by server and clients |
@@ -46,9 +46,8 @@ These are the mistakes that are easy to make and expensive to undo.
    the adapter socket protocol for sessions; capabilities (`wake`, `steer`, `abort`, …) are
    declared, and core reads only those. Do not use Go's `plugin` package.
 2. **Mail is a black box.** Core never looks inside `body` or `kind`. It acts only on reserved
-   addresses (`notify`, `board`, `engine`), envelope fields (`to`, `reply_to`, `op`, `target`,
-   …) and action or tool names. If you want behaviour keyed on what a message says, it belongs in
-   a role prompt, not in core.
+   addresses (`notify`, `engine`), envelope fields (`to`, `reply_to`, `op`, …) and action or tool
+   names. If you want behaviour keyed on what a message says, it belongs in a role prompt, not in core.
 3. **Ack only on a matching completion.** A delivered batch is acknowledged only when the harness
    reports the end of that batch's turn for the participant's current run. Never ack because a
    participant looks idle, because a sequence number moved, or because a retry happened. Lost acks

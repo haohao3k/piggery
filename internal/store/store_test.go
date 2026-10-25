@@ -20,7 +20,8 @@ func TestOpenMigratesV1File(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := v1.Exec(`INSERT INTO meta(key, value) VALUES ('schema_version', '1');
-		INSERT INTO teams(id, name, model_name, manifest, root_cwd, created_at) VALUES ('T1', 'old', 'old', 'model: old', '/x', 1)`); err != nil {
+		INSERT INTO teams(id, name, model_name, manifest, root_cwd, created_at) VALUES ('T1', 'old', 'old', 'model: old', '/x', 1);
+		INSERT INTO messages(id, seq, thread_id, team_id, from_id, to_id, body, created_at) VALUES ('M1', 1, 'M1', 'T1', 'a', 'board', 'pinned', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	v1.Close()
@@ -31,7 +32,7 @@ func TestOpenMigratesV1File(t *testing.T) {
 	}
 	defer db.Close()
 	var version, team string
-	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "28" {
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "30" {
 		t.Fatalf("version = %q, %v", version, err)
 	}
 	if err := db.QueryRow(`SELECT name FROM teams WHERE id='T1'`).Scan(&team); err != nil || team != "old" {
@@ -46,6 +47,13 @@ func TestOpenMigratesV1File(t *testing.T) {
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('participants') WHERE name IN ('turns_no_tool','no_tool_streak')`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("participants tool-streak columns: %d, %v", n, err)
+	}
+	// v30: the board's view is dropped; its mail stays.
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name IN ('pins', 'messages_board')`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("board view or index left: %d, %v", n, err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM messages WHERE id='M1' AND to_id='board'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("board mail lost: %d, %v", n, err)
 	}
 }
 
@@ -166,10 +174,10 @@ func TestOpenBacksUpBeforeMigrating(t *testing.T) {
 		}
 		db.Close()
 	}
-	if got, want := names(), "mine.db pre-v18-28 pre-v19-28 pre-v20-28 pre-v3-4-by-hand.db"; got != want {
+	if got, want := names(), "mine.db pre-v18-30 pre-v19-30 pre-v20-30 pre-v3-4-by-hand.db"; got != want {
 		t.Fatalf("backups = %q; want the 3 newest upgrades, and both other files kept", got)
 	}
-	es, _ := filepath.Glob(filepath.Join(backups, "pre-v20-28-*.db"))
+	es, _ := filepath.Glob(filepath.Join(backups, "pre-v20-30-*.db"))
 	cp, err := sql.Open("sqlite", "file:"+es[0])
 	if err != nil {
 		t.Fatal(err)

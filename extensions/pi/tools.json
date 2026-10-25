@@ -2,17 +2,17 @@
 	"tools": [
 		{
 			"name": "send",
-			"description": "Send a message to a teammate (by name) or to 'board' (team pins). Set reply_to to the #N of the message you answer. Another team or a solo session is reached only gate to gate: from your team's gate, send to the team's name (it reaches that team's gate) or the solo's name; see {tool:who}.",
+			"description": "Send a message to a teammate (by name). Set reply_to to the #N of the message you answer. Another team or a solo session is reached only gate to gate: from your team's gate, send to the team's name (it reaches that team's gate) or the solo's name; see {tool:who}.",
 			"parameters": {
 				"type": "object",
 				"properties": {
 					"to": {
 						"type": "string",
-						"description": "a name (teammate, team, solo) or 'board'"
+						"description": "a name (teammate, team, solo)"
 					},
 					"body": {
 						"type": "string",
-						"description": "message text (empty only for board op=remove)"
+						"description": "message text"
 					},
 					"reply_to": {
 						"type": "string",
@@ -24,11 +24,7 @@
 					},
 					"op": {
 						"type": "string",
-						"description": "assign: this mail is the current task of the member it goes to (it must report to you; shown in top; a later assign replaces it; give it a short title on the first line). replace | remove: board only"
-					},
-					"target": {
-						"type": "string",
-						"description": "board only: #N of the pin to replace or remove"
+						"description": "assign: this mail is the current task of the member it goes to (it must report to you; shown in top; a later assign replaces it; give it a short title on the first line)."
 					}
 				},
 				"required": [
@@ -39,13 +35,13 @@
 		},
 		{
 			"name": "inbox",
-			"description": "Read your unacknowledged piggery messages. view=board instead shows the team's pins (read-only, marks nothing as read).",
+			"description": "Read your unacknowledged piggery messages.",
 			"parameters": {
 				"type": "object",
 				"properties": {
-					"view": {
-						"type": "string",
-						"description": "board"
+					"wait": {
+						"type": "integer",
+						"description": "With nothing unread, wait up to this many seconds (at most 50) and return as soon as mail comes. Use it when the work in hand needs that mail; never sleep."
 					}
 				}
 			}

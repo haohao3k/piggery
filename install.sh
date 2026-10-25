@@ -1,6 +1,7 @@
 #!/bin/sh
 # Install piggery from a GitHub release: the binary for this OS and CPU, checked against the
-# release's checksums.txt, into $PIGGERY_INSTALL_DIR (default ~/.local/bin). No sudo.
+# release's checksums.txt, into $PIGGERY_INSTALL_DIR (default ~/.local/bin), and `pig` beside it as a
+# short name when nothing else is called that. No sudo.
 #
 #   curl -fsSL https://raw.githubusercontent.com/sting8k/piggery/main/install.sh | sh
 #
@@ -67,6 +68,20 @@ cp "$tmp/$name" "$dir/.piggery.new.$$"
 mv -f "$dir/.piggery.new.$$" "$dir/piggery"
 
 echo "piggery install: installed $("$dir/piggery" --version 2>/dev/null || echo "$name") in $dir"
+
+# `pig`, a short name for piggery: a symlink next to it, only when the name is free. One that is
+# already a link to piggery is ours and stays; any other `pig` (a file here, or one on PATH) is
+# someone's, and is not touched.
+if [ -L "$dir/pig" ] && { [ "$(readlink "$dir/pig")" = piggery ] || [ "$(readlink "$dir/pig")" = "$dir/piggery" ]; }; then
+	:
+elif [ -e "$dir/pig" ] || [ -L "$dir/pig" ]; then
+	echo "piggery install: pig is taken by $dir/pig; use piggery"
+elif other=$(command -v pig 2>/dev/null) && [ -n "$other" ]; then
+	echo "piggery install: pig is taken by $other; use piggery"
+else
+	ln -s piggery "$dir/pig"
+	echo "piggery install: pig is a short name for piggery ($dir/pig)"
+fi
 case ":$PATH:" in
 *":$dir:"*) ;;
 *) echo "piggery install: $dir is not on your PATH; add this to your shell profile:

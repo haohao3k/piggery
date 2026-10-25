@@ -6,8 +6,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Send stores one message after the gate. A repeated (from, client_msg_id) returns the
@@ -53,9 +55,6 @@ func (e *Engine) send(ctx context.Context, c Caller, a SendArgs) (SendResult, er
 		if a.ReplyTo, err = t.messageRef(a.ReplyTo); err != nil {
 			return err
 		}
-		if a.Target, err = t.messageRef(a.Target); err != nil {
-			return err
-		}
 		if a.ClientMsgID != "" {
 			var held sql.NullString
 			err := t.QueryRowContext(t.ctx, `SELECT id, seq, held_reason FROM messages
@@ -86,7 +85,7 @@ func (e *Engine) send(ctx context.Context, c Caller, a SendArgs) (SendResult, er
 		}
 		res.RuleID, recipient = g.rule, g.recipient
 		if res.Seq, err = t.insertMessage(res.ID, a.ClientMsgID, p.team, p.id, g.toID, a.Kind,
-			a.ReplyTo, a.Op, a.Target, a.Body); err != nil {
+			a.ReplyTo, a.Op, a.Body); err != nil {
 			return err
 		}
 		if ccTo, err = t.writeCCCopies(p, g.cc, res.ID, a.Kind, a.Body, res.RuleID != ""); err != nil {
@@ -125,7 +124,7 @@ func (e *Engine) send(ctx context.Context, c Caller, a SendArgs) (SendResult, er
 
 // gatePlan is what the send gate decided for one message.
 type gatePlan struct {
-	toID, recipient string // recipient: participant to wake ("" for notify/board)
+	toID, recipient string // recipient: participant to wake ("" for notify)
 	rule, key       string // limit that holds it ("" = none) and its notice dedupe key
 	cc              []participant
 	crossTeam       bool // to another team's gate: no routing, no cc
@@ -150,46 +149,37 @@ func (t *txn) sendGate(p participant, m manifest, a SendArgs, tr *gateTrace) (ga
 		return g, err
 	}
 	tr.add("permission", "pass", "tools", "role "+p.role+" has tool send")
-	var toRole string
-	switch a.To {
-	case AddrBoard:
-		if err := t.gateBoard(p, m, a); err != nil {
+	if a.Op != "" && a.Op != OpAssign {
+		return g, errf(CodeInvalid, "unknown op %q (assign)", a.Op)
+	}
+	if a.To == AddrNotify { // the engine's channel: no routing rule opens it
+		return g, deny(&p, "send", "routing", "routing.notify", "notify is the engine's channel: agents cannot send to it", nil,
+			map[string]any{"to": a.To})
+	}
+	if a.Body == "" {
+		return g, errf(CodeInvalid, "body is required")
+	}
+	q, other, err := t.resolveSendTarget(p, a.To)
+	if err != nil {
+		return g, err
+	}
+	toRole := q.role
+	g.toID, g.recipient = q.id, q.id
+	if other != nil && a.Op == OpAssign {
+		return g, errf(CodeInvalid, "op assign is for a member of your team")
+	}
+	if a.Op == OpAssign && q.reportsTo != p.id {
+		return g, deny(&p, "send", "permission", "assign.not_reports_to", "only the member's reports_to can assign it a task", nil,
+			map[string]any{"to": a.To})
+	}
+	if other != nil {
+		// Another team: gate to gate only; neither team's routing nor cc applies.
+		if err := t.gateCrossTeam(p, q, *other, a); err != nil {
 			return g, err
 		}
-		tr.add("board", "pass", "can_pin", "role "+p.role+" can pin; target/board limit ok")
-		g.toID = AddrBoard
-	default:
-		if a.Target != "" || (a.Op != "" && a.Op != OpAssign) {
-			return g, errf(CodeInvalid, "target and op replace/remove are only valid for board; op assign for a member")
-		}
-		if a.To == AddrNotify { // the engine's channel: no routing rule opens it
-			return g, deny(&p, "send", "routing", "routing.notify", "notify is the engine's channel: agents cannot send to it", nil,
-				map[string]any{"to": a.To})
-		}
-		if a.Body == "" {
-			return g, errf(CodeInvalid, "body is required")
-		}
-		q, other, err := t.resolveSendTarget(p, a.To)
-		if err != nil {
-			return g, err
-		}
-		g.toID, toRole, g.recipient = q.id, q.role, q.id
-		if other != nil && a.Op == OpAssign {
-			return g, errf(CodeInvalid, "op assign is for a member of your team")
-		}
-		if a.Op == OpAssign && q.reportsTo != p.id {
-			return g, deny(&p, "send", "permission", "assign.not_reports_to", "only the member's reports_to can assign it a task", nil,
-				map[string]any{"to": a.To})
-		}
-		if other != nil {
-			// Another team: gate to gate only; neither team's routing nor cc applies.
-			if err := t.gateCrossTeam(p, q, *other, a); err != nil {
-				return g, err
-			}
-			tr.add("team_gate", "pass", "", fmt.Sprintf("%s is the gate of its team and %s the gate of team %s", p.name, a.To, other.name))
-			g.crossTeam = true
-			break
-		}
+		tr.add("team_gate", "pass", "", fmt.Sprintf("%s is the gate of its team and %s the gate of team %s", p.name, a.To, other.name))
+		g.crossTeam = true
+	} else {
 		if g.noGate, err = t.gateLeaver(p, q, a); err != nil {
 			return g, err
 		}
@@ -204,11 +194,10 @@ func (t *txn) sendGate(p participant, m manifest, a SendArgs, tr *gateTrace) (ga
 	if a.ReplyTo != "" {
 		var fromID, parentTo string
 		// Mail from or to the caller is in view whatever its team (cross-team mail keeps the
-		// sender's team); a pin only on the caller's own board.
-		var team string
-		err := t.QueryRowContext(t.ctx, `SELECT from_id, to_id, COALESCE(team_id,'') FROM messages WHERE id=?`,
-			a.ReplyTo).Scan(&fromID, &parentTo, &team)
-		if errors.Is(err, sql.ErrNoRows) || (err == nil && fromID != p.id && parentTo != p.id && (parentTo != AddrBoard || team != p.team)) {
+		// sender's team).
+		err := t.QueryRowContext(t.ctx, `SELECT from_id, to_id FROM messages WHERE id=?`,
+			a.ReplyTo).Scan(&fromID, &parentTo)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && fromID != p.id && parentTo != p.id) {
 			return g, deny(&p, "send", "visibility", "reply_to.not_in_view", "reply_to is not in the caller's view", nil,
 				map[string]any{"reply_to": a.ReplyTo})
 		}
@@ -217,11 +206,7 @@ func (t *txn) sendGate(p participant, m manifest, a SendArgs, tr *gateTrace) (ga
 		}
 		tr.add("reply_to", "pass", "", "in view")
 	}
-	if a.To == AddrBoard {
-		return g, nil // board pins are exempt from mail limits (the board has its own) and cc
-	}
 	// Limits are checked before the insert (counts exclude this message).
-	var err error
 	if g.rule, g.key, err = t.mailHold(p, m); err != nil {
 		return g, err
 	}
@@ -247,7 +232,7 @@ func (t *txn) sendGate(p participant, m manifest, a SendArgs, tr *gateTrace) (ga
 }
 
 // insertMessage writes a message with the next daemon-assigned seq.
-func (t *txn) insertMessage(id, clientMsgID, team, from, to, kind, replyTo, op, target, body string) (int64, error) {
+func (t *txn) insertMessage(id, clientMsgID, team, from, to, kind, replyTo, op, body string) (int64, error) {
 	var seq int64
 	if err := t.QueryRowContext(t.ctx, `SELECT COALESCE(MAX(seq),0)+1 FROM messages`).Scan(&seq); err != nil {
 		return 0, internal(err)
@@ -259,25 +244,88 @@ func (t *txn) insertMessage(id, clientMsgID, team, from, to, kind, replyTo, op, 
 		acked = t.now
 	}
 	_, err := t.ExecContext(t.ctx, `INSERT INTO messages
-		(id, seq, client_msg_id, team_id, from_id, to_id, kind, reply_to, op, target, body, created_at, acked_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		(id, seq, client_msg_id, team_id, from_id, to_id, kind, reply_to, op, body, created_at, acked_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		id, seq, nullStr(clientMsgID), nullStr(team), from, to, nullStr(kind), nullStr(replyTo),
-		nullStr(op), nullStr(target), body, t.now, acked)
+		nullStr(op), body, t.now, acked)
 	return seq, internal(err)
 }
 
+// MaxInboxWait caps InboxArgs.Wait in seconds: under the 60 s Codex gives an MCP tool call.
+const MaxInboxWait = 50
+
 // Inbox returns the caller's unacked messages and records one delivery per message.
-// Pull (Batch nil) deliveries have batch_seq NULL and can never be acked.
+// Pull (Batch nil) deliveries have batch_seq NULL and can never be acked. With Wait it returns only
+// mail not yet given in this batch (a pull: on this run) and, with none, waits for it (the server
+// runs such a call beside the connection's other requests).
 func (e *Engine) Inbox(ctx context.Context, c Caller, a InboxArgs) ([]Delivered, error) {
-	if a.View != "" {
-		return e.inboxView(ctx, c, a)
+	out, pid, err := e.inbox(ctx, c, a)
+	if err != nil || len(out) > 0 || a.Wait <= 0 {
+		return out, err
 	}
+	timer := time.NewTimer(time.Duration(min(a.Wait, MaxInboxWait)) * time.Second)
+	defer timer.Stop()
+	for {
+		ch := e.mailWaiter(pid)
+		// Read again once registered: mail that came between the two reads has closed ch.
+		out, _, err = e.inbox(ctx, c, a)
+		if err != nil || len(out) > 0 {
+			e.dropMailWaiter(pid, ch)
+			return out, err
+		}
+		select {
+		case <-ch:
+		case <-timer.C:
+			e.dropMailWaiter(pid, ch)
+			return out, nil
+		case <-ctx.Done():
+			e.dropMailWaiter(pid, ch)
+			return out, nil
+		}
+	}
+}
+
+// mailWaiter registers an inbox call of participant pid waiting for mail; mailArrived closes it.
+func (e *Engine) mailWaiter(pid string) chan struct{} {
+	ch := make(chan struct{})
+	e.mailMu.Lock()
+	defer e.mailMu.Unlock()
+	if e.mailWaits == nil {
+		e.mailWaits = map[string][]chan struct{}{}
+	}
+	e.mailWaits[pid] = append(e.mailWaits[pid], ch)
+	return ch
+}
+
+func (e *Engine) dropMailWaiter(pid string, ch chan struct{}) {
+	e.mailMu.Lock()
+	defer e.mailMu.Unlock()
+	e.mailWaits[pid] = slices.DeleteFunc(e.mailWaits[pid], func(c chan struct{}) bool { return c == ch })
+	if len(e.mailWaits[pid]) == 0 {
+		delete(e.mailWaits, pid)
+	}
+}
+
+// mailArrived wakes every inbox call of pid waiting for mail; each reads its inbox again.
+func (e *Engine) mailArrived(pid string) {
+	e.mailMu.Lock()
+	defer e.mailMu.Unlock()
+	for _, ch := range e.mailWaits[pid] {
+		close(ch)
+	}
+	delete(e.mailWaits, pid)
+}
+
+// inbox is one read of Inbox; it also returns the caller's participant id.
+func (e *Engine) inbox(ctx context.Context, c Caller, a InboxArgs) ([]Delivered, string, error) {
 	var out []Delivered
+	var pid string
 	err := e.inTx(ctx, func(t *txn) error {
 		p, err := t.caller(c, "inbox")
 		if err != nil {
 			return err
 		}
+		pid = p.id
 		var batch any // nil = pull
 		if a.Batch == nil {
 			// The model's inbox during a turn the daemon counts (adapter events): the turn's batch.
@@ -311,6 +359,16 @@ func (e *Engine) Inbox(ctx context.Context, c Caller, a InboxArgs) ([]Delivered,
 				if err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return internal(err)
 				}
+			} else if a.Wait > 0 {
+				// A pull's deliveries are never acked: one on this run means the model has it.
+				err := t.QueryRowContext(t.ctx, `SELECT id FROM deliveries
+					WHERE run_id=? AND batch_seq IS NULL AND message_id=? ORDER BY id DESC LIMIT 1`, p.run, m.ID).Scan(&did)
+				if err != nil && !errors.Is(err, sql.ErrNoRows) {
+					return internal(err)
+				}
+			}
+			if did != 0 && a.Wait > 0 {
+				continue // waiting is for mail the model does not have yet
 			}
 			if did == 0 {
 				r, err := t.ExecContext(t.ctx, `INSERT INTO deliveries(message_id, run_id, batch_seq, delivered_at)
@@ -330,7 +388,7 @@ func (e *Engine) Inbox(ctx context.Context, c Caller, a InboxArgs) ([]Delivered,
 		}
 		return nil
 	})
-	return out, err
+	return out, pid, err
 }
 
 // redelivered reports whether message id has a delivery other than delivery did: it was given
@@ -399,7 +457,6 @@ func (e *Engine) Completion(ctx context.Context, c Caller, a CompletionArgs) (Co
 // complete closes (p's run, n) and acks exactly its open deliveries; an already-closed batch acks
 // nothing. It returns the message ids acked.
 func (t *txn) complete(p participant, n int64) ([]string, error) {
-	acked := []string{}
 	r, err := t.ExecContext(t.ctx, `INSERT INTO batches(run_id, batch_seq, opened_at, completed_at) VALUES (?,?,?,?)
 		ON CONFLICT(run_id, batch_seq) DO UPDATE SET completed_at=excluded.completed_at WHERE completed_at IS NULL`,
 		p.run, n, t.now, t.now)
@@ -409,8 +466,15 @@ func (t *txn) complete(p participant, n int64) ([]string, error) {
 	if n, err := r.RowsAffected(); err != nil || n == 0 {
 		return nil, internal(err) // already closed: nothing to ack
 	}
+	return t.ackDeliveries(p, n, 0)
+}
+
+// ackDeliveries acks p's unacked deliveries in batch n of its current run, those up to part upTo
+// (0: all), and the messages they carry that are still p's and unacked; it returns those messages.
+func (t *txn) ackDeliveries(p participant, n, upTo int64) ([]string, error) {
+	acked := []string{}
 	rows, err := t.QueryContext(t.ctx, `SELECT id, message_id FROM deliveries
-		WHERE run_id=? AND batch_seq=? AND acked_at IS NULL ORDER BY id`, p.run, n)
+		WHERE run_id=? AND batch_seq=? AND acked_at IS NULL AND (?=0 OR part<=?) ORDER BY id`, p.run, n, upTo, upTo)
 	if err != nil {
 		return nil, internal(err)
 	}
@@ -554,7 +618,7 @@ func (e *Engine) Who(ctx context.Context, c Caller) ([]Presence, error) {
 func (t *txn) readMessages(reader participant, where string, args ...any) ([]Message, error) {
 	// where uses unqualified columns of messages; the cc original is read by a subquery.
 	rows, err := t.QueryContext(t.ctx, `SELECT id, seq, from_id, to_id, COALESCE(kind,''),
-		COALESCE(reply_to,''), COALESCE(op,''), COALESCE(target,''), body, created_at,
+		COALESCE(reply_to,''), COALESCE(op,''), body, created_at,
 		COALESCE(cc_of,''), COALESCE((SELECT o.to_id FROM messages o WHERE o.id = messages.cc_of),''),
 		COALESCE((SELECT o.seq FROM messages o WHERE o.id = messages.reply_to),0),
 		COALESCE((SELECT o.seq FROM messages o WHERE o.id = messages.cc_of),0)
@@ -566,7 +630,7 @@ func (t *txn) readMessages(reader participant, where string, args ...any) ([]Mes
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.Seq, &m.From, &m.To, &m.Kind, &m.ReplyTo,
-			&m.Op, &m.Target, &m.Body, &m.CreatedAt, &m.CcOf, &m.CcTo, &m.ReplyToSeq, &m.CcOfSeq); err != nil {
+			&m.Op, &m.Body, &m.CreatedAt, &m.CcOf, &m.CcTo, &m.ReplyToSeq, &m.CcOfSeq); err != nil {
 			rows.Close()
 			return nil, internal(err)
 		}

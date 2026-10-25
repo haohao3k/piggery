@@ -23,7 +23,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Turns } from "../pi/adapter.mjs";
 import { Client, daemonAddress, daemonUp } from "../pi/client.mjs";
-import { afterRetire, render, renderWho, sentText } from "../pi/render.mjs";
+import { afterRetire, emptyInbox, render, renderWho, sentText } from "../pi/render.mjs";
 
 // The built-in tools, defined once for every adapter (extensions/pi/tools.json); {tool:X} in a text
 // is X's name here.
@@ -430,13 +430,15 @@ export default function piggery(omp: ExtensionAPI) {
 		return text(sentText(await client!.call("send", p)));
 	});
 
-	builtin("inbox", async (_id, p) => {
+	builtin("inbox", async (_id, p, signal) => {
 		await ensureConnected();
-		// No batch: in a turn the daemon records the delivery in that turn (like piggery mcp); a view
-		// is read-only (no delivery).
-		const msgs: any[] = await client!.call("inbox", p.view ? { view: p.view } : {});
-		if (!msgs.length) return text(p.view ? "Nothing in this view." : "No new messages.");
-		return text(p.view ? render(msgs, `view ${p.view}, ${msgs.length} message(s), nothing marked read`) : render(msgs));
+		// No batch: in a turn the daemon records the delivery in that turn (like piggery mcp).
+		// A wait ends with the turn: an abort answers at once (mail the wait then takes stays unacked).
+		const call = client!.call("inbox", p.wait ? { wait: p.wait } : {});
+		const stop = new Promise<any[]>((r) => (signal?.aborted ? r([]) : signal?.addEventListener("abort", () => r([]), { once: true })));
+		const msgs: any[] = await Promise.race([call, stop]);
+		if (!msgs.length) return text(emptyInbox(p.wait));
+		return text(render(msgs));
 	});
 
 	builtin("who", async () => {
