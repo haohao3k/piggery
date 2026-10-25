@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.11.2 - 2026-10-25
+
+A pi, omp, dsh or opencode session that changes participant in the middle of a run now shows as working.
+
+Upgrade: `piggery update`, then restart open pi, omp, dsh and opencode sessions. Their integrations
+move to pi 23, omp 22, dsh 23 and opencode 18. Claude and Codex are unchanged.
+
+### Fixed
+
+- A session that founded a team, reopened one, or closed its own team (and so became solo) in the
+  middle of a run showed the new participant idle in `top` and `ps`, with `last turn -`, until its
+  next run. The run now goes on as the new participant: the daemon sees its turn start, its tool
+  boundaries and its end.
+
 ## v0.11.1 - 2026-10-25
 
 `piggery skills` now teaches the `every` timer, and the guide and reference cover what v0.11.0 left out.

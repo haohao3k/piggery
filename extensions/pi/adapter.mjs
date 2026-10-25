@@ -25,13 +25,17 @@ export class Turns {
 	constructor(io) {
 		this.io = io;
 		this.q = Promise.resolve();
+		this.running = false; // pi is in a run (agent_start…settled)
 		this.reset();
 	}
 
-	/** A new run (or a new participant): nothing of the old run can be ended any more. */
+	/**
+	 * A new run (or a new participant): nothing of the old run can be ended any more. `running` stays:
+	 * it says the harness is in a run, whoever the participant is; resumeRunning (after identify)
+	 * opens that run's turn for the new one, and settled() is what ends it.
+	 */
 	reset() {
 		this.key = null; // the turn in progress (or the one an idle wake opened)
-		this.running = false;
 		this.held = false; // a wake came after this run's turn ended, before pi settled
 		this.ended = []; // turn_ends the daemon did not get (it was down), oldest first
 		this.unread = false; // mail was steered in and no model turn has started since
@@ -212,7 +216,7 @@ export class Turns {
 		});
 	}
 
-	/** After a reconnect mid-run: the daemon closed the old turn; go on under a new key. */
+	/** After a reconnect or a change of participant mid-run: go on as the current one under a new key. */
 	resumeRunning() {
 		if (!this.running) return;
 		this.key = this.io.newKey();

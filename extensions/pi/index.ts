@@ -445,6 +445,7 @@ export default function piggery(pi: ExtensionAPI) {
 				turns.reset();
 			}
 			const res = await reidentify();
+			if (r.token) turns.resumeRunning(); // a run in progress goes on as the new participant
 			const tools = "your tools: " + (res.tools ?? []).map((t: string) => PREFIX + t).join(", ");
 			if (p.action === "reopen") return text(`${r.text}\n${tools}`);
 			return text(`founded team ${r.team_name}; you are ${res.name} (${res.role}), its gate; ${tools}`);

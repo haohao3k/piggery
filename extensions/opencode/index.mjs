@@ -491,6 +491,7 @@ const TOOL_BODIES = {
 				part.turns.reset();
 			}
 			const res = await part.reidentify();
+			if (r.token) part.turns.resumeRunning(); // a run in progress goes on as the new participant
 			const tools = "your tools: " + (res.tools ?? []).map((t) => PREFIX + t).join(", ");
 			if (p.action === "reopen") return `${r.text}\n${tools}`;
 			return `founded team ${r.team_name}; you are ${res.name} (${res.role}), its gate; ${tools}`;
