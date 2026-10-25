@@ -22,7 +22,6 @@ const (
 	VerbInbox        = "inbox"         // args core.InboxArgs -> []core.Delivered
 	VerbCompletion   = "completion"    // args core.CompletionArgs -> core.CompletionResult
 	VerbWho          = "who"           // no args -> []core.Presence
-	VerbBoard        = "board"         // no args -> []core.Message (live pins)
 	VerbWatchAdd     = "watch.add"     // args core.TimerArgs -> core.Timer
 	VerbWatchList    = "watch.list"    // no args -> []core.Timer
 	VerbAgent        = "agent"         // args core.AgentArgs -> core.AgentResult

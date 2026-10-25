@@ -51,6 +51,9 @@ func Main(dir string, args []string, stdout, stderr io.Writer) int {
 	err := fang.Execute(context.Background(), root,
 		fang.WithoutCompletions(), fang.WithoutManpage(), fang.WithVersion(Version),
 		fang.WithErrorHandler(e.printError))
+	if err == nil && e.cur != nil {
+		e.remind(e.cur.Name())
+	}
 	switch {
 	case err == nil:
 		return 0
@@ -149,18 +152,21 @@ func (e *env) root() *cobra.Command {
 		e.cmd("down <team>", "Close a team: stop its workers; nothing is acked", "",
 			"piggery team down demo", authAdmin, e.teamDown),
 	)
-	template := &cobra.Command{Use: "template", Short: "Make your own team template", GroupID: grpTeams}
+	template := &cobra.Command{Use: "template", Short: "Make your own team template, or update a built-in", GroupID: grpTeams}
 	template.AddCommand(e.cmd("list", "The templates a team can be founded from, with their summaries", "",
 		"piggery template list", authLocal, e.templateList))
 	template.AddCommand(e.cmd("new <name> [--from <built-in>]", "Copy a built-in (default lead-peer) to ~/.piggery/templates/<name>", "",
 		"piggery template new review --from lead-peer", authLocal,
 		func(args []string) error { return e.template(append([]string{"new"}, args...)) }))
+	template.AddCommand(e.cmd("update [<name>] [--force]", "Bring a built-in template in ~/.piggery/templates to this version (all, or one); --force replaces one you changed", "",
+		"piggery template update slp --force", authLocal,
+		func(args []string) error { return e.template(append([]string{"update"}, args...)) }))
 	archive := &cobra.Command{Use: "archive", Short: "Read a gc archive", GroupID: grpMaintain}
 	archive.AddCommand(e.cmd("show <file> [--table T]", "Print a gc archive (local, no daemon)", "",
 		"piggery archive show ~/.piggery/archive/demo-1790000000.jsonl --table messages", authLocal, e.archiveShow))
 
 	root.AddCommand(
-		e.cmd("setup [--outdated|--refresh] | setup <pi|claude|codex|omp|dsh|opencode|paseo|dual-lens> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <harness|dual-lens> [--ext PATH] [--force]", "Add or remove a harness integration; --outdated updates older versions; --refresh refreshes installed local assets", grpStart,
+		e.cmd("setup [--outdated [--replace <names>]|--refresh] | setup <pi|claude|codex|omp|dsh|opencode|paseo|dual-lens> | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <harness|dual-lens> [--ext PATH] [--force]", "Add or remove a harness integration; --outdated updates older versions; --refresh refreshes installed local assets", grpStart,
 			"piggery setup\npiggery setup dual-lens", authLocal, e.setup),
 		e.cmd("skills [dual-lens]", "Print the agent guide or dual-lens playbook", grpStart,
 			"piggery skills\npiggery skills dual-lens", authLocal, e.skills),
@@ -196,7 +202,7 @@ func (e *env) root() *cobra.Command {
 			"piggery doctor", authAdmin, e.doctor),
 		e.cmd("check", "Errors and ignored lines in config.yaml, harness profiles, templates and prompts (local; exit 1 when any error)", grpMaintain,
 			"piggery check", authLocal, e.check),
-		e.cmd("update [--check] [--force]", "Install the latest release from haohao3k/piggery", grpMaintain,
+		e.cmd("update [--check] [--force] [--replace <names>]", "Install the latest release from haohao3k/piggery, then run setup --outdated", grpMaintain,
 			"piggery update --check\npiggery update", authLocal, e.update),
 		e.cmd("stop", "", "", "", authLocal, func([]string) error {
 			return fmt.Errorf("%w: no admin stop: abort a turn, kill a worker, shutdown the daemon", errUsage)
@@ -204,12 +210,11 @@ func (e *env) root() *cobra.Command {
 
 		// Participant (agent) commands and join: hidden, still run.
 		e.cmd("join --team T --role R --name N [--cwd D]", "", "", "", authAdmin, e.join),
-		e.cmd("send <to> [body] [--kind K] [--reply-to ID] [--client-msg-id ID] [--op assign|replace|remove] [--target ID]",
+		e.cmd("send <to> [body] [--kind K] [--reply-to ID] [--client-msg-id ID] [--op assign]",
 			"", "", "", authParticipant, e.send),
-		e.cmd("inbox [--batch N] [--view V]", "", "", "", authParticipant, e.inbox),
+		e.cmd("inbox [--batch N]", "", "", "", authParticipant, e.inbox),
 		e.cmd("completion --batch N", "", "", "", authParticipant, e.completion),
 		e.cmd("who", "", "", "", authParticipant, func(a []string) error { return simple(e, "who", a, proto.VerbWho, printWho) }),
-		e.cmd("board", "", "", "", authParticipant, func(a []string) error { return simple(e, "board", a, proto.VerbBoard, printBoard) }),
 		e.cmd("watch add|list", "", "", "", authParticipant, e.watch),
 		e.cmd("agent spawn|stop|resume|tail|templates|close|reopen", "", "", "", authParticipant, e.agent),
 		// The Claude Code adapter: Claude runs these, never a person.

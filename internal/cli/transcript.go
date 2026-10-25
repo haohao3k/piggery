@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +9,7 @@ import (
 	"os"
 
 	"github.com/sting8k/piggery/internal/core"
+	"github.com/sting8k/piggery/internal/driver/local"
 	"github.com/sting8k/piggery/internal/proto"
 )
 
@@ -39,6 +39,7 @@ type record struct {
 	ctx     int    // the context in tokens now, when hasCtx (the latest such record wins)
 	hasCtx  bool   //
 	turnEnd bool   // it ends an assistant turn (turns counts them; each turn once)
+	turns   int    // turns it counts, as turnEnd counts one (a driver log's turn_end, or its trimmed record: many)
 	line    string // it as one tail line, in tailLine's prefixes ("> ", "< ", "assistant: ", "! ", "-- "); "" none
 }
 
@@ -55,8 +56,7 @@ type driverReader struct{}
 
 func (driverReader) read(rec []byte) record {
 	var r record
-	r.ctx, r.hasCtx = contextSize(rec)
-	r.turnEnd = bytes.Contains(rec, []byte(`"turn_end"`)) && recordType(rec) == "turn_end"
+	r.turns, r.ctx, r.hasCtx = local.RecordUsage(rec)
 	r.line, _ = tailLine(rec)
 	return r
 }
@@ -79,6 +79,7 @@ func scan(newReader func() transcriptReader, recs [][]byte, st logState) logStat
 		if r.turnEnd {
 			st.turns++
 		}
+		st.turns += r.turns
 	}
 	return st
 }

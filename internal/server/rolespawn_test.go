@@ -1,0 +1,107 @@
+package server
+
+import (
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/sting8k/piggery/internal/core"
+	"github.com/sting8k/piggery/manifests"
+)
+
+// config.yaml `roles`, per field: `<template>/<role>` over `<template>/*` over `<role>` over `*`; a
+// field an entry leaves out falls to the next one that sets it, and a role no entry names gets the
+// entries that match it (or nothing, which core takes as "go on to the template and the chain").
+func TestRoleSpawnOrderAndFallThrough(t *testing.T) {
+	pin := roleSpawnFor(map[string]RoleSpawn{
+		"*":            {Harness: "pi", Model: "m-star", Thinking: "t-star"},
+		"copilot":      {Model: "m-role"},
+		"crew/*":       {Model: "m-tpl", Thinking: "t-tpl"},
+		"crew/copilot": {Harness: "codex"},
+	})
+	for _, c := range []struct {
+		template, role string
+		want           core.SpawnPin
+	}{
+		{"crew", "copilot", core.SpawnPin{Harness: "codex", Model: "m-tpl", Thinking: "t-tpl"}},
+		{"crew", "builder", core.SpawnPin{Harness: "pi", Model: "m-tpl", Thinking: "t-tpl"}},
+		{"slp", "copilot", core.SpawnPin{Harness: "pi", Model: "m-role", Thinking: "t-star"}},
+	} {
+		if got := pin(c.template, c.role); got != c.want {
+			t.Errorf("%s/%s: %+v, want %+v", c.template, c.role, got, c.want)
+		}
+	}
+	if got := roleSpawnFor(nil)("crew", "copilot"); got != (core.SpawnPin{}) {
+		t.Errorf("no entries: %+v", got)
+	}
+}
+
+// An entry that cannot work is dropped with a line naming it, and the daemon goes on: a key no
+// template has (or a role one lost), a harness piggery lacks, a pattern that is not a role; `inherit`
+// reads as left out.
+func TestRolesEntriesThatCannotWork(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := manifests.Unpack(dir); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(ConfigPath(dir), []byte(`roles:
+  slp/lead: {harness: codex, model: gpt-x, thinking: inherit}
+  slp/nobody: {model: x}
+  nosuch/*: {model: x}
+  "exec*": {model: x}
+  peer: {harness: vim, model: y}
+`), 0o600)
+	set, err := LoadSettings(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, warns := CheckRoles(dir, set.Roles)
+	all := strings.Join(append(set.Warnings, warns...), "\n")
+	for _, want := range []string{`"exec*"`, `harness "vim"`, `"slp/nobody"`, `"nosuch/*"`} {
+		if !strings.Contains(all, want) {
+			t.Errorf("no warning names %s:\n%s", want, all)
+		}
+	}
+	if len(kept) != 2 || kept["slp/lead"] != (RoleSpawn{Harness: "codex", Model: "gpt-x"}) || kept["peer"] != (RoleSpawn{Model: "y"}) {
+		t.Errorf("kept %+v", kept)
+	}
+}
+
+// A key the settings file does not have still stops the daemon, and the error is for a person: the
+// key, its line, where it sits, the keys that are known there, and what to do; no Go type names.
+func TestUnknownConfigKeyMessage(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(ConfigPath(dir), []byte("harness: pi\nfoo: 1\nspawn:\n  crew/copilot: {model: x}\n"), 0o600)
+	_, err := LoadSettings(dir)
+	if err == nil {
+		t.Fatal("an unknown key was accepted")
+	}
+	msg := err.Error()
+	for _, want := range []string{ConfigPath(dir), `line 2: unknown key "foo"`, "known: harness", `line 4: unknown key "crew/copilot" under spawn (known: allowed_roots)`, "update piggery"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("missing %q in:\n%s", want, msg)
+		}
+	}
+	for _, leak := range []string{"configFile", "struct {", "not found in type"} {
+		if strings.Contains(msg, leak) {
+			t.Errorf("the message shows %q:\n%s", leak, msg)
+		}
+	}
+}
+
+// Explicit role settings, including wildcards, override fork defaults field by field.
+func TestDualLensRoleOverrides(t *testing.T) {
+	for _, template := range []string{"dual-lens", "dual-lane-adjudication", "triple-review"} {
+		defaults := roleSpawnFor(nil)
+		if got := defaults(template, "lens-a"); got != (core.SpawnPin{Harness: "codex", Model: "gpt-6-astra", Thinking: "high"}) {
+			t.Fatalf("%s/lens-a default: %+v", template, got)
+		}
+		if got := defaults(template, "lens-b"); got != (core.SpawnPin{Harness: "claude", Model: "claude-opus-5-5", Thinking: "high"}) {
+			t.Fatalf("%s/lens-b default: %+v", template, got)
+		}
+		configured := roleSpawnFor(map[string]RoleSpawn{"*": {Model: "custom", Thinking: "low"}, template + "/lens-a": {Harness: "pi"}})
+		if got := configured(template, "lens-a"); got != (core.SpawnPin{Harness: "pi", Model: "custom", Thinking: "low"}) {
+			t.Fatalf("%s overrides: %+v", template, got)
+		}
+	}
+}

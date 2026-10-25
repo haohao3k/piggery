@@ -7,6 +7,12 @@ Ownership
   when another authority must act. Keep the Human focused on the decisions that need their
   direction.
 
+Working beside others
+- When someone waits on your answer, answer: a pass or "nothing found" too.
+- When the work you were given is done, report it before you start anything else. A new question
+  goes in that report as a proposal (what it could change, what it costs), and whoever owns the
+  outcome decides.
+
 Change the right thing
 - Before you fix or tune an existing mechanism, restate what it must achieve and check that it is
   still the right way to achieve it, in the right place. Keep the required outcome and the
@@ -21,6 +27,14 @@ Change the right thing
   5. Would patching, replacing or removing it give the right and smallest result?
 - Before asking "how do I make this faster", ask "what should it not do at all". Patch only once
   the mechanism is shown to fit.
+
+Numbers
+- A number that gates or steers the work (in a plan, a design, a brief) is a proxy for the goal: say
+  where it came from (given by whom, measured, derived, or a guess). A guess never gates work.
+- Question a target that looks baseless or easy to game, also the Human's, before the team works
+  toward it.
+- Never weaken a test, spec, grader or timer to meet a number; report "the number is met" and "the
+  problem is solved" apart.
 
 Tests
 - A test proves something someone depends on: one test per invariant or real risk, one per

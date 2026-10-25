@@ -150,7 +150,7 @@ func TestServerAuth(t *testing.T) {
 
 // peersManifest is the fixture team: one role whose members talk freely.
 const peersManifest = "template: peers\nauto_join_role: peer\nroles:\n" +
-	"  peer: {tools: [send, inbox, who, agent], can_spawn: [peer], can_pin: true}\n" +
+	"  peer: {tools: [send, inbox, who, agent], can_spawn: [peer]}\n" +
 	"routing:\n  - {from: peer, to: peer, allow: true}\n" +
 	"limits: {depth: 2, concurrency: 10, messages_per_participant_per_minute: 30}\n"
 
@@ -860,5 +860,57 @@ func TestWorkerPeerClient(t *testing.T) {
 	got := "identify " + result(err1) + "; harness.event " + result(err2)
 	if err := os.WriteFile(filepath.Join(os.Getenv("PGTEST_OUT"), tag), []byte(got), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An inbox that waits for mail holds up none of the connection's other requests (the harness's
+// turn events go on the same socket) and answers as soon as mail comes.
+func TestInboxWaitAnswersWhenMailComes(t *testing.T) {
+	dir := startServer(t)
+	_, alice, bob := peersTeam(t, dir)
+	b := rawDial(t, dir, bob)
+	if r := b.call(proto.VerbIdentify, core.IdentifyArgs{NewRun: true}); !r.OK {
+		t.Fatalf("identify: %+v", r.Error)
+	}
+	enc := json.NewEncoder(b.c)
+	wait, _ := json.Marshal(core.InboxArgs{Wait: 20})
+	enc.Encode(proto.Request{ID: "wait", Verb: proto.VerbInbox, Auth: b.auth, Args: wait})
+	enc.Encode(proto.Request{ID: "who", Verb: proto.VerbWho, Auth: b.auth})
+	next := func() proto.Response {
+		t.Helper()
+		b.c.SetReadDeadline(time.Now().Add(5 * time.Second))
+		for {
+			var frame struct {
+				proto.Response
+				Event string `json:"event"`
+			}
+			if err := b.dec.Decode(&frame); err != nil {
+				t.Fatal(err)
+			}
+			if frame.Event == "" {
+				return frame.Response
+			}
+		}
+	}
+	if r := next(); r.ID != "who" {
+		t.Fatalf("first answer is %q: the waiting inbox held up who", r.ID)
+	}
+	a := dial(t, dir)
+	a.AsParticipant(alice.ID, alice.Token)
+	sent := time.Now()
+	if _, err := a.Call(proto.VerbSend, core.SendArgs{To: "bob", Body: "here"}); err != nil {
+		t.Fatal(err)
+	}
+	r := next()
+	var got []core.Delivered
+	json.Unmarshal(r.Result, &got)
+	if r.ID != "wait" || len(got) != 1 || got[0].Body != "here" || time.Since(sent) > 3*time.Second {
+		t.Fatalf("wait answered %q with %+v after %v", r.ID, got, time.Since(sent))
+	}
+	// The mail is still unacked, but the model has it: a second wait waits instead of returning it.
+	again, _ := json.Marshal(core.InboxArgs{Wait: 1})
+	enc.Encode(proto.Request{ID: "again", Verb: proto.VerbInbox, Auth: b.auth, Args: again})
+	if r := next(); r.ID != "again" || string(r.Result) != "[]" {
+		t.Fatalf("second wait answered %q with %s", r.ID, r.Result)
 	}
 }

@@ -100,7 +100,16 @@ func TestInstallScript(t *testing.T) {
 	if _, err := os.Stat(target + ".old"); err != nil {
 		t.Fatalf("the running binary was not moved aside: %v", err)
 	}
-	if ents, _ := os.ReadDir(dir); len(ents) != 2 {
-		t.Fatalf("%d files in the install dir; want the binary and the one moved aside", len(ents))
+	// pig.exe, a hard link to the binary it replaced, steps aside with it and links to the new one.
+	var names []string
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, " ") != "pig.exe pig.exe.old piggery.exe piggery.exe.old" {
+		t.Fatalf("install dir has %v; want piggery.exe and pig.exe, each with the one moved aside", names)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "pig.exe")); !bytes.Equal(b, asset) {
+		t.Fatal("pig.exe is not the release's binary")
 	}
 }

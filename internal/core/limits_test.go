@@ -29,7 +29,7 @@ func newLimitFixture(t *testing.T, limits string) limitFixture {
 	var notified []string
 	e := core.New(db, core.WithClock(func() time.Time { return now }),
 		core.WithNotify(func(id string) { notified = append(notified, id) }))
-	man := "template: lim\nroles: {peer: {can_pin: true, tools: [send, inbox, who, agent]}}\nrouting:\n  - {from: peer, to: peer, allow: true}\nlimits: " + limits + "\n"
+	man := "template: lim\nroles: {peer: {tools: [send, inbox, who, agent]}}\nrouting:\n  - {from: peer, to: peer, allow: true}\nlimits: " + limits + "\n"
 	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: man, Cwd: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func (f limitFixture) heldTwice(t *testing.T, sender, recipient core.Caller, rul
 func TestRatePerMinuteHolds(t *testing.T) {
 	f := newLimitFixture(t, "{messages_per_participant_per_minute: 2}")
 	f.send(t, f.alice, "bob", "")
-	f.send(t, f.alice, "board", "") // a pin is never held but counts toward the rate
+	f.send(t, f.alice, "bob", "")
 	f.heldTwice(t, f.alice, f.bob, core.RuleRatePerMinute, func() core.SendResult { return f.send(t, f.alice, "bob", "") })
 	*f.now = f.now.Add(61 * time.Second)
 	if r := f.send(t, f.alice, "bob", ""); r.Held {

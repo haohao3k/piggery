@@ -79,8 +79,8 @@ func (f watchFixture) leadNotices(t *testing.T) []string {
 	return out
 }
 
-func TestWatchSilentFor(t *testing.T) {
-	f := newWatchFixture(t, "{on: worker, notify: lead, silent_for: 10m}")
+func TestWatchWorkingFor(t *testing.T) {
+	f := newWatchFixture(t, "{on: worker, notify: lead, working_for: 10m}")
 	f.presence(t, core.PresenceAgentStart)
 	f.advance(9 * time.Minute)
 	f.fires(t, 0)
@@ -99,6 +99,37 @@ func TestWatchSilentFor(t *testing.T) {
 	f.fires(t, 1)
 }
 
+// An every rule tells its role once a period while a member of another role works: not when the
+// team starts work, not while its own role works, and a team that went idle starts a new period.
+func TestWatchEvery(t *testing.T) {
+	f := newWatchFixture(t, "{on: lead, every: 5m}")
+	f.presence(t, core.PresenceAgentStart)
+	f.fires(t, 0) // the period starts
+	f.advance(4 * time.Minute)
+	f.fires(t, 0)
+	f.advance(2 * time.Minute)
+	f.fires(t, 1)
+	f.fires(t, 0) // same period
+	if n := f.leadNotices(t); len(n) != 1 || n[0] != "Working now: w (rule every 5m)." {
+		t.Fatalf("notices = %q", n)
+	}
+	if err := f.e.Presence(ctx, f.lead, core.PresenceArgs{Event: core.PresenceAgentStart}); err != nil {
+		t.Fatal(err)
+	}
+	f.advance(6 * time.Minute)
+	f.fires(t, 0) // the lead is still at it
+	if err := f.e.Presence(ctx, f.lead, core.PresenceArgs{Event: core.PresenceAgentSettled}); err != nil {
+		t.Fatal(err)
+	}
+	f.presence(t, core.PresenceAgentSettled)
+	f.fires(t, 0) // nobody works: the period is forgotten
+	f.presence(t, core.PresenceAgentStart)
+	f.advance(6 * time.Minute)
+	f.fires(t, 0) // work again: a new period, not a notice at once
+	f.advance(5 * time.Minute)
+	f.fires(t, 1)
+}
+
 func TestWatchRulesValidated(t *testing.T) {
 	db, err := store.OpenMemory()
 	if err != nil {
@@ -107,14 +138,23 @@ func TestWatchRulesValidated(t *testing.T) {
 	defer db.Close()
 	e := core.New(db)
 	for _, rule := range []string{
-		"{on: worker, notify: lead, silent_for: 1m, colour: red}", // unknown key
-		"{on: worker, notify: lead}",                              // no condition
-		"{on: ghost, notify: lead, silent_for: 1m}",               // unknown role
-		"{on: worker, notify: nobody, silent_for: 1m}",            // unknown target
+		"{on: worker, notify: lead, working_for: 1m, colour: red}",    // unknown key
+		"{on: worker, notify: lead}",                                  // no condition
+		"{on: ghost, notify: lead, working_for: 1m}",                  // unknown role
+		"{on: worker, notify: nobody, working_for: 1m}",               // unknown target
+		"{on: worker, notify: lead, working_for: 1m, silent_for: 1m}", // both names
+		"{on: lead, every: 30s}",                                      // faster than a minute
+		"{on: lead, notify: worker, every: 5m}",                       // every names no target
+		"{on: lead, every: 5m, working_for: 1m}",                      // two conditions
 	} {
 		man := "template: wr\nroles: {lead: {tools: [send, inbox, who, agent]}, worker: {tools: [send, inbox, who, agent]}}\ntimers:\n  - " + rule + "\n"
 		if _, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: man, Cwd: t.TempDir()}); code(err) != core.CodeInvalid {
 			t.Fatalf("rule %s: %v", rule, err)
 		}
+	}
+	// The old name still loads, with one warning for all the rules that use it.
+	old := "template: wr\nroles: {lead: {tools: [send, inbox, who, agent]}, worker: {tools: [send, inbox, who, agent]}}\ntimers:\n  - {on: worker, notify: lead, silent_for: 1m}\n  - {on: lead, notify: worker, silent_for: 1m}\n"
+	if w, err := core.CheckManifest(old); err != nil || len(w) != 1 || w[0] != "2 timers use silent_for; rename them working_for" {
+		t.Fatalf("silent_for: warnings %q, err %v", w, err)
 	}
 }

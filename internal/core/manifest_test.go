@@ -31,6 +31,19 @@ func teamKeys() []string {
 	return append(keys, "timers") // timers: parseTimers
 }
 
+// deprecatedSpawn are the spawn keys config.yaml `roles` replaced: still parsed, never filled in or
+// written by a built-in.
+var deprecatedSpawn = []string{"harness", "model", "thinking"}
+
+// withoutRemovedRole drops can_pin from a role's keys: still parsed so an old template loads, never written.
+func withoutRemovedRole(keys []string) []string {
+	return slices.DeleteFunc(keys, func(k string) bool { return k == "can_pin" })
+}
+
+func withoutDeprecatedSpawn(keys []string) []string {
+	return slices.DeleteFunc(keys, func(k string) bool { return slices.Contains(deprecatedSpawn, k) })
+}
+
 // Every built-in template writes every field a manifest takes, defaults too: the keys come from the
 // manifest's own types and knownLimits, so a field added without its template line fails here. And
 // every role of a built-in has send.
@@ -40,8 +53,8 @@ func TestBuiltinTemplatesWriteEveryField(t *testing.T) {
 		t.Fatal("no built-in templates found")
 	}
 	team := teamKeys()
-	role := yamlKeys(reflect.TypeOf(roleSpec{}))
-	spawn := yamlKeys(reflect.TypeOf(roleSpec{}.Spawn))
+	role := withoutRemovedRole(yamlKeys(reflect.TypeOf(roleSpec{})))
+	spawn := withoutDeprecatedSpawn(yamlKeys(reflect.TypeOf(roleSpec{}.Spawn)))
 	route := yamlKeys(reflect.TypeOf(routeRule{}))
 	var limits []string
 	for k := range knownLimits {
@@ -80,11 +93,27 @@ func TestBuiltinTemplatesWriteEveryField(t *testing.T) {
 			}
 			sp, _ := rm["spawn"].(map[string]any)
 			missing(f, "role "+name+" spawn", sp, spawn)
+			for _, k := range deprecatedSpawn { // config.yaml `roles` sets these now
+				if _, has := sp[k]; has {
+					t.Errorf("%s: role %s sets the deprecated spawn.%s", filepath.Base(f), name, k)
+				}
+			}
 			// Every role of a built-in talks with send; routing, not the tool list, fences it.
 			if tools, _ := rm["tools"].([]any); !slices.Contains(tools, any("send")) {
 				t.Errorf("%s: role %s has no send", filepath.Base(f), name)
 			}
 		}
+	}
+}
+
+// can_pin went with the board: a template that still sets it loads (a stricter parser would refuse
+// every template that setup filled before), and check names the roles where it is true; false says
+// nothing, since setup used to write that into every template.
+func TestRemovedCanPinLoadsAndWarns(t *testing.T) {
+	const man = "template: t\nroles:\n  lead: {tools: [send], can_pin: true}\n  dev: {tools: [send], can_pin: false}\n"
+	w, err := CheckManifest(man)
+	if err != nil || len(w) != 1 || !strings.Contains(w[0], "can_pin of lead is ignored") {
+		t.Fatalf("check warnings %q, %v; want one line naming lead", w, err)
 	}
 }
 
@@ -152,7 +181,7 @@ func TestManifestKeysMatchTheParser(t *testing.T) {
 	field := func(ks []yamlfill.Key, name string) yamlfill.Key {
 		return ks[slices.IndexFunc(ks, func(k yamlfill.Key) bool { return k.Name == name })]
 	}
-	role := slices.DeleteFunc(yamlKeys(reflect.TypeOf(roleSpec{})), func(k string) bool { return k == "instructions" || k == "instructions_file" })
+	role := slices.DeleteFunc(withoutRemovedRole(yamlKeys(reflect.TypeOf(roleSpec{}))), func(k string) bool { return k == "instructions" || k == "instructions_file" })
 	var limits []string
 	for k := range knownLimits {
 		limits = append(limits, k)
@@ -163,7 +192,7 @@ func TestManifestKeysMatchTheParser(t *testing.T) {
 	}{
 		{"team", names(manifestKeys), sorted(teamKeys())},
 		{"role", names(field(manifestKeys, "roles").Each), sorted(role)},
-		{"spawn", names(field(field(manifestKeys, "roles").Each, "spawn").Fields), sorted(yamlKeys(reflect.TypeOf(roleSpec{}.Spawn)))},
+		{"spawn", names(field(field(manifestKeys, "roles").Each, "spawn").Fields), sorted(withoutDeprecatedSpawn(yamlKeys(reflect.TypeOf(roleSpec{}.Spawn))))},
 		{"routing", names(field(manifestKeys, "routing").Items), sorted(yamlKeys(reflect.TypeOf(routeRule{})))},
 		{"limits", names(field(manifestKeys, "limits").Fields), sorted(limits)},
 	} {
@@ -188,7 +217,7 @@ func TestFillManifestFile(t *testing.T) {
 	b, _ := os.ReadFile(p)
 	m, err := parseManifest(string(b))
 	if err != nil || !strings.HasPrefix(string(b), src) || m.Roles["lead"].Spawn.Model != "openai/gpt-x" ||
-		!strings.Contains(string(b), "      harness: inherit\n") || !slices.Contains(added, "limits") {
+		strings.Contains(string(b), "harness:") || !slices.Contains(added, "limits") { // a deprecated key is not filled in
 		t.Fatalf("added %v, err %v:\n%s", added, err, b)
 	}
 	if again, err := FillManifestFile(p); err != nil || len(again) != 0 {

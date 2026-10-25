@@ -12,7 +12,7 @@ import (
 // hand back to the Lead but cannot leak findings to one another or the board.
 func TestDualLensTaskforceIsolation(t *testing.T) {
 	home := t.TempDir()
-	if err := manifests.Unpack(home); err != nil {
+	if _, err := manifests.Unpack(home); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.OpenMemory()
@@ -24,6 +24,10 @@ func TestDualLensTaskforceIsolation(t *testing.T) {
 	claude := &fakeRuntime{harness: "claude", profileModel: "test-anthropic", profileThinking: "low"}
 	// Deliberately different profile models/effort and default harness must not override pins.
 	e := core.New(db, core.WithRuntime(codex), core.WithRuntime(claude), core.WithDefaultHarness("claude"),
+		core.WithRoleSpawn(func(template, role string) core.SpawnPin {
+			h, m, level := manifests.DualLensRoute(template, role)
+			return core.SpawnPin{Harness: h, Model: m, Thinking: level}
+		}),
 		core.WithTemplates(func(name, _ string) (string, error) { return manifests.Resolve(name, home) }))
 	j, err := e.JoinAuto(ctx, core.JoinAutoArgs{Cwd: t.TempDir(), Harness: "codex", Mode: "interactive", HarnessRef: "caller"})
 	if err != nil {
@@ -85,9 +89,9 @@ func TestDualLensTaskforceIsolation(t *testing.T) {
 				t.Fatalf("%s -> %s: %v; want denied", name, other, err)
 			}
 		}
-		for _, to := range []string{core.AddrBoard, core.AddrNotify} {
-			if _, err := e.Send(ctx, c, core.SendArgs{To: to, Body: "leaked finding"}); code(err) != core.CodeDenied {
-				t.Fatalf("%s -> %s: %v; want denied", name, to, err)
+		for _, to := range []string{"board", core.AddrNotify} {
+			if _, err := e.Send(ctx, c, core.SendArgs{To: to, Body: "leaked finding"}); err == nil {
+				t.Fatalf("%s -> %s: expected refusal", name, to)
 			}
 		}
 		if _, err := e.Agent(ctx, c, core.AgentArgs{Action: core.AgentSpawn, Role: "lens-a", Name: "child", Task: "t"}); rule(err) != "permission/tools.not_granted" {

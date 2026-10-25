@@ -38,6 +38,10 @@ type env struct {
 	noStart bool
 	stdout  io.Writer
 	cur     *cobra.Command // the command being run (its usage follows a usage error)
+	// ask shows setup --outdated's tick list; nil: the list on a terminal, nothing asked otherwise (tests set it)
+	ask func(head []string, items []upgradeItem) ([]string, error)
+	// upd is the updater of `update`; nil: the real one (tests point it at a fake release)
+	upd *updater
 }
 
 func formatErr(ce *core.Error) string {
@@ -281,8 +285,7 @@ func (e *env) send(args []string) error {
 	fs.StringVar(&a.Kind, "kind", "", "opaque kind")
 	fs.StringVar(&a.ReplyTo, "reply-to", "", "the #N (or id) of the message answered")
 	fs.StringVar(&a.ClientMsgID, "client-msg-id", "", "idempotency key")
-	fs.StringVar(&a.Op, "op", "", "assign (a task for a member that reports to you) | board: replace|remove")
-	fs.StringVar(&a.Target, "target", "", "board: pin id")
+	fs.StringVar(&a.Op, "op", "", "assign (a task for a member that reports to you)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -402,8 +405,7 @@ func (e *env) inbox(args []string) error {
 	fs := e.flags("inbox")
 	batch := fs.Int64("batch", 0, "batch number (omit to pull, not ackable)")
 	var a core.InboxArgs
-	fs.StringVar(&a.View, "view", "", "read-only view: board")
-	fs.IntVar(&a.Limit, "limit", 0, "with --view: max messages (default 50)")
+	fs.IntVar(&a.Wait, "wait", 0, "with no mail, wait up to N seconds (max 50) for some")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -418,7 +420,11 @@ func (e *env) inbox(args []string) error {
 	})
 	return do(e, proto.VerbInbox, a, func(w io.Writer, ds []core.Delivered) {
 		if len(ds) == 0 {
-			fmt.Fprintln(w, "no messages")
+			if a.Wait > 0 {
+				fmt.Fprintln(w, core.RenderEmptyInbox(a.Wait))
+			} else {
+				fmt.Fprintln(w, "no messages")
+			}
 			return
 		}
 		for _, d := range ds {
@@ -618,16 +624,6 @@ func printWho(w io.Writer, ps []core.Presence) {
 	}
 }
 
-func printBoard(w io.Writer, ms []core.Message) {
-	if len(ms) == 0 {
-		fmt.Fprintln(w, "board is empty")
-		return
-	}
-	for _, m := range ms {
-		fmt.Fprintf(w, "[pin #%d] from=%q at=%s\n%s\n", m.Seq, m.FromLabel, clock(m.CreatedAt), indent(m.Body))
-	}
-}
-
 func printTimers(w io.Writer, ts []core.Timer) {
 	for _, t := range ts {
 		every := ""
@@ -680,6 +676,16 @@ func (e *env) gc(args []string) error {
 		func(w io.Writer, r core.GCResult) {
 			if len(r.Teams)+len(r.Solos) == 0 {
 				fmt.Fprintln(w, "no closed team or gone solo session is old enough")
+			}
+			for _, f := range r.LogsFailed {
+				fmt.Fprintf(w, "run logs not trimmed, %s\n", f)
+			}
+			if r.LogsTrimmed > 0 {
+				what := "run logs trimmed"
+				if *dry {
+					what = "run logs to trim"
+				}
+				fmt.Fprintf(w, "%s: %d workers, %s freed\n", what, r.LogsTrimmed, view.Tokens(int(r.LogsFreed))+"B")
 			}
 			for _, g := range append(r.Teams, r.Solos...) {
 				state := "dry run"

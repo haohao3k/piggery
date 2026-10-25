@@ -13,36 +13,24 @@ roles:
     instructions_file: prompts/gastown-like/mayor.md
     tools: [send, inbox, who, agent]
     can_spawn: [polecat, refinery]
-    can_pin: false
     can_set_cwd: true
     spawn:                 # how piggery starts this role's workers
-      harness: inherit       # inherit: the main session's harness, else config.yaml harness
-      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
-      thinking: inherit      # inherit: same chain as model
       allow_tools: []      # native tools the harness profile turns off that this role keeps
   polecat:
     description: Does one task on its own branch and worktree, commits and checks it, and asks the refinery to merge it.
     instructions_file: prompts/gastown-like/polecat.md
     tools: [send, inbox, who]
     can_spawn: []
-    can_pin: false
     can_set_cwd: false
     spawn:
-      harness: inherit
-      model: inherit
-      thinking: inherit
       allow_tools: []
   refinery:
     description: Merges finished branches into the integration branch one at a time, runs the check after each, and sends a conflict or failure back to its polecat.
     instructions_file: prompts/gastown-like/refinery.md
     tools: [send, inbox, who]
     can_spawn: []
-    can_pin: false
     can_set_cwd: false
     spawn:
-      harness: inherit
-      model: inherit
-      thinking: inherit
       allow_tools: []
 routing:
   - {from: mayor, to: polecat, allow: true, cc: []}
@@ -52,8 +40,8 @@ routing:
   - {from: refinery, to: polecat, allow: true, cc: [mayor]}
   - {from: refinery, to: mayor, allow: true, cc: []}
 timers:
-  - {on: polecat, notify: reports_to, silent_for: 20m}
-  - {on: refinery, notify: reports_to, silent_for: 20m}
+  - {on: polecat, notify: reports_to, working_for: 20m}
+  - {on: refinery, notify: reports_to, working_for: 20m}
 limits:                  # none: no limit
   depth: 2                 # how deep spawned_by chains may go
   concurrency: 10           # live workers at once

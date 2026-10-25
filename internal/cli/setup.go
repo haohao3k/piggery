@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,26 +36,29 @@ func (e *env) setup(args []string) error {
 	fs := e.flags("setup")
 	ext := fs.String("ext", "", "a checkout's pi extension (extensions/pi) instead of the one in this binary")
 	force := fs.Bool("force", false, "overwrite an existing profile")
-	outdated := fs.Bool("outdated", false, "bring every installed piggery integration that is outdated up to date (takes no other argument)")
+	outdated := fs.Bool("outdated", false, "after an upgrade: bring the home and every outdated integration up to date, and ask about the built-in templates you changed (takes no other argument)")
+	replace := fs.String("replace", "", "with --outdated: replace the built-in templates and shared prompts you changed, without asking: <name,…|all|none>")
 	paseoHome := fs.String("paseo-home", "", "Paseo daemon home (default: Paseo’s own)")
 	refresh := fs.Bool("refresh", false, "refresh every installed piggery integration and built-in template (takes no other argument)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
-	if *outdated && *refresh {
-		return fmt.Errorf("%w: setup --outdated and setup --refresh are mutually exclusive", errUsage)
-	}
+	replaceSet := false
+	fs.Visit(func(f *flag.Flag) { replaceSet = replaceSet || f.Name == "replace" })
 	if *outdated && len(pos) != 0 {
 		return fmt.Errorf("%w: setup --outdated takes no argument", errUsage)
 	}
-	if *refresh && len(pos) != 0 {
-		return fmt.Errorf("%w: setup --refresh takes no argument (only --paseo-home)", errUsage)
+	if replaceSet && !*outdated {
+		return fmt.Errorf("%w: --replace belongs to setup --outdated (and update)", errUsage)
 	}
-	if *refresh && *ext != "" {
-		return fmt.Errorf("%w: setup --refresh cannot be used with --ext", errUsage)
+	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode|paseo|dual-lens] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode|paseo|dual-lens> [--ext PATH] [--force]", errUsage)
+	if *outdated && *refresh {
+		return fmt.Errorf("%w: setup --outdated and setup --refresh are mutually exclusive", errUsage)
 	}
-	usage := fmt.Errorf("%w: setup [pi|claude|codex|omp|dsh|opencode|paseo|dual-lens] | setup notify [add|remove <desktop|herdr|ntfy:TOPIC>] | setup remove <pi|claude|codex|omp|dsh|opencode|paseo|dual-lens> [--ext PATH] [--paseo-home PATH] [--force]", errUsage)
+	if *refresh && (len(pos) != 0 || *ext != "") {
+		return fmt.Errorf("%w: setup --refresh takes no argument or --ext", errUsage)
+	}
 	self, err := selfPath()
 	if err != nil {
 		return err
@@ -80,7 +85,7 @@ func (e *env) setup(args []string) error {
 	case len(pos) == 2 && pos[0] == "remove" && pos[1] == "dual-lens":
 		return e.say(removeCodexSkill(codexHome()))
 	case *outdated:
-		return e.updateOutdated(o)
+		return e.setupOutdated(o, upgradeOpts{choose: true, replace: *replace, replaceSet: replaceSet})
 	case len(pos) > 0 && pos[0] == "notify":
 		return e.setupNotify(o.dir, pos[1:], *force)
 	case *refresh:
@@ -98,39 +103,12 @@ func (e *env) setup(args []string) error {
 	case len(pos) != 0:
 		return usage
 	}
-	index := filepath.Join(local.PiExtDir(e.dir), "index.ts")
-	if extDir != "" {
-		index = filepath.Join(extDir, "index.ts")
+	unp, err := e.refreshHome(o, *force, false)
+	if err != nil {
+		return err
 	}
-	// Profiles: a missing one is written (every one with --force); an existing one only gets the
-	// keys it lacks, below, like every config file piggery owns.
-	for _, p := range []struct {
-		path, what string
-		def        any
-	}{
-		{local.ProfilePath(e.dir), "pi workers", local.DefaultProfile(index)},
-		{local.ClaudeProfilePath(e.dir), "Claude Code workers", local.DefaultClaudeProfile},
-		{local.CodexProfilePath(e.dir), "Codex workers", local.DefaultCodexProfile},
-		{local.OmpProfilePath(e.dir), "omp workers", local.DefaultOmpProfile},
-		{local.DshProfilePath(e.dir), "dsh workers", local.DefaultDshProfile},
-		{local.OpencodeProfilePath(e.dir), "opencode workers", local.DefaultOpencodeProfile},
-	} {
-		if w, err := writeJSON(p.path, p.def, *force); err != nil {
-			return err
-		} else if w {
-			fmt.Fprintf(e.stdout, "wrote %s (%s)\n", p.path, p.what)
-		}
-	}
-	if err := manifests.Unpack(e.dir); err != nil {
-		return fmt.Errorf("templates: %w", err)
-	}
-	fmt.Fprintf(e.stdout, "templates in %s\n", manifests.Dir(e.dir))
-	filled, errs := server.EnsureFiles(e.dir)
-	for _, f := range filled {
-		fmt.Fprintf(e.stdout, "added to %s: %s (defaults)\n", f.Path, strings.Join(f.Added, ", "))
-	}
-	for _, err := range errs {
-		fmt.Fprintf(e.stdout, "! %v\n", err)
+	if err := e.templatesSection(unp, upgradeOpts{}); err != nil {
+		return err
 	}
 	fmt.Fprintln(e.stdout)
 	for _, st := range harnessStates(o) {
@@ -146,6 +124,7 @@ func (e *env) setup(args []string) error {
 			fmt.Fprintln(e.stdout, n)
 		}
 	}
+	markSetup(e.dir)
 	return nil
 }
 
@@ -156,7 +135,7 @@ func (e *env) setup(args []string) error {
 // work is attempted before a failure is returned.
 func (e *env) refresh(o setupOpts) error {
 	var failed []string
-	if err := manifests.Unpack(e.dir); err != nil {
+	if _, err := manifests.Unpack(e.dir); err != nil {
 		fmt.Fprintf(e.stdout, "templates: NOT refreshed: %v\n", err)
 		failed = append(failed, "templates")
 	} else {
@@ -218,6 +197,87 @@ func builtinTemplateOverrides(home string) ([]string, error) {
 		}
 	}
 	return overrides, nil
+}
+
+// refreshHome is what a plain setup and setup --outdated both do first: the worker profiles (a
+// missing one is written, every one with force; an existing one only gets the keys it lacks, below,
+// like every config file piggery owns), the built-in templates and shared prompts Unpack brings,
+// and the config keys that are missing. quiet leaves out the line that says where the templates are.
+func (e *env) refreshHome(o setupOpts, force, quiet bool) (manifests.Unpacked, error) {
+	index := filepath.Join(local.PiExtDir(e.dir), "index.ts")
+	if o.ext != "" {
+		index = filepath.Join(o.ext, "index.ts")
+	}
+	for _, p := range []struct {
+		path, what string
+		def        any
+	}{
+		{local.ProfilePath(e.dir), "pi workers", local.DefaultProfile(index)},
+		{local.ClaudeProfilePath(e.dir), "Claude Code workers", local.DefaultClaudeProfile},
+		{local.CodexProfilePath(e.dir), "Codex workers", local.DefaultCodexProfile},
+		{local.OmpProfilePath(e.dir), "omp workers", local.DefaultOmpProfile},
+		{local.DshProfilePath(e.dir), "dsh workers", local.DefaultDshProfile},
+		{local.OpencodeProfilePath(e.dir), "opencode workers", local.DefaultOpencodeProfile},
+	} {
+		if w, err := writeJSON(p.path, p.def, force); err != nil {
+			return manifests.Unpacked{}, err
+		} else if w {
+			fmt.Fprintf(e.stdout, "wrote %s (%s)\n", p.path, p.what)
+		}
+	}
+	unp, err := manifests.Unpack(e.dir)
+	if err != nil {
+		return unp, fmt.Errorf("templates: %w", err)
+	}
+	if !quiet {
+		fmt.Fprintf(e.stdout, "templates in %s\n", manifests.Dir(e.dir))
+	}
+	filled, errs := server.EnsureFiles(e.dir)
+	// The daemon that started after an update has done most of this already: say what it noted too.
+	unp, filled = server.TakeHomeChanges(e.dir, unp, filled)
+	// A running daemon read `roles` when it started: a move now would leave it with the old ones. The
+	// daemon moves what is there when it starts.
+	if c, err := Dial(e.dir, false); err != nil {
+		moved, merrs := server.MigrateSpawn(e.dir)
+		filled, errs = append(filled, moved...), append(errs, merrs...)
+	} else {
+		c.Close()
+	}
+	var renamed []string // templates in which a key was renamed, by what was renamed
+	var what string
+	for _, f := range filled {
+		switch f.Kind {
+		case server.KindRenamed:
+			what = strings.Join(f.Added, ", ")
+			renamed = append(renamed, filepath.Base(filepath.Dir(f.Path)))
+		case server.KindMoved:
+			fmt.Fprintf(e.stdout, "✓ model choices moved to config.yaml roles: %s; copies in %s\n", strings.Join(f.Added, ", "), f.Path)
+		default:
+			fmt.Fprintf(e.stdout, "added to %s: %s (defaults)\n", f.Path, strings.Join(f.Added, ", "))
+		}
+	}
+	if len(renamed) > 0 {
+		fmt.Fprintf(e.stdout, "✓ %s in %s\n", what, strings.Join(renamed, ", "))
+	}
+	for _, err := range errs {
+		fmt.Fprintf(e.stdout, "! %v\n", err)
+	}
+	return unp, nil
+}
+
+// setupOutdated is `setup --outdated`, the second command of an upgrade (after `piggery update`):
+// the home brought up to date as a plain setup does it, every outdated integration updated, then the
+// built-in templates and shared prompts the user changed: asked about on a terminal, replaced when
+// --replace names them, otherwise kept and listed.
+func (e *env) setupOutdated(o setupOpts, up upgradeOpts) error {
+	unp, err := e.refreshHome(o, false, true)
+	if err != nil {
+		return err
+	}
+	ierr := e.updateOutdated(o) // a failed integration does not stop the templates part
+	terr := e.templatesSection(unp, up)
+	markSetup(e.dir)
+	return errors.Join(ierr, terr)
 }
 
 // updateOutdated runs `setup <name>` for every integration that is installed and outdated (pi, omp
@@ -487,8 +547,11 @@ func writeJSON(path string, v any, force bool) (bool, error) {
 // template new <name> [--from <built-in>]: a copy of the current built-in (default lead-peer) as a new
 // template in ~/.piggery/templates for the user to edit. Local, no daemon; refused if it exists.
 func (e *env) template(args []string) error {
+	if len(args) > 0 && args[0] == "update" {
+		return e.templateUpdate(args[1:])
+	}
 	if len(args) == 0 || args[0] != "new" {
-		return fmt.Errorf("%w: template new <name> [--from <built-in>]", errUsage)
+		return fmt.Errorf("%w: template new <name> [--from <built-in>] | template update [<name>] [--force]", errUsage)
 	}
 	fs := e.flags("template new")
 	from := fs.String("from", "lead-peer", "built-in to copy ("+strings.Join(manifests.Builtins(), ", ")+")")
@@ -505,4 +568,83 @@ func (e *env) template(args []string) error {
 	}
 	fmt.Fprintf(e.stdout, "wrote %s (from built-in %s); edit %s and its prompts\n", dir, *from, manifests.ManifestFile)
 	return nil
+}
+
+// templateUpdate is `template update [<name>] [--force]`: the built-in templates (one, or all) in
+// ~/.piggery/templates brought to this version, a directory the user changed only with --force.
+func (e *env) templateUpdate(args []string) error {
+	fs := e.flags("template update")
+	force := fs.Bool("force", false, "replace a template you changed; your copy is moved to templates/.backup")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) > 1 {
+		return fmt.Errorf("%w: template update [<name>] [--force]", errUsage)
+	}
+	names := manifests.Builtins()
+	if len(pos) == 1 {
+		names = pos
+	}
+	for _, name := range names {
+		u, err := manifests.Update(e.dir, name, *force)
+		if err != nil {
+			return err
+		}
+		switch u.State {
+		case manifests.UpdateCreated:
+			fmt.Fprintf(e.stdout, "%s: written from the built-in\n", name)
+		case manifests.UpdateCurrent:
+			fmt.Fprintf(e.stdout, "%s: already current\n", name)
+		case manifests.UpdateUpdated:
+			fmt.Fprintf(e.stdout, "%s: updated to this version (you had not changed it)\n", name)
+		case manifests.UpdateKept:
+			what := "differs from the built-in"
+			if u.Yours {
+				what = "is yours, not piggery's, and differs from the built-in"
+			}
+			fmt.Fprintf(e.stdout, "%s: %s; left alone\n  %s\n  `piggery template update %s --force` replaces it and keeps your copy in templates/.backup\n",
+				name, what, strings.Join(u.Diff, "\n  "), name)
+		case manifests.UpdateReplaced:
+			e.printReplaced(u)
+		}
+	}
+	return nil
+}
+
+// printReplaced says a template was replaced by the built-in, where yours went, and what moved into config.
+func (e *env) printReplaced(u manifests.Updated) {
+	owner := "your copy"
+	if u.Yours {
+		owner = "YOUR OWN template of that name"
+	}
+	fmt.Fprintf(e.stdout, "%s: replaced %s with the built-in; yours is in %s\n  was: %s\n", u.Name, owner, u.Backup, strings.Join(u.Diff, ", "))
+	e.moveSpawnToConfig(u.Name, u.Backup)
+}
+
+// moveSpawnToConfig carries the deprecated spawn.harness|model|thinking of the manifest just moved
+// to backup into config.yaml `roles` (the built-in no longer sets them), so replacing the template
+// does not change which model a role runs on. An entry the config already has for the same key is
+// not overwritten; what it cannot place is printed for the Human to add.
+func (e *env) moveSpawnToConfig(name, backup string) {
+	pins, err := manifests.SpawnPins(filepath.Join(backup, manifests.ManifestFile))
+	if err != nil {
+		fmt.Fprintf(e.stdout, "  could not read the harness/model settings of your copy: %v\n", err)
+		return
+	}
+	for _, role := range slices.Sorted(maps.Keys(pins)) {
+		pat, p := name+"/"+role, pins[role]
+		r := server.RoleSpawn{Harness: p["harness"], Model: p["model"], Thinking: p["thinking"]}
+		entry := server.RoleEntry(pat, r)
+		switch state, err := server.AddRoleSpawn(e.dir, pat, r); {
+		case err != nil:
+			fmt.Fprintf(e.stdout, "  not moved into config.yaml (%v); add under roles: %s\n", err, entry)
+		case state == server.RoleAdded:
+			fmt.Fprintf(e.stdout, "  moved into config.yaml roles: %s\n", entry)
+		case state == server.RoleExists:
+			fmt.Fprintf(e.stdout, "  config.yaml already has roles[%q]; left as it is (your copy had: %s)\n", pat, entry)
+		default:
+			fmt.Fprintf(e.stdout, "  add under roles in config.yaml by hand: %s\n", entry)
+		}
+	}
 }

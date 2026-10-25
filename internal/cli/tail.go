@@ -171,9 +171,25 @@ func toolArgs(name string, raw json.RawMessage) string {
 	if json.Unmarshal(raw, &args) != nil {
 		return string(raw)
 	}
-	key := map[string]string{"bash": "command", "read": "path", "edit": "path", "write": "path"}[name]
-	if v, ok := args[key].(string); ok {
-		return v
+	if isSendTool(name) { // piggery's own: whom to and what, read as mail in top's Tail
+		to, _ := args["to"].(string)
+		body, _ := args["body"].(string)
+		return to + " " + body
+	}
+	file := []string{"path", "file_path", "paths"} // pi's, Claude's (file_path), and a script edit's paths
+	for _, key := range map[string][]string{"bash": {"command"}, "read": file, "edit": file, "write": file}[name] {
+		switch v := args[key].(type) {
+		case string:
+			return v
+		case []any:
+			paths := make([]string, 0, len(v))
+			for _, p := range v {
+				if s, ok := p.(string); ok {
+					paths = append(paths, s)
+				}
+			}
+			return strings.Join(paths, ", ")
+		}
 	}
 	value := func(v any) string {
 		if s, ok := v.(string); ok {

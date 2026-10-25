@@ -85,10 +85,9 @@ func (e *env) top(args []string) error {
 }
 
 const (
-	topEvery     = time.Second
-	topEvents    = 8
-	tailKeep     = 200 // readable tail lines kept for the selected worker
-	topTailLines = 20  // the latest tail lines shown (fewer when the window has less room)
+	topEvery  = time.Second
+	topEvents = 8
+	tailKeep  = 200 // readable tail lines kept for the selected worker: the Tail draws what fits of them
 )
 
 type topModel struct {
@@ -103,11 +102,11 @@ type topModel struct {
 	sel     string   // selected member or solo (participant id), "" when the tab has none
 	side    bool     // the sidebar is shown beside the list (wide terminal)
 	full    bool     // the sidebar is shown instead of the list (narrow terminal)
-	sideTab int      // sideOverview or sideTail
 	events  bool     // the events strip is shown
 	notices bool     // the notices box is shown (else its newest, on one line)
+	drag    bool     // the divider is being dragged; saved.Side follows the mouse until the release
 	mouse   bool     // clicks and the wheel are captured (off: select text)
-	fold    topState // the teams the user opened or folded and the gone members expanded, remembered (topstate.go)
+	saved   topState // the teams the user opened or folded and the gone members expanded, remembered (topstate.go)
 	hits    []hit    // the clickable spans of the last frame
 	scroll  int      // the list's first drawn body line (below the sticky header); moves when the selection would leave the body
 	page    int      // the list's body height in the last frame, for PgUp/PgDn
@@ -117,18 +116,23 @@ type topModel struct {
 	w, h    int
 	err     error // a daemon error ends top with it
 
+	// A drag draws at most every dragFrame; dragFrom is the sidebar width when it began, so a drag that
+	// moved nothing saves nothing.
+	drawn    time.Time // when the frame was last drawn
+	dragFrom int
+
 	kill     func(id string) error // kills a worker (the same verb as `piggery kill`, on a connection of its own)
 	killing  killAsk               // the worker `x` asked about, until y or another key
 	killNote string                // the answer to the last `x`, until the next key
 
 	pick       *modelPicker                      // the open model picker (toppicker.go)
-	hover      string                            // the worker whose Overview model row the mouse is on
-	modelRow   int                               // the Overview line of the model row that opens the picker, -1 when there is none (set while drawing)
+	hover      string                            // the worker whose Tail model row the mouse is on
+	modelRow   int                               // the Tail line of the model row that opens the picker, -1 when there is none (set while drawing)
 	modelOf    string                            // ... and its worker
 	modelW     int                               // ... and the width of its value
 	listModels func(id string) ([]string, error) // asks the daemon for the models a worker's harness accepts, on a connection of its own
 	setModel   func(core.ModelArgs) error        // applies a model and thinking level (the verb `model`), on a connection of its own
-	still      bool                              // the last message changed nothing drawn (the mouse moved within one target): View keeps the last frame
+	still      bool                              // View keeps the last frame: the message changed nothing drawn (the mouse moved within one target), or a drag motion waits for its tick
 	frame      string                            // the last frame drawn
 }
 
@@ -142,11 +146,9 @@ type killed struct {
 }
 
 const (
-	tabClosed    = view.TabClosed // not a team id
-	closedRow    = view.TeamRow   // + team id: the selectable line of a team (a live one, or listed as one line)
-	goneRow      = view.GoneRow   // + team id: the selectable line of a team's folded gone members
-	sideOverview = 0
-	sideTail     = 1
+	tabClosed = view.TabClosed // not a team id
+	closedRow = view.TeamRow   // + team id: the selectable line of a team (a live one, or listed as one line)
+	goneRow   = view.GoneRow   // + team id: the selectable line of a team's folded gone members
 )
 
 func newTopModel(c *Client, dir string) *topModel {
@@ -154,17 +156,17 @@ func newTopModel(c *Client, dir string) *topModel {
 	h.Styles = helpStyles()
 	h.ShortSeparator = "   "
 	// Its first read starts from what ps --json last read (logcache.go), not from the start of each log.
-	fold := loadTopState(dir)
-	return &topModel{c: c, dir: dir, modelRow: -1, side: true, events: fold.Events, notices: fold.Notices, mouse: true, fold: fold, keys: newTopKeys(), help: h,
+	saved := loadTopState(dir)
+	return &topModel{c: c, dir: dir, modelRow: -1, side: true, events: saved.Events, notices: saved.Notices, mouse: true, saved: saved, keys: newTopKeys(), help: h,
 		cols: server.DisplayColumns, logs: loadLogCache(dir)}
 }
 
 // topKeys are top's keys; the footer shows the short list, ? the full one.
 type topKeys struct {
-	Next, Prev, Up, Down, Preview, Pane, Close, Events, Notices, Mouse, Kill, Help, Quit key.Binding
-	PgUp, PgDown, Home, End                                                              key.Binding // ? only
-	Model                                                                                key.Binding
-	mouseOn                                                                              bool // what the m entry says
+	Next, Prev, Up, Down, Preview, Close, Events, Notices, Mouse, Kill, Help, Quit key.Binding
+	PgUp, PgDown, Home, End                                                        key.Binding // ? only
+	Model                                                                          key.Binding
+	mouseOn                                                                        bool // what the m entry says
 }
 
 func newTopKeys() topKeys {
@@ -177,7 +179,6 @@ func newTopKeys() topKeys {
 		Up:      b([]string{"up", "k"}, "↑/↓", "select"),
 		Down:    b([]string{"down", "j"}, "↑/↓", "select"),
 		Preview: b([]string{"enter"}, "enter", "open/close"),
-		Pane:    b([]string{"t"}, "t", "overview/tail"),
 		Close:   b([]string{"esc"}, "esc", "back"),
 		Events:  b([]string{"e"}, "e", "events"),
 		Notices: b([]string{"n"}, "n", "notices"),
@@ -199,7 +200,7 @@ func (k topKeys) ShortHelp() []key.Binding { return append(k.look(), k.act()...)
 // look is the footer's first line: move and look. act is the second: act and toggle, with the short
 // names of the keys whose full list entry is longer.
 func (k topKeys) look() []key.Binding {
-	return []key.Binding{k.Down, k.Next, k.Preview, k.Close, k.Pane}
+	return []key.Binding{k.Down, k.Next, k.Preview, k.Close}
 }
 
 func (k topKeys) act() []key.Binding {
@@ -219,7 +220,7 @@ func onOff(on bool) string {
 
 func (k topKeys) FullHelp() [][]key.Binding {
 	k.Mouse.SetHelp("m", "mouse "+onOff(k.mouseOn)+" (off: select text)")
-	return [][]key.Binding{{k.Next, k.Prev}, {k.Down, k.PgUp, k.Home}, {k.Preview, k.Pane, k.Close}, {k.Events, k.Notices, k.Mouse, k.Kill, k.Model, k.Help, k.Quit}}
+	return [][]key.Binding{{k.Next, k.Prev}, {k.Down, k.PgUp, k.Home}, {k.Preview, k.Close}, {k.Events, k.Notices, k.Mouse, k.Kill, k.Model, k.Help, k.Quit}}
 }
 
 // tailState follows one log incrementally: a worker's run log or a session's transcript.
@@ -257,7 +258,8 @@ func (m *topModel) Init() tea.Cmd { return m.fetch() }
 // fetch reads the snapshot and, when on, the selected participant's new log lines. One fetch is in
 // flight at a time (the next is scheduled when it lands), so the client is not shared.
 func (m *topModel) fetch() tea.Cmd {
-	sel, on, tail, logs := m.sel, m.sideShown() && m.sideTab == sideTail && m.tailable(m.sel), m.tail, m.logs
+	sel, _ := m.tailTarget()
+	on, tail, logs := m.sideShown() && m.tailable(sel), m.tail, m.logs
 	return func() tea.Msg {
 		var f fetched
 		if _, f.err = m.c.CallInto(proto.VerbPs, core.StateArgs{Events: topEvents}, &f.ps); f.err != nil {
@@ -311,6 +313,13 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.still = false
 	switch msg := msg.(type) {
 	case tea.MouseMotionMsg: // hover: only a change of target draws again
+		if m.drag {
+			if msg.Button != tea.MouseLeft { // the release was lost outside the window
+				m.endDrag()
+				return m, nil
+			}
+			return m, m.dragTo(msg.X)
+		}
 		h, ok := m.at(msg.X, msg.Y)
 		hover := ""
 		if ok && m.pick == nil {
@@ -360,6 +369,7 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.openPicker(*mem)
 			}
 		case key.Matches(msg, k.Quit):
+			m.endDrag()
 			return m, tea.Quit
 		case key.Matches(msg, k.Next):
 			m.switchTab(1)
@@ -381,8 +391,6 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.toggleRow(m.sel) {
 				m.toggleSide()
 			}
-		case key.Matches(msg, k.Pane):
-			m.side, m.sideTab = true, 1-m.sideTab // the tail comes with the next fetch
 		case key.Matches(msg, k.Close):
 			if m.narrow() {
 				m.full = false // back to the list
@@ -392,12 +400,12 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.help.ShowAll = false
 		case key.Matches(msg, k.Events):
 			m.events = !m.events
-			m.fold.Events = m.events // remembered when opened: the default is folded
-			saveTopState(m.dir, m.fold, teamIDs(m.ps))
+			m.saved.Events = m.events // remembered when opened: the default is folded
+			saveTopState(m.dir, m.saved, teamIDs(m.ps))
 		case key.Matches(msg, k.Notices):
 			m.notices = !m.notices
-			m.fold.Notices = m.notices // remembered when opened, like the events
-			saveTopState(m.dir, m.fold, teamIDs(m.ps))
+			m.saved.Notices = m.notices // remembered when opened, like the events
+			saveTopState(m.dir, m.saved, teamIDs(m.ps))
 		case key.Matches(msg, k.Mouse):
 			m.mouse = !m.mouse
 			m.keys.mouseOn = m.mouse
@@ -411,6 +419,10 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.click(msg.X, msg.Y)
 		}
+	case dragFrameMsg: // a frame already drawn within the gap covers this tick
+		m.still = time.Since(m.drawn) < dragFrame
+	case tea.MouseReleaseMsg:
+		m.endDrag()
 	case tea.MouseWheelMsg:
 		if m.pick != nil {
 			switch msg.Button {
@@ -432,10 +444,11 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fetched:
 		if msg.err != nil {
 			m.err = msg.err
+			m.endDrag()
 			return m, tea.Quit
 		}
 		m.ps, m.logs, m.loaded = msg.ps, msg.logs, true
-		if msg.tail.worker == m.sel {
+		if id, _ := m.tailTarget(); msg.tail.worker == id { // a team's line follows its gate's
 			m.tail = msg.tail
 		}
 		m.keepSel()
@@ -477,34 +490,6 @@ func readLogs(dir string, ps proto.PsResult, prev map[string]logState) map[strin
 		}
 	}
 	return out
-}
-
-func recordType(rec []byte) string {
-	var r struct{ Type string }
-	json.Unmarshal(rec, &r)
-	return r.Type
-}
-
-// contextSize is the context of an assistant message_end with usage: its totalTokens (input,
-// output and cache together), or their sum when totalTokens is missing.
-func contextSize(rec []byte) (int, bool) {
-	var r struct {
-		Type    string
-		Message struct {
-			Role  string
-			Usage *struct {
-				Input, Output, CacheRead, CacheWrite, TotalTokens int
-			}
-		}
-	}
-	if json.Unmarshal(rec, &r) != nil || r.Type != "message_end" || r.Message.Role != "assistant" || r.Message.Usage == nil {
-		return 0, false
-	}
-	u := r.Message.Usage
-	if u.TotalTokens > 0 {
-		return u.TotalTokens, true
-	}
-	return u.Input + u.Output + u.CacheRead + u.CacheWrite, true
 }
 
 // stats is each headless worker's context (current run) and turns (all runs), and each session's
@@ -554,21 +539,21 @@ func (m *topModel) tabs() []view.Tab { return view.ProjectTabs(m.ps.State, time.
 func (m *topModel) toggleRow(id string) bool {
 	if team, ok := strings.CutPrefix(id, closedRow); ok {
 		def := view.OpenByDefault(m.ps.State, team)
-		if open := !view.IsOpen(m.fold.Teams, team, def); open == def {
-			delete(m.fold.Teams, team) // only a choice that differs from the default is remembered
+		if open := !view.IsOpen(m.saved.Teams, team, def); open == def {
+			delete(m.saved.Teams, team) // only a choice that differs from the default is remembered
 		} else {
-			m.fold.Teams[team] = open
+			m.saved.Teams[team] = open
 		}
 	} else if team, ok := strings.CutPrefix(id, goneRow); ok {
-		if m.fold.Gone[team] {
-			delete(m.fold.Gone, team)
+		if m.saved.Gone[team] {
+			delete(m.saved.Gone, team)
 		} else {
-			m.fold.Gone[team] = true
+			m.saved.Gone[team] = true
 		}
 	} else {
 		return false
 	}
-	saveTopState(m.dir, m.fold, teamIDs(m.ps))
+	saveTopState(m.dir, m.saved, teamIDs(m.ps))
 	return true
 }
 
@@ -594,10 +579,10 @@ func (m *topModel) switchTab(d int) {
 	m.keepSel()
 }
 
-// listOf is what the current tab lists (view.BuildList, All only what is alive): the folds are the user's (m.fold), stats
+// listOf is what the current tab lists (view.BuildList, All only what is alive): the folds are the user's (m.saved), stats
 // the logs read so far (nil where only the ids are wanted).
 func (m *topModel) listOf(stats map[string]view.Stats, now time.Time) view.List {
-	return view.BuildList(view.ListInput{State: m.ps.State, Tab: m.tab, Now: now, Open: m.fold.Teams, Gone: m.fold.Gone, Stats: stats, Projects: true})
+	return view.BuildList(view.ListInput{State: m.ps.State, Tab: m.tab, Now: now, Open: m.saved.Teams, Gone: m.saved.Gone, Stats: stats, Projects: true})
 }
 
 // items are the selectable ids of the current tab, in display order (list).
@@ -647,17 +632,17 @@ func (m *topModel) move(d int) {
 }
 
 // click acts on what the last frame drew at x, y: a tab switches to it, a row selects it (the
-// selected row toggles the sidebar), a sidebar title switches the sidebar to it.
+// selected row toggles the sidebar).
 func (m *topModel) click(x, y int) tea.Cmd {
 	h, ok := m.at(x, y)
 	switch {
 	case !ok:
+	case h.divide:
+		m.drag, m.dragFrom = true, m.saved.Side
 	case h.pick != "":
 		if mem, _ := m.selMember(); mem != nil && mem.ID == h.pick {
 			return m.openPicker(*mem)
 		}
-	case h.side >= 0:
-		m.side, m.sideTab = true, h.side
 	case strings.HasPrefix(h.id, closedRow) || strings.HasPrefix(h.id, goneRow):
 		m.sel = h.id
 		m.toggleRow(h.id)
@@ -670,6 +655,36 @@ func (m *topModel) click(x, y int) tea.Cmd {
 		m.keepSel()
 	}
 	return nil
+}
+
+// dragFrame is the shortest gap between two frames drawn while the divider is dragged.
+// note: a frame costs more than a fast drag's motions, so the gap is what keeps the event loop
+// responsive. Making a frame cheaper is the way to a smaller gap.
+const dragFrame = time.Second / 60
+
+// dragFrameMsg asks for the frame of a drag motion that came inside a dragFrame gap.
+type dragFrameMsg struct{}
+
+// dragTo moves the sidebar's edge to the mouse at x. A motion inside the gap since the last frame
+// changes the state only; its tick draws the state once the gap has passed.
+func (m *topModel) dragTo(x int) tea.Cmd {
+	m.saved.Side = clampSide(m.w-x, m.w)
+	if time.Since(m.drawn) >= dragFrame {
+		return nil
+	}
+	m.still = true
+	return tea.Tick(dragFrame, func(time.Time) tea.Msg { return dragFrameMsg{} })
+}
+
+// endDrag ends a drag, and saves the width when the drag moved it.
+func (m *topModel) endDrag() {
+	if !m.drag {
+		return
+	}
+	m.drag = false
+	if m.saved.Side != m.dragFrom {
+		saveTopState(m.dir, m.saved, teamIDs(m.ps))
+	}
 }
 
 // narrow is a terminal too narrow for the sidebar beside the list: there it replaces the list
@@ -689,6 +704,29 @@ func (m *topModel) toggleSide() {
 	} else {
 		m.side = !m.side
 	}
+}
+
+// tailTarget is whose Tail the sidebar shows: the selected member or solo, or for a team's line (or
+// its gone members' line) the team's gate (gate true; id "" when the team has none).
+func (m *topModel) tailTarget() (id string, gate bool) {
+	team, ok := strings.CutPrefix(m.sel, closedRow)
+	if !ok {
+		team, ok = strings.CutPrefix(m.sel, goneRow)
+	}
+	if !ok {
+		return m.sel, false
+	}
+	for _, t := range teamsOf(m.ps) {
+		if t.ID != team {
+			continue
+		}
+		for _, mem := range t.Members {
+			if mem.Gate {
+				return mem.ID, true
+			}
+		}
+	}
+	return "", true
 }
 
 // tailable reports whether id has a log to tail: a driver log (capability usage), or a
@@ -717,7 +755,7 @@ func hasReader(t *core.Transcript) bool {
 
 func (m *topModel) View() tea.View {
 	if !m.still || m.frame == "" {
-		m.frame = m.render()
+		m.frame, m.drawn = m.render(), time.Now()
 	}
 	v := tea.NewView(m.frame)
 	v.AltScreen = true

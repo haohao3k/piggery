@@ -3,6 +3,7 @@ package core_test
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,5 +160,63 @@ func TestListsAreInJoinOrder(t *testing.T) {
 	}
 	if !slices.Equal(members, []string{"zed", "amy"}) || !slices.Equal(solos, []string{"me", "zed-solo", "amy-solo"}) {
 		t.Fatalf("ps: members %v, solos %v", members, solos)
+	}
+}
+
+// State reads every team's members, gate and assignments in one pass, then deals them out: with two
+// open teams and a closed one, nothing crosses from one team to another (a member, a gate, a task),
+// and a closed team keeps its members, its gate and who closed it.
+func TestStateManyTeams(t *testing.T) {
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	const man = "template: m\nauto_join_role: lead\nroles:\n  lead: {tools: [send, inbox, who, agent], can_spawn: [w]}\n" +
+		"  w: {tools: [send, inbox]}\nrouting: [{from: lead, to: w, allow: true}]\nlimits: {depth: 2, concurrency: 2}\n"
+	e := core.New(db, core.WithRuntime(&fakeRuntime{}), core.WithTemplates(func(string, string) (string, error) { return man, nil }))
+	leads := map[string]core.Caller{}
+	for _, name := range []string{"a", "b", "c"} {
+		j, err := e.JoinAuto(ctx, core.JoinAutoArgs{Cwd: t.TempDir(), Harness: "pi", Mode: "rpc", HarnessRef: name, Name: "lead-" + name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		leads[name], _ = e.Authenticate(ctx, j.ID, j.Token)
+		if _, err := e.Agent(ctx, leads[name], core.AgentArgs{Action: core.AgentFound}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.Agent(ctx, leads[name], core.AgentArgs{Action: core.AgentSpawn, Role: "w", Name: "w-" + name, Task: "task of " + name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.Agent(ctx, leads["c"], core.AgentArgs{Action: core.AgentClose}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := e.State(ctx, core.StateArgs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Teams) != 2 || len(s.Closed) != 1 {
+		t.Fatalf("teams %d closed %d", len(s.Teams), len(s.Closed))
+	}
+	check := func(ts core.TeamState, name string) {
+		t.Helper()
+		if len(ts.Members) != 2 || ts.Gate != "lead-"+name {
+			t.Fatalf("team %s: gate %q, members %+v", name, ts.Gate, ts.Members)
+		}
+		for _, m := range ts.Members {
+			if !strings.HasSuffix(m.Name, "-"+name) || m.Gate != (m.Role == "lead") {
+				t.Fatalf("team %s has member %+v", name, m)
+			}
+			if want := m.Role == "w"; (m.Assignment != nil) != want || want && m.Assignment.Title != "task of "+name {
+				t.Fatalf("team %s: %s's assignment = %+v", name, m.Name, m.Assignment)
+			}
+		}
+	}
+	check(s.Teams[0], "a")
+	check(s.Teams[1], "b")
+	check(s.Closed[0].TeamState, "c")
+	if s.Closed[0].ClosedBy != "lead-c" {
+		t.Fatalf("closed by %q, want lead-c", s.Closed[0].ClosedBy)
 	}
 }

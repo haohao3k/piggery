@@ -91,6 +91,7 @@ func (e *Engine) Rewake(participantID string) { e.notifyAfterCommit(participantI
 // no mail waiting there is nothing to wake for. Mail for a gone member that mail wakes starts its
 // worker instead (wake.go).
 func (e *Engine) notifyAfterCommit(participantID string) {
+	e.mailArrived(participantID) // an inbox call waiting for mail reads again, in a turn or not
 	var hold int
 	if err := e.db.QueryRow(`SELECT
 		(p.state<>'gone') * (SELECT COUNT(*) FROM batches b WHERE b.run_id=p.run_id AND b.prompt_id IS NOT NULL
@@ -225,7 +226,7 @@ func normalizeCwd(cwd string) (string, error) {
 
 func isReserved(name string) bool {
 	switch strings.ToLower(name) {
-	case AddrNotify, AddrBoard, AddrEngine:
+	case AddrNotify, AddrEngine:
 		return true
 	}
 	return false
@@ -254,10 +255,12 @@ type roleSpec struct {
 	InstructionsFile string   `yaml:"instructions_file"` // must be inlined before team up
 	Tools            []string `yaml:"tools"`
 	CanSpawn         []string `yaml:"can_spawn"`
-	CanPin           bool     `yaml:"can_pin"`
+	CanPin           bool     `yaml:"can_pin"`     // removed with the board: still read so an old template loads, warned about, ignored
 	CanSetCwd        bool     `yaml:"can_set_cwd"` // spawn with a cwd other than the spawner's
 	Spawn            struct {
-		Harness  string `yaml:"harness"` // the worker's harness; "" or inherit = the main session's
+		// Harness, Model and Thinking are deprecated: config.yaml `roles` sets them now (Harness: ""
+		// or inherit = the main session's). Still read, one rank under the config, and warned about.
+		Harness  string `yaml:"harness"`
 		Model    string `yaml:"model"`
 		Thinking string `yaml:"thinking"` // passed to the harness as written
 		// AllowTools names native tools the harness profile disallows that this role's workers
@@ -379,17 +382,27 @@ func notifyWarnings(text string) []string {
 // refuses (validManifest: removed tools, timers, roles, limits) and returns what loads but is
 // probably not meant (manifestWarnings, unknown top-level keys, the notify lines). Team up, found
 // and the templates listing read a manifest through it, so they hold one rule set.
-func loadManifest(text string) (manifest, []string, error) {
+func loadManifest(text string) (manifest, []string, error) { return loadManifestDetail(text, false) }
+
+// loadManifestDetail is loadManifest; detail asks for the long form of the warnings that have one.
+func loadManifestDetail(text string, detail bool) (manifest, []string, error) {
 	m, err := validManifest(text)
 	if err != nil {
 		return m, nil, err
 	}
-	return m, slices.Concat(manifestWarnings(m), topLevelWarnings(text), notifyWarnings(text), taskforceWarnings(text)), nil
+	return m, slices.Concat(manifestWarnings(m, detail), topLevelWarnings(text), notifyWarnings(text), taskforceWarnings(text), timerWarnings(text)), nil
 }
 
 // CheckManifest is loadManifest for a caller that has no use for the parsed manifest (piggery
-// check): the warnings, and the error the manifest would be refused with.
+// check): the warnings in their long form (a deprecated model choice with the config.yaml entry to
+// write), and the error the manifest would be refused with.
 func CheckManifest(text string) (warnings []string, err error) {
+	_, warnings, err = loadManifestDetail(text, true)
+	return warnings, err
+}
+
+// CheckManifestShort is CheckManifest with the warnings team up prints: one short line each.
+func CheckManifestShort(text string) (warnings []string, err error) {
 	_, warnings, err = loadManifest(text)
 	return warnings, err
 }

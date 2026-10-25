@@ -55,6 +55,7 @@ export class Client {
 	constructor(o) {
 		Object.assign(this, o);
 		this.sock = null;
+		this.attempt = null; // the socket of the connection being made or open
 		this.ready = false;
 		this.stopped = true;
 		this.next = 0;
@@ -75,8 +76,17 @@ export class Client {
 		this.sock?.destroy();
 	}
 
+	/** Connects now instead of after the backoff; nothing when a connection is open or opening. */
+	retryNow() {
+		if (this.stopped || this.attempt) return;
+		clearTimeout(this.timer);
+		this.delay = 500;
+		this.connect();
+	}
+
 	connect() {
 		const s = net.createConnection(this.path);
+		this.attempt = s;
 		let buf = Buffer.alloc(0);
 		s.on("connect", async () => {
 			this.sock = s;
@@ -108,6 +118,7 @@ export class Client {
 			}
 		});
 		s.on("close", () => {
+			if (this.attempt === s) this.attempt = null;
 			if (this.sock === s) {
 				this.sock = null;
 				this.ready = false;

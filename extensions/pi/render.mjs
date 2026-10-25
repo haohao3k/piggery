@@ -2,11 +2,13 @@
 // result, declarative tools. The same rendering as core/render.go (RenderMail, RenderWho, SentText),
 // which the daemon uses for the mail it hands back; this copy renders the inbox tool's answer.
 
-/**
- * Renders messages for the model. The header is stamped by the daemon (from_label). `heading`
- * replaces the default "N new messages" line (read-only views are not new mail).
- */
-export function render(msgs, heading, now = Date.now()) {
+/** The inbox answer with nothing to give (core RenderEmptyInbox): after a wait, what to do instead. */
+export function emptyInbox(wait) {
+	return wait > 0 ? "No new messages. Nothing else in hand? End your turn: mail wakes you." : "No new messages.";
+}
+
+/** Renders messages for the model. The header is stamped by the daemon (from_label). */
+export function render(msgs, now = Date.now()) {
 	// No ULIDs for the model: messages are #seq, people are names.
 	const parts = msgs.map((m) => {
 		let attrs = `id="#${m.seq}" from="${m.from_label}" sender="${m.from_name}"`;
@@ -19,7 +21,7 @@ export function render(msgs, heading, now = Date.now()) {
 		return `<message ${attrs}>\n${m.body}\n</message>`;
 	});
 	return (
-		`[piggery] ${heading ?? `${msgs.length} new message${msgs.length === 1 ? "" : "s"}`}:\n\n${parts.join("\n\n")}\n\n` +
+		`[piggery] ${msgs.length} new message${msgs.length === 1 ? "" : "s"}:\n\n${parts.join("\n\n")}\n\n` +
 		`To reply, use the piggery_send tool with to=<sender> and reply_to=<id> (the #N).`
 	);
 }

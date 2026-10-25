@@ -42,8 +42,6 @@ func TestEventsAreMinimal(t *testing.T) {
 	must(err)
 	_, err = f.e.Completion(ctx, worker, core.CompletionArgs{Batch: 1})
 	must(err)
-	_, err = f.e.Inbox(ctx, f.lead, core.InboxArgs{View: core.ViewBoard})
-	must(err)
 	_, err = f.e.WatchAdd(ctx, f.lead, core.TimerArgs{To: "w1", InMs: 1, Body: "ping"})
 	must(err)
 	*f.now = f.now.Add(1e9)

@@ -30,7 +30,21 @@ func TestMain(m *testing.M) {
 	if log := os.Getenv("PIGGERY_FAKE_PASEO"); log != "" && strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "paseo" {
 		os.Exit(fakePaseo(log, os.Args[1:]))
 	}
-	os.Exit(m.Run())
+	// Even a new test that forgets setHome must never read or modify a real harness profile.
+	home, err := os.MkdirTemp("", "piggery-cli-tests-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	for _, key := range []string{"HOME", "USERPROFILE"} {
+		os.Setenv(key, home)
+	}
+	for _, key := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "PI_CODING_AGENT_DIR", "PI_CONFIG_DIR", "XDG_CONFIG_HOME", "DSH_HOME", "OMP_PROFILE", "PI_PROFILE"} {
+		os.Unsetenv(key)
+	}
+	code := m.Run()
+	os.RemoveAll(home)
+	os.Exit(code)
 }
 
 // fakeClaude does what the claude commands setup runs do to Claude's state, kept in $HOME:

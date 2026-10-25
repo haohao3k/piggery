@@ -11,7 +11,9 @@ import (
 // manifestKeys are a template's keys, each with what is written when it is missing: every default
 // reads as if the key were left out (inherit, none, [], false, ""). template, roles and a rule's
 // from/to are required and never added; a role's instructions or instructions_file is the author's
-// to choose. The key set is kept equal to the manifest types by TestManifestKeysMatchTheParser.
+// to choose. spawn.harness, .model and .thinking are not here: they are deprecated (config.yaml
+// `roles` sets them), still read, never written; nor is can_pin (the board is gone). The key set is
+// kept equal to the manifest types by TestManifestKeysMatchTheParser.
 var manifestKeys = []yamlfill.Key{
 	{Name: "template"},
 	{Name: "summary", Default: `""`},
@@ -20,12 +22,8 @@ var manifestKeys = []yamlfill.Key{
 		{Name: "description", Default: `""`},
 		{Name: "tools", Default: "[]"},
 		{Name: "can_spawn", Default: "[]"},
-		{Name: "can_pin", Default: "false"},
 		{Name: "can_set_cwd", Default: "false"},
 		{Name: "spawn", Fields: []yamlfill.Key{
-			{Name: "harness", Default: inherit},
-			{Name: "model", Default: inherit},
-			{Name: "thinking", Default: inherit},
 			{Name: "allow_tools", Default: "[]"},
 		}},
 	}},

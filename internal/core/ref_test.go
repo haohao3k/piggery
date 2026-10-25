@@ -7,10 +7,10 @@ import (
 	"github.com/sting8k/piggery/internal/core"
 )
 
-// Models and humans see messages as #N (their seq): reply_to, target and release take #N like an
+// Models and humans see messages as #N (their seq): reply_to and release take #N like an
 // id, and an unknown #N is not_found.
 func TestMessageRefs(t *testing.T) {
-	f := newLimitFixture(t, "{messages_per_participant_per_minute: 3}")
+	f := newLimitFixture(t, "{messages_per_participant_per_minute: 2}")
 	ref := func(r core.SendResult) string { return fmt.Sprintf("#%d", r.Seq) }
 
 	first := f.send(t, f.alice, "bob", "")
@@ -19,13 +19,7 @@ func TestMessageRefs(t *testing.T) {
 	if in, _ := f.e.Inbox(ctx, f.alice, core.InboxArgs{}); len(in) != 2 || in[0].ReplyTo != first.ID || in[0].ReplyToSeq != first.Seq || in[1].ReplyTo != first.ID {
 		t.Fatalf("reply_to %s and %d: alice's inbox = %+v", ref(first), first.Seq, in)
 	}
-	pin, err := f.e.Send(ctx, f.alice, core.SendArgs{To: core.AddrBoard, Body: "v1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.e.Send(ctx, f.alice, core.SendArgs{To: core.AddrBoard, Body: "v2", Op: "replace", Target: ref(pin)}); err != nil {
-		t.Fatalf("board replace target %s: %v", ref(pin), err)
-	}
+	f.send(t, f.alice, "bob", "")
 	held := f.send(t, f.alice, "bob", "")
 	if !held.Held {
 		t.Fatalf("not held: %+v", held)
@@ -33,7 +27,7 @@ func TestMessageRefs(t *testing.T) {
 	if err := f.e.Release(ctx, core.ReleaseArgs{ID: ref(held)}); err != nil {
 		t.Fatalf("release %s: %v", ref(held), err)
 	}
-	if in, _ := f.e.Inbox(ctx, f.bob, core.InboxArgs{}); len(in) != 2 || in[1].ID != held.ID {
+	if in, _ := f.e.Inbox(ctx, f.bob, core.InboxArgs{}); len(in) != 3 || in[2].ID != held.ID {
 		t.Fatalf("bob inbox after release %s = %+v", ref(held), in)
 	}
 

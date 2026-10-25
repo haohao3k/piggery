@@ -108,7 +108,7 @@ func TestSetupRefreshReportsPreservedTemplateOverride(t *testing.T) {
 	setHome(t, home)
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
-	if err := manifests.Unpack(dir); err != nil {
+	if _, err := manifests.Unpack(dir); err != nil {
 		t.Fatal(err)
 	}
 	name := manifests.Builtins()[0]

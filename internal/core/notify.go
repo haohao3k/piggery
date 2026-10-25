@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"database/sql"
-	"errors"
 )
 
 // The reserved address `notify` is the engine's notification channel: only the engine writes to it
@@ -54,30 +53,81 @@ func (e *Engine) NotifyMail(ctx context.Context, id string) (NotifyMail, error) 
 }
 
 func (t *txn) notifyMail(id string) (NotifyMail, error) {
-	var out NotifyMail
-	msgs, err := t.readMessages(participant{id: AddrNotify}, `id=? AND to_id=?`, id, AddrNotify)
+	out, err := t.notifyMails([]string{id})
 	if err != nil {
-		return out, err
+		return NotifyMail{}, err
 	}
-	if len(msgs) == 0 {
-		return out, errf(CodeNotFound, "no message %q to notify", id)
+	return out[0], nil
+}
+
+// notifyMails loads several messages to notify, in the order of ids, in four queries however many:
+// the messages, their teams, and the gates that caused them (a notice is read on every ps).
+func (t *txn) notifyMails(ids []string) ([]NotifyMail, error) {
+	out := make([]NotifyMail, len(ids))
+	if len(ids) == 0 {
+		return out, nil
 	}
-	m := msgs[0]
-	out = NotifyMail{ID: m.ID, FromLabel: m.FromLabel, Kind: m.Kind, Body: m.Body, CreatedAt: m.CreatedAt}
-	if err := t.QueryRowContext(t.ctx, `SELECT COALESCE(t.name,''), COALESCE(t.root_cwd,'') FROM messages m
-		LEFT JOIN teams t ON t.id=m.team_id WHERE m.id=?`, id).Scan(&out.Team, &out.Dir); err != nil {
-		return out, internal(err)
+	in, args := inList(ids)
+	msgs, err := t.readMessages(participant{id: AddrNotify}, `to_id=? AND id IN (`+in+`)`, append([]any{AddrNotify}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[string]*NotifyMail{}
+	for _, m := range msgs {
+		byID[m.ID] = &NotifyMail{ID: m.ID, FromLabel: m.FromLabel, Kind: m.Kind, Body: m.Body, CreatedAt: m.CreatedAt}
+	}
+	for _, id := range ids {
+		if byID[id] == nil {
+			return nil, errf(CodeNotFound, "no message %q to notify", id)
+		}
+	}
+	rows, err := t.QueryContext(t.ctx, `SELECT m.id, COALESCE(t.name,''), COALESCE(t.root_cwd,'') FROM messages m
+		LEFT JOIN teams t ON t.id=m.team_id WHERE m.id IN (`+in+`)`, args...)
+	if err != nil {
+		return nil, internal(err)
+	}
+	for rows.Next() {
+		var id, team, dir string
+		if err := rows.Scan(&id, &team, &dir); err != nil {
+			rows.Close()
+			return nil, internal(err)
+		}
+		if n := byID[id]; n != nil {
+			n.Team, n.Dir = team, dir
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, internal(err)
 	}
 	// the gate that caused the notice (its notice event); a solo's directory is its cwd
-	var gate, cwd sql.NullString
-	err = t.QueryRowContext(t.ctx, `SELECT p.name, p.cwd FROM events e JOIN participants p ON p.id=e.participant
-		WHERE e.type='notice' AND e.ref_id=?`, id).Scan(&gate, &cwd)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return out, internal(err)
+	grows, err := t.QueryContext(t.ctx, `SELECT e.ref_id, p.name, p.cwd FROM events e JOIN participants p ON p.id=e.participant
+		WHERE e.type='notice' AND e.ref_id IN (`+in+`) ORDER BY e.seq DESC`, args...)
+	if err != nil {
+		return nil, internal(err)
 	}
-	out.Gate = gate.String
-	if out.Dir == "" {
-		out.Dir = cwd.String
+	gates := map[string][2]string{}
+	for grows.Next() {
+		var ref string
+		var gate, cwd sql.NullString
+		if err := grows.Scan(&ref, &gate, &cwd); err != nil {
+			grows.Close()
+			return nil, internal(err)
+		}
+		gates[ref] = [2]string{gate.String, cwd.String} // newest first: the oldest ends up kept
+	}
+	grows.Close()
+	if err := grows.Err(); err != nil {
+		return nil, internal(err)
+	}
+	for i, id := range ids {
+		n := *byID[id]
+		g := gates[id]
+		n.Gate = g[0]
+		if n.Dir == "" {
+			n.Dir = g[1]
+		}
+		out[i] = n
 	}
 	return out, nil
 }
@@ -87,8 +137,8 @@ func (t *txn) notifyMail(id string) (NotifyMail, error) {
 // session (not headless), or a solo. left is p's mail still pending after the turn. An ok turn:
 // pending mail -> nothing (the engine wakes p again); no mail was given in the turn (the Human
 // chatted) -> nothing; mail given and p sent nothing in the turn -> reply; p sent, the team is
-// settled -> settled; else nothing (p is coordinating). Anything p writes into piggery counts as sent,
-// a board pin too: it is for the team, and only chat text is for the Human. A failed turn given mail -> failed; an
+// settled -> settled; else nothing (p is coordinating). Anything p writes into piggery counts as sent:
+// it is for the team, and only chat text is for the Human. A failed turn given mail -> failed; an
 // interrupted one -> nothing. It writes the notice and returns its id ("" = none) for the hook.
 func (t *txn) gateNotice(p participant, n int64, outcome string, left int) (string, error) {
 	if outcome == HarnessOutcomeIntr || (outcome == HarnessOutcomeOK && left > 0) {
@@ -121,6 +171,14 @@ func (t *txn) gateNotice(p participant, n int64, outcome string, left int) (stri
 		return "", nil
 	}
 	kind, body := noticeFailed, who+" failed a turn on mail: the mail stays unacked until new mail arrives."
+	var unseen int // a model turn that ended well read the rest, so it is acked
+	if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM deliveries WHERE run_id=? AND batch_seq=? AND acked_at IS NULL`,
+		p.run, n).Scan(&unseen); err != nil {
+		return "", internal(err)
+	}
+	if unseen == 0 {
+		body = who + " failed a turn on mail after reading it."
+	}
 	if outcome == HarnessOutcomeOK {
 		var sent int
 		if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM messages WHERE from_id=? AND created_at >=
@@ -141,25 +199,28 @@ func (t *txn) gateNotice(p participant, n int64, outcome string, left int) (stri
 		}
 	}
 	id := newID(t.now)
-	if _, err := t.insertMessage(id, "", p.team, AddrEngine, AddrNotify, kind, "", "", "", body); err != nil {
+	if _, err := t.insertMessage(id, "", p.team, AddrEngine, AddrNotify, kind, "", "", body); err != nil {
 		return "", err
 	}
 	return id, t.event(evt{typ: "notice", participant: p.id, team: p.team, run: p.run, ref: id,
 		payload: map[string]any{"kind": kind, "to": AddrNotify}})
 }
 
-// teamSettled: no member of the team is requested, starting, working or awaiting a permission, and
-// no mail waits (unacked, not held) for any member that has not left, gone ones included: mail wakes
-// a gone member, so its unread mail is a wake on its way or a refused one. The mail count is ps's
+// teamSettled: no member of the team, or of an open taskforce one of its members called (its answer
+// is still to come), is requested, starting, working or awaiting a permission, and no mail waits
+// (unacked, not held) for any of them that has not left, gone ones included: mail wakes a gone
+// member, so its unread mail is a wake on its way or a refused one. The mail count is ps's
 // (pendingMail).
 func (t *txn) teamSettled(team string) (bool, error) {
+	const inTeam = `(team_id=? OR team_id IN (SELECT id FROM teams WHERE closed_at IS NULL
+		AND parent_id IN (SELECT id FROM participants WHERE team_id=?)))`
 	var busy int
-	if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM participants WHERE team_id=?
-		AND state IN ('requested','starting','working','awaiting_permission')`, team).Scan(&busy); err != nil || busy > 0 {
+	if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM participants WHERE `+inTeam+`
+		AND state IN ('requested','starting','working','awaiting_permission')`, team, team).Scan(&busy); err != nil || busy > 0 {
 		return false, internal(err)
 	}
 	members := map[string]bool{}
-	rows, err := t.QueryContext(t.ctx, `SELECT id FROM participants WHERE team_id=? AND left_at IS NULL`, team)
+	rows, err := t.QueryContext(t.ctx, `SELECT id FROM participants WHERE `+inTeam+` AND left_at IS NULL`, team, team)
 	if err != nil {
 		return false, internal(err)
 	}

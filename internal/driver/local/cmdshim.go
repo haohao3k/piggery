@@ -20,6 +20,7 @@ import (
 //	"%~dp0\node.exe" [flags] "%~dp0\path\to\cli.js" %*     pnpm: the interpreter beside the shim,
 //	node [flags] "%~dp0\path\to\cli.js" %*                 or else the one on PATH
 //	@"%~dp0\path\to\tool.exe" %*                           pnpm: a program
+//	node "%~dp0path\to\cli.js" %*                         no backslash after %~dp0, which ends in one (pi)
 //
 // The interpreter is whatever the script's shebang names (node, bun, ...), so it is read from the
 // shim, never assumed.
@@ -40,6 +41,10 @@ func underShimDir(s string) (rel string, ok bool) {
 		if len(s) > len(d) && strings.EqualFold(s[:len(d)], d) {
 			return s[len(d):], true
 		}
+	}
+	const bare = `%~dp0`
+	if len(s) > len(bare) && strings.EqualFold(s[:len(bare)], bare) {
+		return s[len(bare):], true
 	}
 	return "", false
 }

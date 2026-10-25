@@ -67,7 +67,7 @@ func (e *Engine) HarnessEvent(ctx context.Context, c Caller, a HarnessEventArgs)
 			if err := t.setState(&p, "working", "turn_start"); err != nil {
 				return err
 			}
-			if res.Text, err = t.giveMail(p, n); err != nil {
+			if res.Text, res.Part, err = t.giveMail(p, n); err != nil {
 				return err
 			}
 			return t.newCard(p, &res)
@@ -81,7 +81,10 @@ func (e *Engine) HarnessEvent(ctx context.Context, c Caller, a HarnessEventArgs)
 			if err != nil || !ok || (a.PromptID != "" && b.promptID != a.PromptID) {
 				return err
 			}
-			if res.Text, err = t.giveMail(p, b.n); err != nil {
+			if err := t.ackSeen(p, b.n, a.Seen); err != nil {
+				return err
+			}
+			if res.Text, res.Part, err = t.giveMail(p, b.n); err != nil {
 				return err
 			}
 			return t.newCard(p, &res)
@@ -288,15 +291,20 @@ func (t *txn) endTurn(p participant, a HarnessEventArgs) (res HarnessEventResult
 	if err != nil {
 		return res, false, "", err
 	}
+	if ok && a.PromptID == b.promptID { // what a finished model turn read is acked whatever the end
+		if err := t.ackSeen(p, b.n, a.Seen); err != nil {
+			return res, false, "", err
+		}
+	}
 	ours := ok && a.PromptID == b.promptID && a.Outcome == HarnessOutcomeOK
 	if ours && b.blocks < maxBlocks {
-		text, err := t.giveMail(p, b.n)
+		text, part, err := t.giveMail(p, b.n)
 		if err != nil || text != "" {
 			if err == nil {
 				_, err = t.ExecContext(t.ctx, `UPDATE batches SET blocks=blocks+1 WHERE run_id=? AND batch_seq=?`, p.run, b.n)
 				err = internal(err)
 			}
-			return HarnessEventResult{Text: text, Block: true}, false, "", err
+			return HarnessEventResult{Text: text, Block: true, Part: part}, false, "", err
 		}
 	}
 	if ours {
@@ -339,15 +347,34 @@ func (t *txn) pendingMail(p participant, n int64) (int, error) {
 	return k, internal(err)
 }
 
-// giveMail records p's mail not yet given in batch n as delivered in it and renders it, as
-// much as fits maxMailText (at least one message); "" when there is none.
-func (t *txn) giveMail(p participant, n int64) (string, error) {
-	return t.giveMailWhere(p, n, `to_id=? AND acked_at IS NULL AND held_reason IS NULL
+// giveMail records p's mail not yet given in batch n as delivered in it, as the batch's next part,
+// and renders it, as much as fits maxMailText (at least one message); "" (part 0) when there is none.
+func (t *txn) giveMail(p participant, n int64) (string, int64, error) {
+	var part int64
+	if err := t.QueryRowContext(t.ctx, `SELECT COALESCE(MAX(part),0)+1 FROM deliveries WHERE run_id=? AND batch_seq=?`,
+		p.run, n).Scan(&part); err != nil {
+		return "", 0, internal(err)
+	}
+	text, err := t.giveMailWhere(p, n, part, `to_id=? AND acked_at IS NULL AND held_reason IS NULL
 		AND id NOT IN (SELECT message_id FROM deliveries WHERE run_id=? AND batch_seq=?)`, p.id, p.run, n)
+	if text == "" {
+		part = 0
+	}
+	return text, part, err
+}
+
+// ackSeen acks the deliveries of p's open batch n up to part seen: a finished model turn read them.
+// seen 0: nothing.
+func (t *txn) ackSeen(p participant, n, seen int64) error {
+	if seen <= 0 {
+		return nil
+	}
+	_, err := t.ackDeliveries(p, n, seen)
+	return err
 }
 
 // giveMailWhere is giveMail over p's messages that match where (readMessages' filter).
-func (t *txn) giveMailWhere(p participant, n int64, where string, args ...any) (string, error) {
+func (t *txn) giveMailWhere(p participant, n, part int64, where string, args ...any) (string, error) {
 	msgs, err := t.readMessages(p, where, args...)
 	if err != nil || len(msgs) == 0 {
 		return "", err
@@ -360,12 +387,12 @@ func (t *txn) giveMailWhere(p participant, n int64, where string, args ...any) (
 		if err != nil {
 			return "", err
 		}
-		next := RenderMail(append(given, Delivered{Redelivered: again, Message: m}), "", p.toolPrefix, now)
+		next := RenderMail(append(given, Delivered{Redelivered: again, Message: m}), p.toolPrefix, now)
 		if len(given) > 0 && len(next) > maxMailText {
 			break
 		}
-		r, err := t.ExecContext(t.ctx, `INSERT INTO deliveries(message_id, run_id, batch_seq, delivered_at) VALUES (?,?,?,?)`,
-			m.ID, p.run, n, t.now)
+		r, err := t.ExecContext(t.ctx, `INSERT INTO deliveries(message_id, run_id, batch_seq, delivered_at, part) VALUES (?,?,?,?,NULLIF(?,0))`,
+			m.ID, p.run, n, t.now, part)
 		if err != nil {
 			return "", internal(err)
 		}

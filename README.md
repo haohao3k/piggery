@@ -45,7 +45,7 @@ flowchart LR
 | [dsh](https://github.com/deepseek-ai/deepseek-harness) | yes (`dsh web`, plugin) | yes (`dsh --profile sdk`) | 0.2.0-rc.1, 0.2.0-rc.2 | `piggery setup dsh` |
 | [opencode](https://opencode.ai) | yes (plugin) | yes (`opencode serve`) | 1.18.34, 1.19.0 | `piggery setup opencode` |
 
-- Workers run on the harness their role names (`spawn.harness`), else on the harness of the
+- Workers run on the harness your `roles:` entry in `config.yaml` names for their role, else on the harness of the
   session that founded the team.
 - `piggery setup` alone shows each harness's version and whether piggery is installed in it.
 
@@ -74,8 +74,9 @@ Using [Paseo](https://paseo.sh)? `piggery setup paseo` adds a Piggery view (the 
 After installation, `piggery update` installs the latest release from `haohao3k/piggery`;
 `piggery update --check` prints the current and latest versions without changing files.
 Use `--force` to replace a development build or reinstall the same release. An update stops
-the old daemon; the next command starts the new binary. Refresh integrations with
-`piggery setup --outdated` and reconnect affected sessions.
+the old daemon, then runs the new binary’s `piggery setup --outdated` to refresh integrations
+and offer changes to customized built-ins. Reconnect affected sessions afterwards.
+The installers also add the `pig` alias when that name is free.
 
 For development from source, use the explicit [build/apply/check workflow](docs/local-development.md).
 The Go module keeps its upstream import path for compatibility; it does not choose the release source.

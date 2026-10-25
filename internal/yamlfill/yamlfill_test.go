@@ -10,7 +10,7 @@ var schema = []Key{
 	{Name: "summary", Default: `""`},
 	{Name: "roles", Each: []Key{
 		{Name: "tools", Default: "[]"},
-		{Name: "can_pin", Default: "false"},
+		{Name: "can_set_cwd", Default: "false"},
 		{Name: "spawn", Fields: []Key{{Name: "harness", Default: "inherit"}, {Name: "allow_tools", Default: "[]"}}},
 	}},
 	{Name: "routing", Default: "[]", Items: []Key{{Name: "allow", Default: "false"}, {Name: "cc", Default: "[]"}}},
@@ -48,17 +48,17 @@ roles:
       Line one.
       Line two.
     tools: []
-    can_pin: false
+    can_set_cwd: false
     spawn:
       harness: inherit
       allow_tools: []
-  w: {tools: [send], spawn: {harness: pi, allow_tools: []}, can_pin: false}
+  w: {tools: [send], spawn: {harness: pi, allow_tools: []}, can_set_cwd: false}
   x:
     spawn:
       harness: claude # keep
       allow_tools: []
     tools: []
-    can_pin: false
+    can_set_cwd: false
 routing:
   - {from: lead, to: w, allow: true, cc: []}
   - from: w

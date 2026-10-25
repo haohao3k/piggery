@@ -42,7 +42,7 @@ func (t *txn) writeCCCopies(p participant, cc []participant, orig, kind, body st
 	var recipients []string
 	for _, q := range cc {
 		id := newID(t.now)
-		if _, err := t.insertMessage(id, "", p.team, p.id, q.id, kind, "", "", "", body); err != nil {
+		if _, err := t.insertMessage(id, "", p.team, p.id, q.id, kind, "", "", body); err != nil {
 			return nil, err
 		}
 		if _, err := t.ExecContext(t.ctx, `UPDATE messages SET cc_of=?, held_reason=? WHERE id=?`,

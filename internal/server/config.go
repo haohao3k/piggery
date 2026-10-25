@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -38,7 +40,10 @@ type Settings struct {
 	// Prompts are the Human's shared prompt files by role (see PromptEntry), without the entries
 	// that cannot work (CheckPrompts drops more at daemon start). Warnings say what was left out:
 	// the daemon logs them; a mistake there never stops it.
-	Prompts  []PromptEntry
+	Prompts []PromptEntry
+	// Roles are the Human's harness/model/thinking by role (see RoleSpawn), without the entries
+	// that cannot work (CheckRoles drops more at daemon start). nil: none.
+	Roles    map[string]RoleSpawn
 	Warnings []string
 }
 
@@ -72,7 +77,8 @@ type configFile struct {
 	Update struct {
 		Check *bool `yaml:"check"`
 	} `yaml:"update"`
-	Prompts []PromptEntry `yaml:"prompts"`
+	Prompts []PromptEntry        `yaml:"prompts"`
+	Roles   map[string]RoleSpawn `yaml:"roles"` // not written by setup: only when the Human (or template update --force) adds it
 }
 
 // LoadSettings reads ConfigPath(dir); a missing file gives the defaults. An unknown key or a
@@ -90,7 +96,7 @@ func LoadSettings(dir string) (Settings, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
 	if err := dec.Decode(&raw); err != nil && !errors.Is(err, io.EOF) {
-		return set, fmt.Errorf("%s: %w", ConfigPath(dir), err)
+		return set, configError(ConfigPath(dir), b, err)
 	}
 	if raw.Harness != "" {
 		if !slices.Contains(local.Harnesses(), raw.Harness) {
@@ -133,10 +139,117 @@ func LoadSettings(dir string) (Settings, error) {
 		kept, warns := checkPromptShape(ConfigPath(dir), raw.Prompts)
 		set.Prompts, set.Warnings = append([]PromptEntry{}, kept...), warns
 	}
+	if raw.Roles != nil {
+		var warns []string
+		set.Roles, warns = checkRoleShape(ConfigPath(dir), raw.Roles)
+		set.Warnings = append(set.Warnings, warns...)
+	}
 	if cols := raw.Display.Columns; cols != nil { // a display setting: never stops the daemon
 		set.Columns = *cols
 	}
 	return set, nil
+}
+
+// unknownKey is the strict decoder's complaint about a key the settings file does not have.
+var unknownKey = regexp.MustCompile(`^line (\d+): field (.+) not found in type `)
+
+// configError is err from decoding the settings file b, as the Human should read it: an unknown
+// key (anywhere, nested too) is named with its line, the place and the keys that are known there,
+// with the likeliest cause (a newer piggery wrote it); never a Go type name. Other complaints keep
+// the decoder's words, after the file name.
+func configError(path string, b []byte, err error) error {
+	var te *yaml.TypeError
+	if !errors.As(err, &te) {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	var doc yaml.Node
+	_ = yaml.Unmarshal(b, &doc)
+	var msgs []string
+	for _, m := range te.Errors {
+		g := unknownKey.FindStringSubmatch(m)
+		if g == nil {
+			msgs = append(msgs, fmt.Sprintf("%s: %s", path, m))
+			continue
+		}
+		line, _ := strconv.Atoi(g[1])
+		parent, found := keyParent(&doc, nil, line, g[2])
+		t := reflect.TypeOf(configFile{})
+		for _, step := range parent {
+			t = derefType(t)
+			if t.Kind() == reflect.Map { // step is a key the Human chose (a role pattern)
+				t = t.Elem()
+				continue
+			}
+			if t = fieldType(t, step); t == nil {
+				break
+			}
+		}
+		where := ""
+		if len(parent) > 0 {
+			where = " under " + strings.Join(parent, ".")
+		}
+		known := ""
+		if t = derefType(t); found && t != nil && t.Kind() == reflect.Struct {
+			known = " (known: " + strings.Join(yamlTags(t), ", ") + ")"
+		}
+		msgs = append(msgs, fmt.Sprintf("%s line %d: unknown key %q%s%s. A newer piggery may have written it: update piggery, or remove the key.",
+			path, line, g[2], where, known))
+	}
+	return errors.New(strings.Join(msgs, "\n"))
+}
+
+// keyParent finds the mapping key key on line and returns the keys on the way to its mapping.
+func keyParent(n *yaml.Node, path []string, line int, key string) ([]string, bool) {
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, c := range n.Content {
+			if p, ok := keyParent(c, path, line, key); ok {
+				return p, true
+			}
+		}
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k := n.Content[i]
+			if k.Line == line && k.Value == key {
+				return path, true
+			}
+			if p, ok := keyParent(n.Content[i+1], append(slices.Clone(path), k.Value), line, key); ok {
+				return p, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func derefType(t reflect.Type) reflect.Type {
+	for t != nil && (t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice) {
+		t = t.Elem()
+	}
+	return t
+}
+
+// fieldType is the type of the field of struct t that the yaml key names (nil: none).
+func fieldType(t reflect.Type, key string) reflect.Type {
+	if t == nil || t.Kind() != reflect.Struct {
+		return nil
+	}
+	for i := 0; i < t.NumField(); i++ {
+		if strings.Split(t.Field(i).Tag.Get("yaml"), ",")[0] == key {
+			return t.Field(i).Type
+		}
+	}
+	return nil
+}
+
+// yamlTags are the keys a struct takes, in field order.
+func yamlTags(t reflect.Type) []string {
+	var out []string
+	for i := 0; i < t.NumField(); i++ {
+		if k := strings.Split(t.Field(i).Tag.Get("yaml"), ",")[0]; k != "" && k != "-" {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // ColumnsOf is the columns top and ps show: set.Columns, or the default ones with a warning
@@ -340,6 +453,120 @@ func AddPrompt(dir string, e PromptEntry) (added bool, err error) {
 	return true, os.WriteFile(path, out, 0o600)
 }
 
+// AddPromptRoles adds roles to the `roles` of the first prompts entry that names file, keeping every
+// byte of config.yaml. A role some entry for file already covers (the same, `*`, or `<template>/*`
+// for `<template>/<role>`) is not added. With no such entry nothing happens (the user removed it).
+// byHand: the first entry's roles are written in a way it cannot place a role in (a flow list over
+// several lines, or not a list), for the user to add.
+func AddPromptRoles(dir, file string, roles []string) (added []string, byHand bool, err error) {
+	path := ConfigPath(dir)
+	cur, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false, err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(cur, &doc); err != nil {
+		return nil, false, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(doc.Content) != 1 {
+		return nil, false, nil
+	}
+	var entries []*yaml.Node // the entries for file, in order
+	if seq := mapKey(doc.Content[0], "prompts"); seq != nil && seq.Kind == yaml.SequenceNode {
+		for _, n := range seq.Content {
+			if f := mapKey(n, "file"); f != nil && f.Value == file {
+				entries = append(entries, n)
+			}
+		}
+	}
+	if len(entries) == 0 {
+		return nil, false, nil
+	}
+	covered := func(r string) bool {
+		for _, e := range entries {
+			if rs := mapKey(e, "roles"); rs != nil && slices.ContainsFunc(rs.Content, func(n *yaml.Node) bool {
+				i := strings.Index(r, "/")
+				return n.Value == r || n.Value == "*" || i >= 0 && n.Value == r[:i]+"/*"
+			}) {
+				return true
+			}
+		}
+		return false
+	}
+	var quoted []string
+	for _, r := range roles {
+		if !covered(r) {
+			added = append(added, r)
+			quoted = append(quoted, strconv.Quote(r))
+		}
+	}
+	if len(added) == 0 {
+		return nil, false, nil
+	}
+	rs := mapKey(entries[0], "roles")
+	if rs == nil || rs.Kind != yaml.SequenceNode {
+		return nil, true, nil
+	}
+	lines := strings.SplitAfter(string(cur), "\n")
+	if rs.Style&yaml.FlowStyle != 0 { // roles: ["a", "b"] on one line (`[]` too)
+		l := lines[rs.Line-1]
+		end := flowEnd(l, rs.Column-1)
+		if end < 0 {
+			return nil, true, nil
+		}
+		sep := ", "
+		if len(rs.Content) == 0 {
+			sep = ""
+		}
+		lines[rs.Line-1] = l[:end] + sep + strings.Join(quoted, ", ") + l[end:]
+	} else { // after the last item, written like it
+		last := rs.Content[len(rs.Content)-1]
+		l := lines[last.Line-1]
+		if !strings.HasSuffix(l, "\n") {
+			l += "\n"
+		}
+		ins := ""
+		for _, q := range quoted {
+			ins += l[:last.Column-1] + q + "\n"
+		}
+		lines[last.Line-1] = l + ins
+	}
+	out := []byte(strings.Join(lines, ""))
+	var check configFile // never write a file the daemon would refuse
+	dec := yaml.NewDecoder(bytes.NewReader(out))
+	dec.KnownFields(true)
+	if err := dec.Decode(&check); err != nil && !errors.Is(err, io.EOF) {
+		return nil, false, fmt.Errorf("%s: cannot add %s to the roles of %s: %w", path, strings.Join(added, ", "), file, err)
+	}
+	return added, false, os.WriteFile(path, out, 0o600)
+}
+
+// flowEnd is the index of the `]` that closes the flow list opened at l[open], outside quotes; -1
+// when it is not on this line (or a comment starts first).
+func flowEnd(l string, open int) int {
+	if open < 0 || open >= len(l) || l[open] != '[' {
+		return -1
+	}
+	var q byte
+	for i := open + 1; i < len(l); i++ {
+		switch c := l[i]; {
+		case q == '"' && c == '\\':
+			i++
+		case q != 0:
+			if c == q {
+				q = 0
+			}
+		case c == '"' || c == '\'':
+			q = c
+		case c == ']':
+			return i
+		case c == '#':
+			return -1
+		}
+	}
+	return -1
+}
+
 // mapKey is the value node of key in mapping n (nil: none, or n is not a mapping).
 func mapKey(n *yaml.Node, key string) *yaml.Node {
 	if n == nil || n.Kind != yaml.MappingNode {
@@ -422,9 +649,11 @@ func parseRetention(s string) (time.Duration, error) {
 }
 
 // gcPlace is where gc archives, and what it removes with a participant: its entries in logs/, run/
-// and sessions/ (the local driver's layout), by its id, nothing else in the directory.
+// and sessions/ (the local driver's layout), by its id, nothing else in the directory; and the
+// run logs it cuts down for one gone for long (local.TrimLogs).
 func gcPlace(dir string) core.GCPlace {
-	return core.GCPlace{ArchiveDir: ArchiveDir(dir), Own: func(key string) []string { return local.OwnPaths(dir, key) }}
+	return core.GCPlace{ArchiveDir: ArchiveDir(dir), Own: func(key string) []string { return local.OwnPaths(dir, key) },
+		TrimLogs: func(key, run string, dry bool) (int64, error) { return local.TrimLogs(dir, key, run, dry) }}
 }
 
 // runGC is one automatic run: gc of teams closed longer than GCClosedAfter (with their run
@@ -465,6 +694,12 @@ func (s *server) autoGC(ctx context.Context) {
 		}
 		if len(res.ExpiredArchives) > 0 {
 			s.log.Info("auto gc", "expired_archives", res.ExpiredArchives)
+		}
+		for _, f := range res.LogsFailed {
+			s.log.Warn("auto gc: run logs not trimmed", "why", f)
+		}
+		if res.LogsTrimmed > 0 {
+			s.log.Info("auto gc", "run_logs_trimmed", res.LogsTrimmed, "bytes_freed", res.LogsFreed)
 		}
 		select {
 		case <-ctx.Done():

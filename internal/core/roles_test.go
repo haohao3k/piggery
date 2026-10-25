@@ -64,14 +64,10 @@ func TestRoleGrantsAndSpawnModel(t *testing.T) {
 		t.Fatalf("dev role card = %q, %v", id.RoleCard, err)
 	}
 
-	// dev has no tools: no send (nor board pins or watches), who, agent, or inbox views and
-	// board reads; the pull inbox is the driver's.
+	// dev has no tools: no send (nor watches), who or agent; the pull inbox is the driver's.
 	for name, err := range map[string]error{
-		"send":       func() error { _, err := e.Send(ctx, dev, core.SendArgs{To: "planner", Body: "x"}); return err }(),
-		"board":      func() error { _, err := e.Send(ctx, dev, core.SendArgs{To: core.AddrBoard, Body: "x"}); return err }(),
-		"who":        func() error { _, err := e.Who(ctx, dev); return err }(),
-		"view":       func() error { _, err := e.Inbox(ctx, dev, core.InboxArgs{View: core.ViewBoard}); return err }(),
-		"board read": func() error { _, err := e.Board(ctx, dev); return err }(),
+		"send": func() error { _, err := e.Send(ctx, dev, core.SendArgs{To: "planner", Body: "x"}); return err }(),
+		"who":  func() error { _, err := e.Who(ctx, dev); return err }(),
 		"watch add": func() error {
 			_, err := e.WatchAdd(ctx, dev, core.TimerArgs{To: "planner", InMs: 60_000, Body: "x"})
 			return err
@@ -322,21 +318,40 @@ func TestLegacyModelKeyInAStoredManifest(t *testing.T) {
 	}
 }
 
-// A role that pins a model or thinking level while its harness is inherit gets a warning at team
-// up (the names belong to one harness); pinning the harness too silences it. Never a refusal.
-func TestPinnedModelNeedsHarnessWarns(t *testing.T) {
+// The old form (a role's spawn.model|thinking in the manifest) still works but is deprecated: team
+// up says which config.yaml line replaces it, and a field the config sets (roles) wins over it
+// while a field it leaves out falls to the manifest's, then the profile's. Never a refusal.
+func TestRoleSpawnConfigOverDeprecatedManifest(t *testing.T) {
 	db, err := store.OpenMemory()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	e := core.New(db)
+	rt := &fakeRuntime{profileModel: "profile", profileThinking: "low"}
+	e := core.New(db, core.WithRuntime(rt), core.WithRoleSpawn(func(template, role string) core.SpawnPin {
+		if template == "pd" && role == "dev" {
+			return core.SpawnPin{Model: "cfg"}
+		}
+		return core.SpawnPin{}
+	}))
 	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: planDev, Cwd: t.TempDir()})
-	if err != nil || len(team.Warnings) != 2 || !strings.Contains(team.Warnings[0], `role "dev" sets spawn.model "small"`) {
-		t.Fatalf("warnings %q, %v; want dev's model and thinking pins", team.Warnings, err)
+	if err != nil || len(team.Warnings) != 1 || !strings.Contains(team.Warnings[0], "model choices for dev belong in config.yaml roles:") {
+		t.Fatalf("warnings %q, %v; want one short line naming the role", team.Warnings, err)
 	}
-	pinned := strings.Replace(planDev, "spawn: {model", "spawn: {harness: pi, model", 1)
-	if team, err = e.TeamUp(ctx, core.TeamUpArgs{Manifest: pinned, Name: "pinned", Cwd: t.TempDir()}); err != nil || len(team.Warnings) != 0 {
-		t.Fatalf("warnings %q, %v; want none with the harness pinned", team.Warnings, err)
+	// piggery check gives the entry to write.
+	if w, err := core.CheckManifest(planDev); err != nil || len(w) != 1 || !strings.Contains(w[0], "roles.dev.spawn.model/thinking is deprecated") ||
+		!strings.Contains(w[0], "roles: {pd/dev: {model: small, thinking: max}}") {
+		t.Fatalf("check warnings %q, %v; want the line with the config entry", w, err)
+	}
+	j, err := e.Join(ctx, core.JoinArgs{Team: team.ID, Role: "planner", Name: "planner", Cwd: team.RootCwd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	planner, _ := e.Authenticate(ctx, j.ID, j.Token)
+	if _, err := e.Agent(ctx, planner, core.AgentArgs{Action: core.AgentSpawn, Role: "dev", Name: "dev1", Task: "t"}); err != nil {
+		t.Fatal(err)
+	}
+	if s := rt.Starts()[0]; s.Model != "cfg" || s.Thinking != "max" {
+		t.Fatalf("spawn used %q/%q, want the config's model and the manifest's thinking", s.Model, s.Thinking)
 	}
 }

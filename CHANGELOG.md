@@ -2,11 +2,155 @@
 
 ## Unreleased
 
+- Preserve dual-lens routing as configurable defaults outside template spawn fields; isolate CLI test homes and use Go 1.26.10. Fork integrations are Pi 24, OMP 23, DSH 24 and OpenCode 18; Claude/Codex/Paseo retain their existing versions.
+
+- Merge upstream v0.11.2, including schema 30, role model settings, upgrade handling and session lifecycle fixes; retain fork integrations and guarded local activation.
+
 - Add shared agent ownership instructions to every role card, including solo and custom roles;
   SLP supervisors resolve technical conflicts within the Human’s agreed goals and limits.
 
 - Merge upstream v0.10.2: mailbox and session fixes, closed gates, schema 28, and experimental Windows support.
 - Keep the fork’s Paseo plugin, dual-lens shortcuts, guarded local installer, and fork-only release downloads, including the Windows installer.
+
+## v0.11.2 - 2026-10-25
+
+A pi, omp, dsh or opencode session that changes participant in the middle of a run now shows as working.
+
+Upgrade: `piggery update`, then restart open pi, omp, dsh and opencode sessions. Their integrations
+move to pi 23, omp 22, dsh 23 and opencode 18. Claude and Codex are unchanged.
+
+### Fixed
+
+- A session that founded a team, reopened one, or closed its own team (and so became solo) in the
+  middle of a run showed the new participant idle in `top` and `ps`, with `last turn -`, until its
+  next run. The run now goes on as the new participant: the daemon sees its turn start, its tool
+  boundaries and its end.
+
+## v0.11.1 - 2026-10-25
+
+`piggery skills` now teaches the `every` timer, and the guide and reference cover what v0.11.0 left out.
+
+Upgrade: `piggery update`. Nothing else changes: the binary's behaviour, the database and every
+integration are as in v0.11.0, so no session needs a restart.
+
+### Changed
+
+- **`piggery skills` describes both timer kinds.** An agent that writes a template now learns
+  `{on: <role>, every: <duration>}` (a role told who is working, once a period, while others work)
+  next to `working_for`, so it can give a role the job of looking at the team on a schedule.
+- **The guide shows an `every` timer** in its example template.
+- **The reference lists two more `piggery check` warnings:** `can_pin: true` (the key is ignored
+  since the board was removed) and a timer that still says `silent_for`.
+- **The v0.11.0 notes below are laid out by kind** (upgrade steps, New, Changed, Removed, Fixed);
+  what they say is unchanged.
+
+## v0.11.0 - 2026-10-25
+
+Upgrading is two commands, model choices live in `config.yaml`, and an idle daemon stays idle.
+
+### Upgrading from v0.10
+
+1. `piggery update`
+2. `piggery setup --outdated` (the v0.10 `update` does not run this step; from v0.11 on, `update`
+   runs it for you)
+
+Then restart open pi, omp, dsh and opencode sessions: their integrations move to pi 22, omp 21,
+dsh 22 and opencode 17. Claude and Codex are unchanged. On first start the database moves to
+schema v30, after a backup. Templates in your home that set `spawn.harness|model|thinking` have
+those keys moved into `roles:` in `config.yaml`, so every role keeps the model it had (copies in
+`templates/.backup/migrate-*`).
+
+### New
+
+- **`piggery setup --outdated`**: the second step of an upgrade. It updates every outdated
+  integration, then lists the built-in templates and shared prompts you edited and asks which to
+  replace (`d` shows the diff; without a terminal, `--replace <names>|all|none`). A replaced file
+  is backed up first.
+- **`piggery template update [<name>] [--force]`**: brings a built-in template in
+  `~/.piggery/templates` to this version. One you edited is left alone unless `--force`, which
+  backs it up first. `template list` marks it `built-in, edited`.
+- **`roles:` in `config.yaml`**: harness, model and thinking per role, for example
+  `"lead-peer/peer": {harness: codex, thinking: high}`. Keys are `<template>/<role>`,
+  `<template>/*`, `<role>` or `*`; for each field the most specific entry wins. An entry piggery
+  cannot use is skipped with a warning.
+- **`inbox` waits for mail**: `piggery inbox --wait N`, or the tool's `wait`, waits up to 50 s and
+  returns as soon as mail comes.
+- **`every` timer**: `{on: <role>, every: <duration>}` (at least `1m`) wakes that role once per
+  period with `Working now: <names>` while other members work. An idle team gets nothing.
+- **`pig`**: a short name for `piggery`, made by the installers only when nothing else is called
+  `pig`.
+- **`piggery gc` trims worker logs** in open teams: for a worker gone over 7 days, older runs are
+  deleted and the last keeps its final 1000 records (at most 5 MB).
+
+### Changed
+
+- **Built-in templates update as a whole.** One you never touched is replaced by the new version;
+  one you edited in any way is kept as it is. A template is never half old, half new.
+- **`spawn.harness|model|thinking` in a manifest is deprecated** in favour of `roles:`. It is still
+  read, below `roles:`, and built-in templates no longer set it.
+- **The timer `silent_for` is now `working_for`** (working without ending a turn, not idle).
+  Templates in your home are renamed for you; `silent_for` still loads.
+- **Built-in prompts.** In `lead-peer` and `slp` a Peer works with the Lead, not under it, and
+  accepting a handback needs no reply of its own. `slp`'s Supervisor keeps a journal and advises.
+  The taskforce card says when calling one pays. `general-policy` adds three rules: a number that
+  gates or steers the work is a proxy (name its source, measure a baseline, freeze the criteria,
+  pair it with an opposing check); report finished work before starting more; answer whoever waits
+  on you. A copy you edited is kept, and `setup --outdated` offers the new one.
+- **pi: mail is acked sooner.** Mail steered into a running turn counts as read when the model reply
+  that read it ends, not when the whole turn ends, so a long tool call no longer holds it.
+- **pi: a session that stops driving a participant says why** (the daemon refused it, another
+  session owns it, the team closed) and how to get back.
+- **`config.yaml` errors name the line**: an unknown key names its line, where it sits and the
+  keys known there.
+- **`piggery ps` is cheaper**: a handful of queries instead of several per team and member.
+
+### Removed
+
+- **The team board (pins)**: `send` to `board`, `--op replace|remove`, `--target`, `inbox --view`,
+  `piggery board` and `can_pin`. No built-in template used it. A template with `can_pin: true`
+  still loads, and `piggery check` says the key is ignored. Pinned mail stays in the database;
+  schema v30 drops the `pins` view.
+
+### Fixed
+
+- An idle daemon woke the CPU about 10 times a second per open team. It now reads only teams where
+  someone works.
+- The `settled` notice fired while a taskforce the gate called was still working.
+- `piggery tail` of a worker that went on as an interactive session showed its old driver log
+  instead of the session's transcript.
+- pi: two piggery tools called at once on a fresh session left it unable to join.
+
+## v0.10.4 - 2026-10-19
+
+`top`'s sidebar is now the selected row's Tail, drawn as turns, and its width follows a drag.
+
+- Change: `top`'s sidebar has no Overview tab any more (it repeated the row) and `t` is gone. It is
+  the selected row's Tail; on a team's line, its gate's (`Tail · lark (gate)`). Above a rule, a head
+  says what the row does not: the task and a newer mail, the model where it can be changed (a click
+  on it, or `M`, opens the picker as before), who spawned it and whom it reports to, and when a
+  closed team closed. The log below is drawn as turns, a blank line between two: what came in at the
+  left edge (a prompt `›`, mail `from lark …`), what the participant did two cells in. A run of tool
+  calls is one line (`• 4 tools · bash ×3, edit`); the latest run, still going, is a tree of its
+  last calls; a result shows only when it failed; mail sent is one line (`to lark …`), at the left
+  edge like mail in; an older turn keeps what came in, its calls and what it gave back. This works
+  for interactive sessions' transcripts as well as workers' logs. `piggery tail` still prints every
+  line.
+- New: drag the line between the list and the sidebar in `top` to resize the sidebar; the width
+  is kept for the next `top` (#34). `top` also draws faster: its colours are worked out once, not
+  on every frame. Thanks to @sting-lon.
+- Change: in `piggery tail`, a call to piggery's send tool shows whom it went to and its body
+  (`> piggery_send lead #3 done`) instead of cut `body=… to=…`, and `read`, `edit` and `write`
+  show their path also when the harness names it `file_path` (Claude) or passes a list of `paths`.
+
+## v0.10.3 - 2026-10-15
+
+On Windows, pi workers started through pi's own launcher no longer go gone about ten seconds after they start.
+
+- Fix (Windows): a pi worker went gone about ten seconds after it was spawned, with its mail
+  unread and an empty tail, when pi's `pi.cmd` names its script `"%~dp0pi-launcher.js"`, with no
+  backslash after `%~dp0` (pi's launcher writes it so); piggery did not see through such a shim, so the worker ran under
+  `cmd.exe`, one process too deep, and the daemon refused it as a harness nested in a worker
+  (#32). Thanks to @sting-lon for the report, the diagnosis and the fix.
 
 ## v0.10.2 - 2026-10-12
 

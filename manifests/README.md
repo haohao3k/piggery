@@ -19,7 +19,9 @@ Anyone not connected by an arrow cannot reach the other, and that is on purpose.
 | [`gastown-like`](#gastown-like) | Several coding tasks can run at once on separate branches and need merging |
 
 Start one by asking your session to found it (`piggery template list` shows them). Copy one to
-change it: `piggery template new mine --from <template>`.
+change it: `piggery template new mine --from <template>`. A built-in you edited does not move to a new
+version by itself: `piggery template update <name>` shows what differs, `--force` replaces it (your copy
+stays in `.backup`). To pick a model per role, write `roles:` in `config.yaml` instead of editing a template.
 
 A template marked (taskforce) has a `taskforce:` block: besides being founded as a long-lived team,
 a solo session or a gate can call it up for one job (`spawn` with `template`); it works with
@@ -29,9 +31,9 @@ its own chair, reports to the caller, and is closed by the caller when the job i
 
 A lead and peers who may know as much as it does. The lead owns the plan: it cuts your goal into
 scopes, briefs a peer for each with a check that proves it done, and judges every result; a
-result that misses the check goes back with a note (`rework`). A peer follows the brief by
-default and speaks up only with evidence that the plan is off (wrong premise, wrong focus, more
-than the goal needs); the lead weighs that evidence, not who said it, and brings a disagreement it
+result that misses the check goes back with a note (`rework`). A peer works with the lead,
+not under it: it solves its piece its own way and raises a better way or a problem with the plan
+as early as it helps; the lead weighs the reason, not who gave it, and brings a disagreement it
 cannot settle to you.
 
 ```mermaid
@@ -119,8 +121,9 @@ actually think differently:
   `claude-*`, and the other way round), with a high thinking level;
 - the reviewer: a third family if you have one (`gemini-*`).
 
-Set them in `roles.oracle.spawn.model`, `roles.oracle.spawn.thinking` and
-`roles.reviewer.spawn.model`, written the way that role's harness names models and levels.
+Set them in `~/.piggery/config.yaml`, for example
+`roles: {"<template>/oracle": {model: ..., thinking: high}, "<template>/reviewer": {model: ...}}`, written the
+way that role's harness names models and levels.
 
 ## dual-lens
 
@@ -144,7 +147,7 @@ flowchart TD
 ```
 
 The fork defaults to native Codex / GPT-6-astra / high and native Claude / Opus 5.5 / high.
-Customize `roles.lens-a.spawn` and `roles.lens-b.spawn` in your own template to choose other
+Customize `dual-lens/lens-a` and `dual-lens/lens-b` in `config.yaml`’s `roles:` to choose other
 available model families. The chair checks actual routes and input revisions; unavailable routes
 or missing essential evidence produce BLOCKED. The concurrency limit is three, including the
 headless chair. Both first passes stay private; conflicts get at most two evidence-driven rounds,

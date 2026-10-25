@@ -25,14 +25,8 @@ func (e *Engine) Notices(ctx context.Context, n int) ([]NotifyMail, error) {
 			return internal(err)
 		}
 		rows.Close()
-		for _, id := range ids {
-			m, err := t.notifyMail(id)
-			if err != nil {
-				return err
-			}
-			out = append(out, m)
-		}
-		return nil
+		out, err = t.notifyMails(ids)
+		return err
 	})
 	return out, err
 }

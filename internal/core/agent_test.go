@@ -288,6 +288,25 @@ func TestStopAndTailOwnership(t *testing.T) {
 // reuses the model chosen at spawn, even after the chain would choose another. Regression (live
 // test): resume with a task dropped the task and answered ok, so the supervisor waited for a
 // handback that could not come. The task is given as at spawn.
+// tail names a worker's driver log only for the run it has now. One that was a headless worker and
+// went on as an interactive session (new run, no process of piggery's) shows its transcript, not
+// its old driver log (seen live: a session's `tail` showed records from days before).
+func TestWorkerLogIsOfTheCurrentRunOnly(t *testing.T) {
+	f := newAgentFixture(t)
+	w := f.spawn(t, f.lead, "w1")
+	got, err := f.e.WorkerLog(ctx, core.WorkerLogArgs{Worker: "w1"})
+	if err != nil || got.RunID != w.RunID || got.Transcript != nil {
+		t.Fatalf("running worker: %+v, %v; want its run %s", got, err, w.RunID)
+	}
+	if _, err := f.db.Exec(`UPDATE participants SET run_id='session-run', transcript='/s/x.jsonl', transcript_format='pi' WHERE id=?`, w.ParticipantID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = f.e.WorkerLog(ctx, core.WorkerLogArgs{Worker: "w1"})
+	if err != nil || got.RunID != "" || got.Transcript == nil || got.Transcript.Path != "/s/x.jsonl" {
+		t.Fatalf("worker that went on as a session: %+v, %v; want its transcript and no run", got, err)
+	}
+}
+
 func TestResumeWithTaskGivesTheTask(t *testing.T) {
 	f := newAgentFixture(t)
 	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentSpawn, Role: "worker", Name: "w1", Task: "first"}); err != nil {

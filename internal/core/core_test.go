@@ -23,7 +23,7 @@ type fixture struct {
 
 // peersManifest is the fixture team of the tests: one role whose members talk freely and may spawn more.
 const peersManifest = "template: peers\nauto_join_role: peer\nroles:\n" +
-	"  peer: {tools: [send, inbox, who, agent], can_spawn: [peer], can_pin: true}\n" +
+	"  peer: {tools: [send, inbox, who, agent], can_spawn: [peer]}\n" +
 	"routing:\n  - {from: peer, to: peer, allow: true}\n" +
 	"limits: {depth: 2, concurrency: 10, messages_per_participant_per_minute: 30}\n"
 
@@ -235,49 +235,8 @@ func payloadStr(raw json.RawMessage, key string) string {
 	return s
 }
 
-// #7: pin, replace, remove; a full board refuses with the live pins.
-func TestBoardPinReplaceRemoveAndLimit(t *testing.T) {
-	f := newFixture(t, nil)
-	board := func() []string {
-		t.Helper()
-		pins, err := f.e.Board(ctx, f.bob)
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := []string{}
-		for _, p := range pins {
-			out = append(out, p.ID)
-		}
-		return out
-	}
-	p1 := f.send(t, f.alice, core.SendArgs{To: "board", Body: "v1"}).ID
-	p2 := f.send(t, f.alice, core.SendArgs{To: "board", Op: "replace", Target: p1, Body: "v2"}).ID
-	if got := board(); !eq(got, []string{p2}) {
-		t.Fatalf("after replace board = %v, want [%s]", got, p2)
-	}
-	f.send(t, f.alice, core.SendArgs{To: "board", Op: "remove", Target: p2})
-	if got := board(); len(got) != 0 {
-		t.Fatalf("after remove board = %v", got)
-	}
-	if _, err := f.e.Send(ctx, f.alice, core.SendArgs{To: "board", Op: "replace", Target: p2, Body: "v3"}); code(err) != core.CodeDenied {
-		t.Fatalf("replace of removed pin: %v", err)
-	}
-
-	for i := 0; i < core.BoardLimit; i++ {
-		f.send(t, f.bob, core.SendArgs{To: "board", Body: "pin"})
-	}
-	_, err := f.e.Send(ctx, f.alice, core.SendArgs{To: "board", Body: "one too many"})
-	var ce *core.Error
-	if !errors.As(err, &ce) || ce.Code != core.CodeDenied || ce.Layer != "limit" {
-		t.Fatalf("21st pin: %v", err)
-	}
-	if live, ok := ce.Details.([]core.Message); !ok || len(live) != core.BoardLimit {
-		t.Fatalf("denial details = %#v, want the %d live pins", ce.Details, core.BoardLimit)
-	}
-}
-
-// #6: unacked mail with its open delivery, a pin and a timer survive closing and reopening the DB file.
-func TestReopenDBFileKeepsMailPinAndTimer(t *testing.T) {
+// #6: unacked mail with its open delivery and a timer survive closing and reopening the DB file.
+func TestReopenDBFileKeepsMailAndTimer(t *testing.T) {
 	path := t.TempDir() + "/piggery.db"
 	db, err := store.Open(path)
 	if err != nil {
@@ -286,7 +245,6 @@ func TestReopenDBFileKeepsMailPinAndTimer(t *testing.T) {
 	f := newFixture(t, db)
 	msg := f.send(t, f.alice, core.SendArgs{To: "bob", Body: "hi"}).ID
 	before := f.inbox(t, f.bob, batch(1))
-	pin := f.send(t, f.alice, core.SendArgs{To: "board", Body: "pinned"}).ID
 	if _, err := f.e.WatchAdd(ctx, f.alice, core.TimerArgs{To: "bob", EveryMs: 1000, Body: "storm"}); code(err) != core.CodeInvalid {
 		t.Fatalf("repeating timer under a minute: %v", err)
 	}
@@ -308,9 +266,6 @@ func TestReopenDBFileKeepsMailPinAndTimer(t *testing.T) {
 	if d, err := e.Inbox(ctx, f.bob, core.InboxArgs{Batch: batch(1)}); err != nil || len(d) != 1 ||
 		d[0].ID != msg || d[0].DeliveryID != before[0].DeliveryID {
 		t.Fatalf("reopened inbox = %+v, %v", d, err)
-	}
-	if pins, err := e.Board(ctx, f.bob); err != nil || len(pins) != 1 || pins[0].ID != pin {
-		t.Fatalf("reopened board = %+v, %v", pins, err)
 	}
 	if ts, err := e.WatchList(ctx, f.alice); err != nil || len(ts) != 1 || ts[0].ID != tm.ID {
 		t.Fatalf("reopened timers = %+v, %v", ts, err)

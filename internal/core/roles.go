@@ -64,11 +64,12 @@ func validateRoles(m manifest) error {
 	return nil
 }
 
-// workerSettings resolves a worker's harness (harness given for a resume, else the role's
-// spawn.harness, else the nearest non-headless ancestor's when a driver runs it, else the default),
-// then its model and thinking level, each through its own chain: the role's spawn field, else that
-// harness's profile, else what the ancestor session reports when it runs the same harness, else ""
-// (the harness default). Values pass through as written.
+// workerSettings resolves a worker's harness (harness given for a resume, else config.yaml
+// `roles`, else the role's deprecated spawn.harness, else the nearest non-headless ancestor's when
+// a driver runs it, else the default), then its model and thinking level, each through its own
+// chain: config.yaml `roles`, else the role's deprecated spawn field, else that harness's profile,
+// else what the ancestor session reports when it runs the same harness, else "" (the harness
+// default). Values pass through as written.
 func (e *Engine) workerSettings(t *txn, m manifest, role, spawner, harness string) (h, model, thinking string, err error) {
 	// The nearest ancestor that is a person's session: the session a human opened that started the chain.
 	var anc struct{ harness, model, thinking string }
@@ -88,7 +89,11 @@ func (e *Engine) workerSettings(t *txn, m manifest, role, spawner, harness strin
 	}
 	// Harness: the worker's own (resume), the role's, the main session's when a driver runs it,
 	// else the default.
-	h = cmp.Or(harness, m.Roles[role].Spawn.Harness)
+	var pin SpawnPin
+	if e.roleSpawn != nil {
+		pin = e.roleSpawn(m.Template, role)
+	}
+	h = cmp.Or(harness, pin.Harness, m.Roles[role].Spawn.Harness)
 	if h == "" {
 		h = e.defaultHarnessName()
 		if e.driverNamed(anc.harness) != nil {
@@ -100,8 +105,8 @@ func (e *Engine) workerSettings(t *txn, m manifest, role, spawner, harness strin
 		return "", "", "", errf(CodeInvalid, "role %s: no runtime driver for harness %q", role, h)
 	}
 	_, model, thinking = d.Defaults()
-	model = cmp.Or(m.Roles[role].Spawn.Model, model)
-	thinking = cmp.Or(m.Roles[role].Spawn.Thinking, thinking)
+	model = cmp.Or(pin.Model, m.Roles[role].Spawn.Model, model)
+	thinking = cmp.Or(pin.Thinking, m.Roles[role].Spawn.Thinking, thinking)
 	if anc.harness == h { // model names are the harness's own: inherit only within it
 		model, thinking = cmp.Or(model, anc.model), cmp.Or(thinking, anc.thinking)
 	}

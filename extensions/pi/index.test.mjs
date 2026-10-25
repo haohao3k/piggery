@@ -84,7 +84,7 @@ test("the extension against a fake daemon", async (t) => {
 	const { default: piggery } = await import("./index.ts");
 	piggery(pi);
 	const glm = { provider: "HP", id: "glm-5.3-flash" };
-	const ctx = { mode: "rpc", hasUI: false, cwd: process.env.HOME, isIdle: () => true, model: glm, sessionManager: { getSessionId: () => "sess-1", getSessionFile: () => "/s/sess-1.jsonl" } };
+	const ctx = { mode: "rpc", hasUI: false, cwd: process.env.HOME, isIdle: () => true, hasPendingMessages: () => false, model: glm, sessionManager: { getSessionId: () => "sess-1", getSessionFile: () => "/s/sess-1.jsonl" } };
 	handlers.session_start({}, ctx);
 	await until(() => calls.some((c) => c.verb === "identify" && c.as === "p1"));
 
@@ -175,6 +175,22 @@ test("the extension against a fake daemon", async (t) => {
 		assert.equal(id.args.run_id, "r1b");
 		assert.match(res.content[0].text, /^Reopened team t1\nyour tools: piggery_send, piggery_inbox$/);
 		assert.deepEqual(active.sort(), ["piggery_inbox", "piggery_send"]);
+	});
+	await t.test("a run that changes participant goes on as the new one: its turn starts and ends in the daemon", async () => {
+		joins.push({ id: "p2", token: "t2c", run_id: "r2c" });
+		const turn = (id, event) => calls.findLast((c) => c.verb === "harness.event" && c.as === id && c.args.event === event && !c.args.wake);
+		handlers.agent_start({}, ctx);
+		await until(() => turn("p1", "turn_start"));
+		const first = turn("p1", "turn_start").args.prompt_id;
+		await tools.piggery_agent.execute("c3", { action: "close" }); // becomes the solo p2 in the middle of the run
+		await until(() => turn("p2", "turn_start"));
+		await tools.piggery_agent.execute("c4", { action: "reopen", team: "t1" }); // and p1 again
+		await until(() => turn("p1", "turn_start")?.args.prompt_id !== first);
+		await handlers.agent_before_settle({ outcome: "completed" });
+		await until(() => turn("p1", "turn_end"));
+		assert.equal(turn("p1", "turn_end").args.prompt_id, turn("p1", "turn_start").args.prompt_id);
+		assert.equal(turn("p1", "turn_end").args.outcome, "ok");
+		handlers.agent_settled({}, ctx);
 	});
 	handlers.session_shutdown?.({ reason: "quit" });
 });

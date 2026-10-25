@@ -140,13 +140,38 @@ func TestAdapterTurnAcksOnlyItsOwnEnd(t *testing.T) {
 		t.Fatalf("mail after an abort: woken %v; want a wake", woken)
 	}
 
+	// Ack per model turn: the parts a finished model turn read (seen) are acked while the
+	// turn goes on; seen under another turn's key acks nothing; a failed end then acks nothing more,
+	// and the unseen part comes again.
+	if r := turn("p5d"); r.Part != 1 { // seven, eight, nine
+		t.Fatalf("turn_start part = %d; want 1", r.Part)
+	}
+	f.send(t, f.alice, core.SendArgs{To: "bob", Body: "ten"})
+	if r := ev(core.HarnessEventArgs{Event: core.HarnessToolBoundary, PromptID: "p5d"}); r.Part != 2 || !strings.Contains(r.Text, "ten") {
+		t.Fatalf("boundary give = part %d %q; want part 2 with ten", r.Part, r.Text)
+	}
+	ev(core.HarnessEventArgs{Event: core.HarnessToolBoundary, PromptID: "other", Seen: 2})
+	if pending() != 4 {
+		t.Fatalf("seen under another key acked: pending %d", pending())
+	}
+	ev(core.HarnessEventArgs{Event: core.HarnessToolBoundary, PromptID: "p5d", Seen: 1})
+	if pending() != 1 {
+		t.Fatalf("seen 1: pending %d; want only ten left", pending())
+	}
+	end("p5d", core.HarnessOutcomeFailed)
+	if r := turn("p5e"); pending() != 1 || !strings.Contains(r.Text, "ten") || strings.Contains(r.Text, "seven") {
+		t.Fatalf("after a failed end: pending %d, next turn %q; want only ten again", pending(), r.Text)
+	}
+	end("p5e", core.HarnessOutcomeOK)
+
 	// The harness restarted (new run): the old run's turn end is refused and acks nothing.
+	f.send(t, f.alice, core.SendArgs{To: "bob", Body: "eleven"})
 	turn("p6")
 	if _, err := f.db.Exec(`UPDATE participants SET run_id='run-2' WHERE id=?`, f.bob.ParticipantID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.e.HarnessEvent(ctx, f.bob, core.HarnessEventArgs{Event: core.HarnessTurnEnd, PromptID: "p6",
-		Outcome: core.HarnessOutcomeOK}); code(err) != core.CodeUnauthorized || pending() != 3 {
+		Outcome: core.HarnessOutcomeOK, Seen: 1}); code(err) != core.CodeUnauthorized || pending() != 1 {
 		t.Fatalf("old run's end: %v, pending %d", err, pending())
 	}
 }

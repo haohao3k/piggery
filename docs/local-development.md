@@ -99,10 +99,10 @@ pre-migration backup and any activity after it. See [session isolation](session-
 
 ## Returning an existing fork-23 home to upstream
 
-The runtime uses upstream schema 27. Native upstream schemas 23–27 are recognized by their
+The runtime uses upstream schema 30. Native upstream schemas 23–30 are recognized by their
 exact schema shape and left to the runtime migrations. `apply` automatically handles only the known older fork-23
 schema after the idle gate: graceful shutdown, exclusive daemon lock, full SQLite backup,
-retirement of gone ambiguous identities, and transactional removal of the fork column, returning to upstream 22 before the runtime migrates to 27. The
+retirement of gone ambiguous identities, and transactional removal of the fork column, returning to upstream 22 before the runtime migrates to 30. The
 backup path is recorded in the activation receipt. Unknown schemas block installation.
 See [session isolation](session-isolation.md) for the data-preservation contract.
 Do not restore only the old binary after conversion: it would add the fork migration again.
