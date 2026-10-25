@@ -355,6 +355,7 @@ routing:
 limits: {depth: 2, concurrency: 4, messages_per_participant_per_minute: 30}
 timers:
   - {on: peer, working_for: 20m, notify: reports_to}  # nudge when a worker works that long with no turn end
+  - {on: lead, every: 10m}     # every 10 min while peers work, the lead is told who is working (at least 1m)
 ```
 
 `piggery` keeps a built-in you never edited up to date. A template is one block: if you edited,

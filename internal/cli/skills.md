@@ -93,6 +93,11 @@ with `spawn --template`; keep its keys in that block, because `timers` refuses u
 The tools are `send`, `inbox`, `who`, `agent` and no others. The first routing rule matching (sender's
 role, recipient's role) decides and none means denied; mail
 between teams ignores routing. A role that can spawn needs `limits.depth` and `limits.concurrency`.
+A timer is one of two kinds. `{on: <role>, working_for: <duration>, notify: <role|reports_to>}`: one
+notice when a working member of that role has not ended a turn for that long (a stuck worker).
+`{on: <role>, every: <duration>}` (at least `1m`, no `notify`): the members of that role get
+`Working now: <names>` once a period while a member of another role works and none of theirs does,
+so a role can look at the team on a schedule (a reviewer, a lookout); an idle team gets nothing.
 
 **Prompts.** Name tools only as `{tool:send}`, `{tool:agent}`, `{tool:inbox}`, `{tool:who}` (each harness names them
 differently: `piggery_send` in pi, `mcp__piggery__send` in Claude and Codex); a placeholder that
